@@ -41,6 +41,7 @@
         let isFirebaseReady = false; // Flag to prevent actions before DB is ready
 
         async function initializeFirebase() {
+            const userIdElement = document.getElementById('user-info'); // Get status element
             try {
                 if (Object.keys(firebaseConfig).length > 0) {
                     app = initializeApp(firebaseConfig);
@@ -56,17 +57,25 @@
                         console.log("Firebase signed in anonymously.");
                     }
                     
-                    displayUserId();
                     isFirebaseReady = true; // Set flag *after* auth is complete
+                    displayUserId(); // This will now show "Connected" + ID
                     validateSaveButton(); // Re-check button states now that Firebase is ready
 
                 } else {
                     console.error("Firebase configuration is missing.");
-                    displayUserId(); 
+                    // NEW: Update UI on config failure
+                    if(userIdElement) {
+                         userIdElement.innerHTML = `<span class="font-bold text-red-600">เชื่อมต่อล้มเหลว (Config missing)</span>`;
+                         userIdElement.className = "text-sm text-right text-red-600 mb-4";
+                    }
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Authentication failed:", error);
-                displayUserId();
+                // NEW: Update UI on auth failure
+                if(userIdElement) {
+                    userIdElement.innerHTML = `<span class="font-bold text-red-600">เชื่อมต่อล้มเหลว (Auth Error)</span>`;
+                    userIdElement.className = "text-sm text-right text-red-600 mb-4";
+                }
             }
         }
         
@@ -218,12 +227,14 @@
             }
         });
 
+        // NEW: Updated function to show connection status
         function displayUserId() {
             const userIdElement = document.getElementById('user-info');
-            // Wait for auth to be ready if possible
             const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
             if (userIdElement) {
-                userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${userId}`;
+                // Add a success message
+                userIdElement.innerHTML = `<span class="font-bold text-green-600">เชื่อมต่อสำเร็จ</span> | <b>User ID:</b> ${userId}`;
+                userIdElement.className = "text-sm text-right text-gray-700 mb-4"; // Reset class to show success
             }
         }
 
@@ -770,8 +781,6 @@
 
         // --- Setup Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
-            displayUserId(); // Initial display (might be anonymous or waiting for auth)
-
             // Section 1
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
             document.getElementById('patient-name').addEventListener('input', validateSaveButton);
@@ -817,6 +826,7 @@
         </p>
 
         <!-- User ID Display (Mandatory for multi-user apps) -->
+        <!-- This will be updated by JS to show connection status -->
         <div id="user-info" class="text-sm text-right text-gray-500 mb-4">
             กำลังเชื่อมต่อ...
         </div>
