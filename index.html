@@ -28,26 +28,38 @@
             getDocs     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- START: GitHub-Safe Configuration (Firebase only) ---
+        // --- START: Direct Configuration (Hardcoded) ---
+        // **คำเตือนด้านความปลอดภัย**: การใส่คีย์ลงในโค้ดโดยตรงมีความเสี่ยง หากโค้ดนี้ถูกเผยแพร่สู่สาธารณะบน GitHub
+        const firebaseConfig = {
+          apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
+          authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
+          projectId: "eyedm-3ebc8-7c029",
+          storageBucket: "eyedm-3ebc8-7c029.firebasestorage.app",
+          messagingSenderId: "327117771686",
+          appId: "1:327117771686:web:e66c7683e4613d5b8db567",
+          measurementId: "G-N48NPP7K9J"
+        };
+        
         let app, db, auth;
-        let globalAppId = "default-app-id";
+        let globalAppId = firebaseConfig.appId || "default-app-id"; // ใช้ App ID โดยตรง
         let isFirebaseReady = false; 
         let currentUserId = null;
-        // --- END: GitHub-Safe Configuration ---
+        // --- END: Direct Configuration ---
         
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
-        async function initializeFirebase(firebaseConfig) {
+        // ฟังก์ชันเริ่มต้น Firebase โดยรับ Config ที่ Hardcode มา
+        async function initializeFirebase(config) {
             const userIdElement = document.getElementById('user-info');
             try {
-                if (Object.keys(firebaseConfig).length > 0) {
-                    app = initializeApp(firebaseConfig);
+                if (config.apiKey) {
+                    app = initializeApp(config);
                     db = getFirestore(app);
                     auth = getAuth(app);
                     
-                    globalAppId = firebaseConfig.appId || 'default-app-id'; 
+                    globalAppId = config.appId || 'default-app-id'; 
 
                     onAuthStateChanged(auth, (user) => {
                         if (user) {
@@ -81,12 +93,10 @@
                 } else {
                     console.error("Firebase configuration is missing or empty.");
                     displayUserId(null, "เชื่อมต่อล้มเหลว (Config missing)");
-                    showSettingsModal(false);
                 }
             } catch (error) {
                 console.error("Firebase Initialization failed:", error);
                 displayUserId(null, `เชื่อมต่อล้มเหลว (Init Error)`);
-                showSettingsModal(false);
             }
         }
         
@@ -107,91 +117,7 @@
             }
         }
 
-        // --- Logic สำหรับการตั้งค่า (Settings Modal - Firebase only) ---
-        function showSettingsModal(populateExisting = false) {
-            const modal = document.getElementById('settings-modal');
-            modal.classList.remove('hidden');
-
-            if (populateExisting) {
-                try {
-                    const settings = JSON.parse(localStorage.getItem('appSettings'));
-                    if (settings) {
-                        document.getElementById('setting-fb-api-key').value = settings.firebaseConfig.apiKey || '';
-                        document.getElementById('setting-fb-auth-domain').value = settings.firebaseConfig.authDomain || '';
-                        document.getElementById('setting-fb-project-id').value = settings.firebaseConfig.projectId || '';
-                        document.getElementById('setting-fb-app-id').value = settings.firebaseConfig.appId || '';
-                    }
-                } catch (e) {
-                    console.error("Could not populate settings:", e);
-                }
-            }
-        }
-
-        function closeSettingsModal() {
-            document.getElementById('settings-modal').classList.add('hidden');
-        }
-
-        function saveSettings() {
-            const settings = {
-                firebaseConfig: {
-                    apiKey: document.getElementById('setting-fb-api-key').value.trim(),
-                    authDomain: document.getElementById('setting-fb-auth-domain').value.trim(),
-                    projectId: document.getElementById('setting-fb-project-id').value.trim(),
-                    appId: document.getElementById('setting-fb-app-id').value.trim(),
-                    storageBucket: `${document.getElementById('setting-fb-project-id').value.trim()}.appspot.com`,
-                    messagingSenderId: "N/A", 
-                }
-            };
-
-            if (!settings.firebaseConfig.apiKey || !settings.firebaseConfig.projectId || !settings.firebaseConfig.appId) {
-                document.getElementById('settings-status').textContent = 'กรุณากรอก Firebase API Key, Project ID และ App ID ให้ครบถ้วน';
-                return;
-            }
-
-            try {
-                localStorage.setItem('appSettings', JSON.stringify(settings));
-                document.getElementById('settings-status').textContent = 'บันทึกสำเร็จ! กำลังรีโหลดแอป...';
-                setTimeout(() => {
-                    location.reload();
-                }, 1000);
-            } catch (e) {
-                console.error("Failed to save settings:", e);
-                document.getElementById('settings-status').textContent = `เกิดข้อผิดพลาด: ${e.message}`;
-            }
-        }
-
-        function loadConfigAndInitialize() {
-            const settingsString = localStorage.getItem('appSettings');
-            if (!settingsString) {
-                // ถ้าไม่มีการตั้งค่า (เปิดครั้งแรก)
-                console.warn("No settings found. Showing settings modal.");
-                displayUserId(null, "กรุณาตั้งค่า Firebase Keys"); 
-                document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none'); 
-                showSettingsModal(false);
-            } else {
-                // ถ้าพบการตั้งค่า
-                console.log("Settings found. Initializing...");
-                try {
-                    const settings = JSON.parse(settingsString);
-                    
-                    console.log(`%c[ACTION REQUIRED] Please authorize this domain in your Firebase Authentication settings: ${window.location.hostname}`, "color: blue; font-weight: bold; font-size: 14px;");
-
-                    if (settings.firebaseConfig.apiKey && settings.firebaseConfig.projectId && settings.firebaseConfig.appId) {
-                        initializeFirebase(settings.firebaseConfig);
-                    } else {
-                         throw new Error("Missing critical Firebase configuration fields.");
-                    }
-                } catch (e) {
-                    console.error("Failed to parse settings. Clearing and showing modal.", e);
-                    localStorage.removeItem('appSettings');
-                    displayUserId(null, "ตั้งค่าไม่ถูกต้อง กรุณาตั้งค่าใหม่");
-                    showSettingsModal(false);
-                }
-            }
-        }
-
-
-        // --- Global App Logic (ไม่มีการเปลี่ยนแปลงด้าน Firebase/Data) ---
+        // --- Global App Logic (ส่วนอื่น ๆ ของแอปยังคงเหมือนเดิม) ---
         let searchTimeout;
         function debounce(func, delay = 300) {
             return function(...args) {
@@ -635,9 +561,8 @@
         // --- Setup Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('unlock-button').addEventListener('click', manualSignIn);
-            document.getElementById('open-settings-button').addEventListener('click', () => showSettingsModal(true));
-            document.getElementById('close-settings-button').addEventListener('click', closeSettingsModal);
-            document.getElementById('save-settings-button').addEventListener('click', saveSettings);
+
+            // ลบ Event Listener ของปุ่มตั้งค่าออก
 
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
             document.getElementById('patient-name').addEventListener('input', validateSaveButton);
@@ -649,7 +574,8 @@
             document.getElementById('search-button').addEventListener('click', searchPatientRecords);
             
             validateSaveButton();
-            loadConfigAndInitialize();
+            // เรียกใช้ initializeFirebase ทันทีด้วย config ที่ฝังไว้
+            initializeFirebase(firebaseConfig);
         });
 
     </script>
@@ -670,43 +596,6 @@
         </div>
     </div>
 
-    <!-- Modal สำหรับการตั้งค่า API Keys (เหลือแค่ Firebase) -->
-    <div id="settings-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-[60]">
-        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-gray-800">การตั้งค่า (Firebase Keys)</h2>
-                <button id="close-settings-button" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
-            </div>
-            <p class="text-sm text-gray-600 mb-4">
-                กรุณากรอก API Keys จาก Firebase Console (Project Settings)
-                ข้อมูลนี้จะถูกเก็บไว้ในเครื่องของคุณเท่านั้น
-            </p>
-            <div class="space-y-4">
-                <div>
-                    <label for="setting-fb-api-key" class="block text-sm font-medium text-gray-700">Firebase API Key</label>
-                    <input type="password" id="setting-fb-api-key" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="AIzaSy...">
-                </div>
-                <div>
-                    <label for="setting-fb-auth-domain" class="block text-sm font-medium text-gray-700">Firebase Auth Domain</label>
-                    <input type="text" id="setting-fb-auth-domain" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="xxxx.firebaseapp.com">
-                </div>
-                <div>
-                    <label for="setting-fb-project-id" class="block text-sm font-medium text-gray-700">Firebase Project ID (สำคัญมาก)</label>
-                    <input type="text" id="setting-fb-project-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="my-project-xxxx">
-                </div>
-                <div>
-                    <label for="setting-fb-app-id" class="block text-sm font-medium text-gray-700">Firebase App ID (สำคัญมาก)</label>
-                    <input type="text" id="setting-fb-app-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="1:xxxx:web:xxxx">
-                </div>
-            </div>
-            <button id="save-settings-button" class="mt-6 w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
-                บันทึกการตั้งค่า
-            </button>
-            <p id="settings-status" class="text-center text-sm text-red-500 mt-2"></p>
-        </div>
-    </div>
-
-
     <!-- Main Container -->
     <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-6xl">
         <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-800 mb-2 text-center">
@@ -716,21 +605,16 @@
             บันทึกและค้นหาข้อมูลการตรวจจอประสาทตา (ตามแบบฟอร์ม รพ.ศรีสะเกษ)
         </p>
 
-        <!-- ส่วนแสดงสถานะ + ปุ่มตั้งค่า -->
+        <!-- ส่วนแสดงสถานะ + ปุ่มตั้งค่า (เหลือแค่สถานะ) -->
         <div class="flex justify-between items-center mb-4">
-             <div id="user-info" class="text-sm text-left text-gray-500 flex-grow">
-                กำลังโหลดการตั้งค่า...
+             <div id="user-info" class="text-sm text-left text-gray-500 flex-grow text-right">
+                กำลังเชื่อมต่อ...
             </div>
-            <button id="open-settings-button" class="p-2 text-gray-500 hover:text-blue-600 transition duration-150" title="การตั้งค่า Firebase Keys">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-            </button>
+            <!-- ปุ่มตั้งค่าถูกลบออกแล้ว -->
         </div>
 
 
-        <!-- เนื้อหาหลัก -->
+        <!-- เนื้อหาหลักจะจางลงจนกว่าจะเชื่อมต่อสำเร็จ -->
         <div id="main-app-content" class="transition duration-300 opacity-20 pointer-events-none">
             <!-- Section 1: Patient Info (from PCU) -->
             <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
@@ -739,7 +623,6 @@
                     <div class="relative"> 
                         <label for="patient-id" class="block text-sm font-medium text-gray-700">เลขบัตรประชาชน 13 หลัก</label>
                         <div class="flex mt-1">
-                            <!-- **ปรับปรุง** input field ไม่ต้องมีปุ่มสแกน -->
                             <input type="text" id="patient-id" class="block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
                         </div>
                         <div id="autocomplete-results" class="absolute top-full left-0 right-0 w-full bg-white border border-gray-300 rounded-b-lg shadow-lg z-20 hidden overflow-y-auto max-h-48">
