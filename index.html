@@ -10,24 +10,33 @@
     <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- Load Firebase SDKs -->
+    <!-- 
+      FIX: All JavaScript is now inside this single <script type="module"> block 
+      to ensure all functions can see the imported Firebase commands (addDoc, query, etc.)
+    -->
     <script type="module">
+        // --- Firebase SDK Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Import collection, addDoc, query, where, getDocs, setLogLevel
-        import { getFirestore, collection, addDoc, setLogLevel, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc,       // <-- Function that was previously 'not defined'
+            setLogLevel, 
+            query,        // <-- Function that was previously 'not defined'
+            where,        // <-- Function that was previously 'not defined'
+            getDocs       // <-- Function that was previously 'not defined'
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Enable Firebase debug logging
+        // --- Firebase Initialization ---
         setLogLevel('Debug');
 
-        // Define global variables provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app, db, auth;
 
-        // Function to initialize Firebase and authenticate
         async function initializeFirebase() {
             try {
                 if (Object.keys(firebaseConfig).length > 0) {
@@ -35,7 +44,6 @@
                     db = getFirestore(app);
                     auth = getAuth(app);
 
-                    // Authenticate user
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
                         console.log("Firebase signed in with custom token.");
@@ -43,36 +51,748 @@
                         await signInAnonymously(auth);
                         console.log("Firebase signed in anonymously.");
                     }
+                    
+                    // Now that auth is ready, display User ID
+                    displayUserId();
+
                 } else {
                     console.error("Firebase configuration is missing. Running in non-persistent mode.");
+                    displayUserId(); // Display a fallback ID even if Firebase fails
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Authentication failed:", error);
+                displayUserId(); // Display a fallback ID on error
             }
         }
         
         initializeFirebase();
 
         // Expose necessary variables globally for use in the main script
+        // Note: Functions defined in this module script are NOT global by default.
+        // We must attach them to the 'window' object to be called by 'onclick' attributes in HTML.
         window.getAuth = () => auth;
         window.getDb = () => db;
         window.getAppId = () => appId;
+
+        // --- Global App Logic (Moved inside module) ---
+
+        let currentWebcamStream = null;
+        const apiKey = ""; // API key is provided by the environment
+        const modelName = "gemini-2.5-flash-preview-09-2025";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+        let searchTimeout;
+        function debounce(func, delay = 300) {
+            return function(...args) {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
+
+        // --- Autocomplete Functions ---
+        const debouncedSearchPatient = debounce(async () => {
+            validateSaveButton(); 
+            
+            const searchId = document.getElementById('patient-id').value.trim();
+            const resultsContainer = document.getElementById('autocomplete-results');
+            
+            if (searchId.length <= 3) {
+                resultsContainer.innerHTML = '';
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            // Check if db is initialized (it might not be if Firebase failed)
+            if (!db) {
+                console.warn("DB not ready for autocomplete");
+                return;
+            }
+
+            const appId = window.getAppId();
+            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+
+            // Firestore "starts with" query
+            const q = query(
+                collection(db, collectionPath),
+                where("patientId", ">=", searchId),
+                where("patientId", "<=", searchId + '\uf8ff')
+            );
+
+            try {
+                const querySnapshot = await getDocs(q);
+                const patientMap = new Map();
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (!patientMap.has(data.patientId) || new Date(data.timestamp) > new Date(patientMap.get(data.patientId).timestamp)) {
+                         patientMap.set(data.patientId, data);
+                    }
+                });
+
+                resultsContainer.innerHTML = ''; 
+
+                if (patientMap.size === 0) {
+                    resultsContainer.innerHTML = '<div class="p-2 text-gray-500 text-sm">ไม่พบข้อมูล</div>';
+                } else {
+                    patientMap.forEach((patientData, patientId) => {
+                        const item = document.createElement('div');
+                        item.className = 'p-2 text-sm text-gray-800 hover:bg-blue-100 cursor-pointer';
+                        item.textContent = `${patientId} - ${patientData.patientName}`;
+                        item.onclick = (e) => {
+                            e.stopPropagation(); 
+                            populateFormWithPatientData(patientData);
+                        };
+                        resultsContainer.appendChild(item);
+                    });
+                }
+                resultsContainer.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error during partial search:", error);
+                resultsContainer.innerHTML = '<div class="p-2 text-red-500 text-sm">เกิดข้อผิดพลาด</div>';
+                resultsContainer.classList.remove('hidden');
+            }
+        }, 300);
+        window.debouncedSearchPatient = debouncedSearchPatient;
+
+        function populateFormWithPatientData(data) {
+            const findingsContainer = document.getElementById('section3-findings');
+            findingsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+
+            document.getElementById('patient-id').value = data.patientId || '';
+            document.getElementById('patient-name').value = data.patientName || '';
+            document.getElementById('diabetes-years').value = data.diabetesYears || '';
+            document.getElementById('hba1c').value = data.hba1c || '';
+            document.getElementById('blood-pressure').value = data.bloodPressure || '';
+            document.getElementById('weight').value = data.weight || '';
+            document.getElementById('height').value = data.height || '';
+            document.getElementById('va-od').value = data.vaOD || '';
+            document.getElementById('va-os').value = data.vaOS || '';
+            document.getElementById('is-wheelchair').checked = data.isWheelchair || false;
+            
+            const hasExam = data.hasPreviousExam || false;
+            document.getElementById('has-previous-exam').checked = hasExam;
+            togglePreviousExamCount(hasExam);
+            document.getElementById('previous-exam-count').value = data.previousExamCount || '';
+
+            document.getElementById('has-cataract').checked = data.hasCataract || false;
+            document.getElementById('hearing-clear').checked = data.hearingClear || false;
+            document.getElementById('can-sit-chair').checked = data.canSitChair || false;
+            document.getElementById('needs-eyelid-lift').checked = data.needsEyelidLift || false;
+
+            if (data.findings) {
+                const f = data.findings;
+                document.getElementById('finding-normal-or').checked = f.normal?.or || false;
+                document.getElementById('finding-normal-ol').checked = f.normal?.ol || false;
+                document.getElementById('finding-microaneurysm-or').checked = f.microaneurysm?.or || false;
+                document.getElementById('finding-microaneurysm-ol').checked = f.microaneurysm?.ol || false;
+                document.getElementById('finding-hardexudate-or').checked = f.hardExudate?.or || false;
+                document.getElementById('finding-hardexudate-ol').checked = f.hardExudate?.ol || false;
+                document.getElementById('finding-flame-or').checked = f.flameHemorrhage?.or || false;
+                document.getElementById('finding-flame-ol').checked = f.flameHemorrhage?.ol || false;
+                document.getElementById('finding-venous-or').checked = f.venousBeading?.or || false;
+                document.getElementById('finding-venous-ol').checked = f.venousBeading?.ol || false;
+                document.getElementById('finding-irma-or').checked = f.irma?.or || false;
+                document.getElementById('finding-irma-ol').checked = f.irma?.ol || false;
+                document.getElementById('finding-newvessel-or').checked = f.newVessel?.or || false;
+                document.getElementById('finding-newvessel-ol').checked = f.newVessel?.ol || false;
+                document.getElementById('finding-preretinal-or').checked = f.preretinalHemorrhage?.or || false;
+                document.getElementById('finding-preretinal-ol').checked = f.preretinalHemorrhage?.ol || false;
+                document.getElementById('finding-vitreous-or').checked = f.vitreousHemorrhage?.or || false;
+                document.getElementById('finding-vitreous-ol').checked = f.vitreousHemorrhage?.ol || false;
+                document.getElementById('finding-fibrous-or').checked = f.fibrousProliferation?.or || false;
+                document.getElementById('finding-fibrous-ol').checked = f.fibrousProliferation?.ol || false;
+            }
+            document.getElementById('referral-needed').checked = data.referralNeeded || false;
+            
+            const resultsContainer = document.getElementById('autocomplete-results');
+            resultsContainer.innerHTML = '';
+            resultsContainer.classList.add('hidden');
+            
+            validateSaveButton();
+            displayMessage('โหลดข้อมูลผู้ป่วยสำเร็จ กรุณาตรวจสอบและอัปเดตข้อมูล', 'success');
+        }
+        window.populateFormWithPatientData = populateFormWithPatientData;
+
+        // Close dropdown if clicking outside
+        document.addEventListener('click', (e) => {
+            const resultsContainer = document.getElementById('autocomplete-results');
+            const searchInput = document.getElementById('patient-id');
+            if (resultsContainer && !resultsContainer.contains(e.target) && e.target !== searchInput) {
+                resultsContainer.classList.add('hidden');
+            }
+        });
+
+        // --- End Autocomplete Functions ---
+
+        function displayUserId() {
+            const userIdElement = document.getElementById('user-info');
+            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+            if (userIdElement) {
+                userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${userId}`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Display User ID (will be called again once auth is ready)
+            displayUserId();
+
+            // Add input listeners for validation
+            const inputsToValidate = ['patient-id', 'patient-name'];
+            inputsToValidate.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', validateSaveButton); 
+                }
+            });
+        });
+
+        function togglePreviousExamCount(isChecked) {
+            const container = document.getElementById('previous-exam-count-container');
+            if (isChecked) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+                document.getElementById('previous-exam-count').value = '';
+            }
+        }
+        window.togglePreviousExamCount = togglePreviousExamCount;
+
+        function displayMessage(message, type = 'info') {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.className = 'mt-8 p-4 rounded-xl text-center';
+            box.classList.remove('hidden');
+            
+            if (type === 'error') {
+                box.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                box.classList.add('bg-green-100', 'text-green-700');
+            } else { // info
+                box.classList.add('bg-blue-100', 'text-blue-700');
+            }
+        }
+        
+        function hideMessage() {
+            document.getElementById('message-box').classList.add('hidden');
+        }
+
+        // --- ID Card Scanner Functions ---
+        async function openIdScanner() {
+            hideMessage();
+            const modal = document.getElementById('scanner-modal');
+            const video = document.getElementById('webcam-video');
+            const statusEl = document.getElementById('scanner-status');
+            
+            modal.classList.remove('hidden');
+            statusEl.textContent = '';
+            
+            try {
+                currentWebcamStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                video.srcObject = currentWebcamStream;
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                statusEl.textContent = 'ไม่สามารถเปิดกล้องได้ (อาจไม่ได้รับอนุญาต)';
+                try {
+                     currentWebcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                     video.srcObject = currentWebcamStream;
+                     statusEl.textContent = 'ไม่พบกล้องหลัง, ใช้กล้องหน้าแทน';
+                } catch (err2) {
+                    console.error("Error accessing any webcam:", err2);
+                    statusEl.textContent = 'ไม่สามารถเปิดกล้องได้เลย';
+                    closeIdScanner();
+                }
+            }
+        }
+        window.openIdScanner = openIdScanner;
+
+        function closeIdScanner() {
+            const modal = document.getElementById('scanner-modal');
+            modal.classList.add('hidden');
+            
+            if (currentWebcamStream) {
+                currentWebcamStream.getTracks().forEach(track => track.stop());
+                currentWebcamStream = null;
+            }
+        }
+        window.closeIdScanner = closeIdScanner;
+        
+        async function captureAndAnalyzeId() {
+            const video = document.getElementById('webcam-video');
+            const canvas = document.getElementById('webcam-canvas');
+            const context = canvas.getContext('2d');
+            const button = document.getElementById('capture-button');
+            const buttonText = document.getElementById('capture-button-text');
+            const spinner = document.getElementById('capture-spinner');
+            const statusEl = document.getElementById('scanner-status');
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const base64ImageData = canvas.toDataURL('image/jpeg').split(',')[1];
+            
+            button.disabled = true;
+            buttonText.textContent = 'กำลังวิเคราะห์...';
+            spinner.classList.remove('hidden');
+            statusEl.textContent = 'กำลังส่งภาพไปวิเคราะห์...';
+
+            try {
+                const ocrResult = await callGeminiOCR(base64ImageData);
+                
+                if (!ocrResult.id_number && !ocrResult.name) {
+                     throw new Error("AI ไม่สามารถอ่านข้อมูลจากภาพได้");
+                }
+                
+                if (ocrResult.id_number) {
+                    const cleanedId = ocrResult.id_number.replace(/[\s-]/g, '');
+                    document.getElementById('patient-id').value = cleanedId;
+                }
+                if (ocrResult.name) {
+                    document.getElementById('patient-name').value = ocrResult.name;
+                }
+                
+                statusEl.textContent = 'สแกนสำเร็จ!';
+                displayMessage('สแกนข้อมูลสำเร็จ กรุณาตรวจสอบความถูกต้อง', 'success');
+                validateSaveButton();
+                closeIdScanner();
+
+            } catch (error) {
+                console.error("OCR analysis failed:", error);
+                statusEl.textContent = `วิเคราะห์ล้มเหลว: ${error.message}`;
+            } finally {
+                button.disabled = false;
+                buttonText.textContent = 'ถ่ายภาพและวิเคราะห์';
+                spinner.classList.add('hidden');
+            }
+        }
+        window.captureAndAnalyzeId = captureAndAnalyzeId;
+
+        async function callGeminiOCR(base64ImageData) {
+            const systemPrompt = "You are an OCR assistant specialized in reading Thai ID cards. Extract the 13-digit identification number and the full name (Name and Last Name). Return ONLY a structured JSON.";
+            const userQuery = "Extract the ID number and Full Name from this image.";
+            
+            const responseSchema = {
+                type: "OBJECT",
+                properties: {
+                    id_number: { "type": "STRING", "description": "The 13-digit Thai ID number (e.g., 1234567890123)" },
+                    name: { "type": "STRING", "description": "The full name in Thai (e.g., นายตัวอย่าง ทดสอบ)" }
+                },
+                required: ["id_number", "name"]
+            };
+
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: userQuery },
+                            {
+                                inlineData: {
+                                    mimeType: "image/jpeg",
+                                    data: base64ImageData
+                                }
+                            }
+                        ]
+                    }
+                ],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API call failed with status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const candidate = result?.candidates?.[0];
+            const jsonText = candidate?.content?.parts?.[0]?.text;
+            
+            if (!jsonText) {
+                 throw new Error("Invalid or empty response from AI.");
+            }
+            
+            let cleanedJson = jsonText.replace(/```json\n|```/g, '').trim();
+            return JSON.parse(cleanedJson);
+        }
+
+        // --- End ID Card Scanner Functions ---
+
+        // --- Form Validation and Save Functions ---
+        function validateSaveButton() {
+            const patientId = document.getElementById('patient-id').value;
+            const patientName = document.getElementById('patient-name').value;
+            const saveButton = document.getElementById('save-button');
+            
+            if (patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '') {
+                saveButton.disabled = false;
+            } else {
+                saveButton.disabled = true;
+            }
+        }
+
+        function clearForm() {
+            document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => input.value = '');
+            document.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            
+            togglePreviousExamCount(false);
+            validateSaveButton();
+        }
+
+        async function savePatientData() {
+            // Now 'db' and 'auth' are available in this scope
+            if (!db || !auth) {
+                displayMessage('ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรชหน้า', 'error');
+                return;
+            }
+            
+            const appId = window.getAppId();
+            const userId = auth.currentUser ? auth.currentUser.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+            
+            const saveButton = document.getElementById('save-button');
+            const buttonText = document.getElementById('save-button-text');
+            const spinner = document.getElementById('save-spinner');
+            saveButton.disabled = true;
+            buttonText.textContent = 'กำลังบันทึก...';
+            spinner.classList.remove('hidden');
+            hideMessage();
+
+            try {
+                const recordData = {
+                    patientId: document.getElementById('patient-id').value.trim(),
+                    patientName: document.getElementById('patient-name').value.trim(),
+                    diabetesYears: Number(document.getElementById('diabetes-years').value) || null,
+                    hba1c: document.getElementById('hba1c').value.trim(),
+                    bloodPressure: document.getElementById('blood-pressure').value.trim(),
+                    weight: Number(document.getElementById('weight').value) || null,
+                    height: Number(document.getElementById('height').value) || null,
+                    vaOD: document.getElementById('va-od').value,
+                    vaOS: document.getElementById('va-os').value,
+                    isWheelchair: document.getElementById('is-wheelchair').checked,
+                    hasPreviousExam: document.getElementById('has-previous-exam').checked,
+                    previousExamCount: document.getElementById('has-previous-exam').checked ? Number(document.getElementById('previous-exam-count').value) : null,
+                    
+                    hasCataract: document.getElementById('has-cataract').checked,
+                    hearingClear: document.getElementById('hearing-clear').checked,
+                    canSitChair: document.getElementById('can-sit-chair').checked,
+                    needsEyelidLift: document.getElementById('needs-eyelid-lift').checked,
+                    
+                    findings: {
+                        normal: {
+                            or: document.getElementById('finding-normal-or').checked,
+                            ol: document.getElementById('finding-normal-ol').checked
+                        },
+                        microaneurysm: {
+                            or: document.getElementById('finding-microaneurysm-or').checked,
+                            ol: document.getElementById('finding-microaneurysm-ol').checked
+                        },
+                        hardExudate: {
+                            or: document.getElementById('finding-hardexudate-or').checked,
+                            ol: document.getElementById('finding-hardexudate-ol').checked
+                        },
+                        flameHemorrhage: {
+                            or: document.getElementById('finding-flame-or').checked,
+                            ol: document.getElementById('finding-flame-ol').checked
+                        },
+                        venousBeading: {
+                            or: document.getElementById('finding-venous-or').checked,
+                            ol: document.getElementById('finding-venous-ol').checked
+                        },
+                        irma: {
+                            or: document.getElementById('finding-irma-or').checked,
+                            ol: document.getElementById('finding-irma-ol').checked
+                        },
+                        newVessel: {
+                            or: document.getElementById('finding-newvessel-or').checked,
+                            ol: document.getElementById('finding-newvessel-ol').checked
+                        },
+                        preretinalHemorrhage: {
+                            or: document.getElementById('finding-preretinal-or').checked,
+                            ol: document.getElementById('finding-preretinal-ol').checked
+                        },
+                        vitreousHemorrhage: {
+                            or: document.getElementById('finding-vitreous-or').checked,
+                            ol: document.getElementById('finding-vitreous-ol').checked
+                        },
+                        fibrousProliferation: {
+                            or: document.getElementById('finding-fibrous-or').checked,
+                            ol: document.getElementById('finding-fibrous-ol').checked
+                        }
+                    },
+                    referralNeeded: document.getElementById('referral-needed').checked,
+                    
+                    timestamp: new Date().toISOString(),
+                    uploaderId: userId,
+                };
+
+                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                
+                // --- THIS IS THE FIX ---
+                // 'addDoc' and 'collection' are now visible in this scope.
+                await addDoc(collection(db, collectionPath), recordData);
+                
+                displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
+                clearForm(); 
+
+            } catch (error) {
+                console.error("Error saving patient data:", error);
+                displayMessage(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`, 'error');
+            } finally {
+                validateSaveButton(); 
+                buttonText.textContent = 'บันทึกข้อมูลผู้ป่วย';
+                spinner.classList.add('hidden');
+            }
+        }
+        window.savePatientData = savePatientData;
+
+        // --- Excel Import Functions ---
+        function convertExcelBoolean(value) {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'number') return value > 0;
+            if (typeof value === 'string') {
+                const lowerVal = value.trim().toLowerCase();
+                if (lowerVal === 'ใช่') return true;
+                if (lowerVal === 'true' || lowerVal === 'yes' || lowerVal === 'y') return true;
+            }
+            return false;
+        }
+
+        async function importFromExcel() {
+            const fileInput = document.getElementById('excel-file-input');
+            const importButton = document.getElementById('import-button');
+            const buttonText = document.getElementById('import-button-text');
+            const spinner = document.getElementById('import-spinner');
+            const statusEl = document.getElementById('import-status');
+
+            const file = fileInput.files[0];
+            if (!file) {
+                statusEl.textContent = 'กรุณาเลือกไฟล์ Excel (.xlsx) ก่อนครับ';
+                statusEl.className = 'text-red-600 text-sm';
+                return;
+            }
+
+            // Check if db is ready
+            if (!db) {
+                statusEl.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรช';
+                statusEl.className = 'text-red-600 text-sm';
+                return;
+            }
+
+            importButton.disabled = true;
+            buttonText.textContent = 'กำลังนำเข้า...';
+            spinner.classList.remove('hidden');
+            statusEl.textContent = 'กำลังอ่านไฟล์...';
+            statusEl.className = 'text-gray-600 text-sm';
+
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data);
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                if (jsonData.length === 0) {
+                    throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
+                }
+
+                statusEl.textContent = `พบข้อมูล ${jsonData.length} รายการ กำลังนำเข้า...`;
+                
+                const result = await processImport(jsonData);
+                
+                statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
+                statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
+                if (result.errorCount > 0) {
+                     statusEl.textContent += ' (กรุณาตรวจสอบ Console log สำหรับข้อมูลที่ผิดพลาด)';
+                }
+                fileInput.value = '';
+
+            } catch (error) {
+                console.error("Error importing from Excel:", error);
+                statusEl.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
+                statusEl.className = 'text-red-600 text-sm';
+            } finally {
+                importButton.disabled = false;
+                buttonText.textContent = 'เริ่มนำเข้า';
+                spinner.classList.add('hidden');
+            }
+        }
+        window.importFromExcel = importFromExcel;
+
+        async function processImport(jsonData) {
+            if (!db) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน");
+            
+            const appId = window.getAppId();
+            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const statusEl = document.getElementById('import-status');
+
+            for (let i = 0; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                statusEl.textContent = `กำลังประมวลผล ${i + 1} / ${jsonData.length}...`;
+                
+                try {
+                    const mappedData = {
+                        patientId: String(row["เลขบัตรประชาชน"] || "").trim(),
+                        patientName: String(row["ชื่อ-สกุล"] || "").trim(),
+                        diabetesYears: Number(row["ป่วยเบาหวานปี"]) || null,
+                        hba1c: String(row["HbA1C"] || "").trim(),
+                        bloodPressure: String(row["ความดัน"] || "").trim(),
+                        weight: Number(row["น้ำหนัก"]) || null,
+                        height: Number(row["ส่วนสูง"]) || null,
+                        vaOD: String(row["VA (OD)"] || "").trim(),
+                        vaOS: String(row["VA (OS)"] || "").trim(),
+                        
+                        isWheelchair: convertExcelBoolean(row["นั่งรถเข็น"]),
+                        hasPreviousExam: convertExcelBoolean(row["เคยตรวจ"]),
+                        previousExamCount: Number(row["จำนวนครั้ง"]) || null,
+                        
+                        hasCataract: false,
+                        hearingClear: false,
+                        canSitChair: false,
+                        needsEyelidLift: false,
+                        findings: {},
+                        referralNeeded: false,
+                        timestamp: new Date().toISOString(),
+                        uploaderId: userId,
+                    };
+                    
+                    if (!mappedData.patientId || mappedData.patientId.length !== 13 || !/^\d+$/.test(mappedData.patientId) || !mappedData.patientName) {
+                        console.warn("Skipping row (Missing or Invalid ID, or Missing Name):", row);
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    // 'addDoc' and 'collection' are visible here too
+                    await addDoc(collection(db, collectionPath), mappedData);
+                    successCount++;
+                    
+                } catch (err) {
+                    console.error("Error importing row:", row, err);
+                    errorCount++;
+                }
+            }
+            return { successCount, errorCount };
+        }
+        // --- End Excel Import Functions ---
+
+        // --- Search History Function ---
+        async function searchPatientRecords() {
+            const searchId = document.getElementById('search-id').value.trim();
+            const searchStatus = document.getElementById('search-status');
+            const resultsContainer = document.getElementById('search-results');
+            const resultsTableBody = document.getElementById('results-table-body');
+            const searchButton = document.getElementById('search-button');
+
+            if (searchId.length !== 13 || !/^\d+$/.test(searchId)) {
+                searchStatus.textContent = 'กรุณาป้อนเลขบัตรประชาชน 13 หลักให้ถูกต้อง';
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            if (!db) {
+                searchStatus.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน (Firebase configuration missing).';
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            searchButton.disabled = true;
+            searchButton.textContent = 'กำลังค้นหา...';
+            searchStatus.textContent = 'กำลังค้นหาข้อมูลในฐานข้อมูล...';
+            resultsContainer.classList.add('hidden');
+            resultsTableBody.innerHTML = '';
+
+            try {
+                const appId = window.getAppId();
+                const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                
+                // 'query', 'collection', 'where' are visible here
+                const q = query(
+                    collection(db, collectionPath),
+                    where("patientId", "==", searchId)
+                );
+
+                // 'getDocs' is visible here
+                const querySnapshot = await getDocs(q);
+                const records = [];
+                querySnapshot.forEach((doc) => {
+                    records.push(doc.data());
+                });
+
+                if (records.length === 0) {
+                    searchStatus.textContent = `ไม่พบประวัติการตรวจสำหรับเลขบัตรประชาชน ${searchId}`;
+                    resultsContainer.classList.add('hidden');
+                } else {
+                    records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    
+                    searchStatus.textContent = `พบ ${records.length} รายการสำหรับ ${records[0].patientName} (ID: ${searchId})`;
+                    resultsContainer.classList.remove('hidden');
+
+                    records.forEach(record => {
+                        const date = new Date(record.timestamp).toLocaleString('th-TH', { 
+                            year: 'numeric', month: 'short', day: 'numeric', 
+                            hour: '2-digit', minute: '2-digit' 
+                        });
+                        
+                        let findingsSummary = "Normal";
+                        if (record.findings) {
+                            const found = Object.keys(record.findings).filter(key => 
+                                key !== 'normal' && (record.findings[key].or || record.findings[key].ol)
+                            );
+                            if (found.length > 0) {
+                                findingsSummary = found.slice(0, 2).join(', ') + (found.length > 2 ? '...' : '');
+                            } else if (!record.findings.normal?.or && !record.findings.normal?.ol) {
+                                findingsSummary = "N/A";
+                            }
+                        }
+                        
+                        const referralText = record.referralNeeded ? '<span class="font-bold text-red-600">ใช่</span>' : 'ไม่';
+
+                        const row = `
+                            <tr class="hover:bg-blue-50 transition duration-150">
+                                <td class="px-4 py-2 text-sm text-gray-500">${date}</td>
+                                <td class="px-4 py-2 text-sm font-medium text-gray-900">${record.patientName}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.hba1c || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOD || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOS || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${findingsSummary}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${referralText}</td>
+                            </tr>
+                        `;
+                        resultsTableBody.innerHTML += row;
+                    });
+                }
+
+            } catch (error) {
+                console.error("Error searching Firestore:", error);
+                searchStatus.textContent = `เกิดข้อผิดพลาดในการค้นหา: ${error.message}`;
+            } finally {
+                searchButton.disabled = false;
+                searchButton.textContent = 'ค้นหาข้อมูล';
+            }
+        }
+        window.searchPatientRecords = searchPatientRecords;
+
     </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-        }
-        /* Hide scrollbar for autocomplete */
-        #autocomplete-results::-webkit-scrollbar {
-            display: none;
-        }
-        #autocomplete-results {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-    </style>
 </head>
 <body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
 
@@ -155,7 +875,7 @@
                         <option value="20/60">20/60</option>
                         <option value="20/70">20/70</option>
                         <option value="20/80">20/80</option>
-                        <option value_a="20/100">20/100</option>
+                        <option value="20/100">20/100</option>
                         <option value="20/200">20/200</option>
                         <option value="20/400">20/400</option>
                         <option value="CF 1ft">CF 1ft</option>
@@ -201,7 +921,7 @@
                     <div class="flex flex-col">
                         <div class="flex items-center">
                             <input id="has-previous-exam" type="checkbox" onchange="togglePreviousExamCount(this.checked)" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                            <label for="has-previous-exam" class="ml-2 block text-sm font-medium text-gray-700">เคยตรวจจอประสาทตา</Mabel>
+                            <label for="has-previous-exam" class="ml-2 block text-sm font-medium text-gray-700">เคยตรวจจอประสาทตา</label>
                         </div>
                         <div id="previous-exam-count-container" class="mt-2 hidden">
                             <label for="previous-exam-count" class="block text-xs font-medium text-gray-600">ถ้าเคย, กี่ครั้ง?</label>
@@ -343,7 +1063,7 @@
             </p>
             <div class="flex flex-col sm:flex-row gap-4 mb-4">
                 <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-grow block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer">
-                <button onclick="importFromExcel()" class="px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300 disabled:opacity-50" id="import-button">
+                <button onclick="importFromExcel()" class="px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300" id="import-button">
                     <span id="import-button-text">เริ่มนำเข้า</span>
                     <svg id="import-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -390,7 +1110,7 @@
             </h2>
             <div class="flex flex-col sm:flex-row gap-4 mb-6">
                 <input type="text" id="search-id" class="flex-grow rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="กรุณาป้อนเลขบัตรประชาชน 13 หลักที่ต้องการค้นหา" maxlength="13">
-                <button onclick="searchPatientRecords()" class="px-6 py-2 bg-green-600 text-white font-bold rounded-xl shadow-md hover:bg-green-700 transition duration-300 disabled:opacity-50" id="search-button">
+                <button onclick="searchPatientRecords()" class="px-6 py-2 bg-green-600 text-white font-bold rounded-xl shadow-md hover:bg-green-700 transition duration-300" id="search-button">
                     ค้นหาข้อมูล
                 </button>
             </div>
@@ -446,813 +1166,6 @@
             <p id="scanner-status" class="text-center text-sm text-red-500 mt-2"></p>
         </div>
     </div>
-
-
-    <script>
-        // Global state
-        let currentWebcamStream = null;
-        const apiKey = ""; // API key is provided by the environment
-        const modelName = "gemini-2.5-flash-preview-09-2025";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-        // NEW: Debounce function
-        let searchTimeout;
-        function debounce(func, delay = 300) {
-            return function(...args) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    func.apply(this, args);
-                }, delay);
-            };
-        }
-
-        // --- NEW Autocomplete Functions ---
-
-        // Debounced search function
-        const debouncedSearchPatient = debounce(async () => {
-            // Also trigger validation
-            validateSaveButton(); 
-            
-            const searchId = document.getElementById('patient-id').value.trim();
-            const resultsContainer = document.getElementById('autocomplete-results');
-            
-            // Start searching after 3 characters
-            if (searchId.length <= 3) {
-                resultsContainer.innerHTML = '';
-                resultsContainer.classList.add('hidden');
-                return;
-            }
-
-            const db = window.getDb ? window.getDb() : null;
-            const appId = window.getAppId ? window.getAppId() : 'default-app-id';
-            const auth = window.getAuth ? window.getAuth() : null;
-            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
-
-            if (!db) return;
-
-            // Firestore "starts with" query
-            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
-            const q = query(
-                collection(db, collectionPath),
-                where("patientId", ">=", searchId),
-                where("patientId", "<=", searchId + '\uf8ff') // \uf8ff is a high-code-point char
-            );
-
-            try {
-                const querySnapshot = await getDocs(q);
-                // Use a Map to store the most recent record for each unique patientId
-                const patientMap = new Map();
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    // Store the full data object, keyed by patientId
-                    // This naturally keeps only the latest one if the query returns multiple
-                    // (Though Firestore behavior might vary, we'll sort later)
-                    // Let's refine: store the *most recent* data
-                    if (!patientMap.has(data.patientId) || new Date(data.timestamp) > new Date(patientMap.get(data.patientId).timestamp)) {
-                         patientMap.set(data.patientId, data);
-                    }
-                });
-
-                resultsContainer.innerHTML = ''; // Clear old results
-
-                if (patientMap.size === 0) {
-                    resultsContainer.innerHTML = '<div class="p-2 text-gray-500 text-sm">ไม่พบข้อมูล</div>';
-                } else {
-                    patientMap.forEach((patientData, patientId) => {
-                        const item = document.createElement('div');
-                        item.className = 'p-2 text-sm text-gray-800 hover:bg-blue-100 cursor-pointer';
-                        item.textContent = `${patientId} - ${patientData.patientName}`;
-                        item.onclick = (e) => {
-                            e.stopPropagation(); // Stop click from bubbling to document
-                            populateFormWithPatientData(patientData);
-                        };
-                        resultsContainer.appendChild(item);
-                    });
-                }
-                resultsContainer.classList.remove('hidden');
-
-            } catch (error) {
-                console.error("Error during partial search:", error);
-                resultsContainer.innerHTML = '<div class="p-2 text-red-500 text-sm">เกิดข้อผิดพลาด</div>';
-                resultsContainer.classList.remove('hidden');
-            }
-        }, 300);
-        window.debouncedSearchPatient = debouncedSearchPatient; // Expose to HTML
-
-        // Function to populate the entire form with data from a selected patient
-        function populateFormWithPatientData(data) {
-            // --- Clear All Findings Checkboxes ---
-            const findingsContainer = document.getElementById('section3-findings');
-            findingsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-
-            // --- Fill Section 1 ---
-            document.getElementById('patient-id').value = data.patientId || '';
-            document.getElementById('patient-name').value = data.patientName || '';
-            document.getElementById('diabetes-years').value = data.diabetesYears || '';
-            document.getElementById('hba1c').value = data.hba1c || '';
-            document.getElementById('blood-pressure').value = data.bloodPressure || '';
-            document.getElementById('weight').value = data.weight || '';
-            document.getElementById('height').value = data.height || '';
-            document.getElementById('va-od').value = data.vaOD || '';
-            document.getElementById('va-os').value = data.vaOS || '';
-            document.getElementById('is-wheelchair').checked = data.isWheelchair || false;
-            
-            const hasExam = data.hasPreviousExam || false;
-            document.getElementById('has-previous-exam').checked = hasExam;
-            togglePreviousExamCount(hasExam); // Toggle visibility
-            document.getElementById('previous-exam-count').value = data.previousExamCount || '';
-
-            // --- Fill Section 2 ---
-            document.getElementById('has-cataract').checked = data.hasCataract || false;
-            document.getElementById('hearing-clear').checked = data.hearingClear || false;
-            document.getElementById('can-sit-chair').checked = data.canSitChair || false;
-            document.getElementById('needs-eyelid-lift').checked = data.needsEyelidLift || false;
-
-            // --- Fill Section 3 (Findings) ---
-            if (data.findings) {
-                const f = data.findings;
-                document.getElementById('finding-normal-or').checked = f.normal?.or || false;
-                document.getElementById('finding-normal-ol').checked = f.normal?.ol || false;
-                document.getElementById('finding-microaneurysm-or').checked = f.microaneurysm?.or || false;
-                document.getElementById('finding-microaneurysm-ol').checked = f.microaneurysm?.ol || false;
-                document.getElementById('finding-hardexudate-or').checked = f.hardExudate?.or || false;
-                document.getElementById('finding-hardexudate-ol').checked = f.hardExudate?.ol || false;
-                document.getElementById('finding-flame-or').checked = f.flameHemorrhage?.or || false;
-                document.getElementById('finding-flame-ol').checked = f.flameHemorrhage?.ol || false;
-                document.getElementById('finding-venous-or').checked = f.venousBeading?.or || false;
-                document.getElementById('finding-venous-ol').checked = f.venousBeading?.ol || false;
-                document.getElementById('finding-irma-or').checked = f.irma?.or || false;
-                document.getElementById('finding-irma-ol').checked = f.irma?.ol || false;
-                document.getElementById('finding-newvessel-or').checked = f.newVessel?.or || false;
-                document.getElementById('finding-newvessel-ol').checked = f.newVessel?.ol || false;
-                document.getElementById('finding-preretinal-or').checked = f.preretinalHemorrhage?.or || false;
-                document.getElementById('finding-preretinal-ol').checked = f.preretinalHemorrhage?.ol || false;
-                document.getElementById('finding-vitreous-or').checked = f.vitreousHemorrhage?.or || false;
-                document.getElementById('finding-vitreous-ol').checked = f.vitreousHemorrhage?.ol || false;
-                document.getElementById('finding-fibrous-or').checked = f.fibrousProliferation?.or || false;
-                document.getElementById('finding-fibrous-ol').checked = f.fibrousProliferation?.ol || false;
-            }
-            document.getElementById('referral-needed').checked = data.referralNeeded || false;
-            
-            // --- Close dropdown ---
-            const resultsContainer = document.getElementById('autocomplete-results');
-            resultsContainer.innerHTML = '';
-            resultsContainer.classList.add('hidden');
-            
-            // --- Re-validate ---
-            validateSaveButton();
-            displayMessage('โหลดข้อมูลผู้ป่วยสำเร็จ กรุณาตรวจสอบและอัปเดตข้อมูล', 'success');
-        }
-        window.populateFormWithPatientData = populateFormWithPatientData; // Expose globally
-
-        // Close dropdown if clicking outside
-        document.addEventListener('click', (e) => {
-            const resultsContainer = document.getElementById('autocomplete-results');
-            const searchInput = document.getElementById('patient-id');
-            // Check if the click is outside the results container AND not on the search input itself
-            if (resultsContainer && !resultsContainer.contains(e.target) && e.target !== searchInput) {
-                resultsContainer.classList.add('hidden');
-            }
-        });
-
-        // --- End Autocomplete Functions ---
-
-
-        document.addEventListener('DOMContentLoaded', () => {
-            // Display User ID after auth check
-            const auth = window.getAuth ? window.getAuth() : null;
-            const userIdElement = document.getElementById('user-info');
-            
-            if (auth) {
-                // Wait for auth to be ready
-                auth.onAuthStateChanged((user) => {
-                    const userId = user ? user.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
-                    userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${userId}`;
-                });
-            } else {
-                 userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user'}`;
-            }
-
-            // Add input listeners for validation
-            const inputsToValidate = [
-                'patient-id', 'patient-name'
-            ];
-            inputsToValidate.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    // 'input' fires on every change, 'change' fires on blur
-                    el.addEventListener('input', validateSaveButton); 
-                }
-            });
-        });
-
-        // Function to toggle previous exam count input
-        function togglePreviousExamCount(isChecked) {
-            const container = document.getElementById('previous-exam-count-container');
-            if (isChecked) {
-                container.classList.remove('hidden');
-            } else {
-                container.classList.add('hidden');
-                document.getElementById('previous-exam-count').value = ''; // Clear value
-            }
-        }
-        window.togglePreviousExamCount = togglePreviousExamCount; // Expose globally
-
-        // Function to display messages (instead of alert)
-        function displayMessage(message, type = 'info') {
-            const box = document.getElementById('message-box');
-            box.textContent = message;
-            box.className = 'mt-8 p-4 rounded-xl text-center';
-            box.classList.remove('hidden');
-            
-            // Apply styling based on type
-            if (type === 'error') {
-                box.classList.add('bg-red-100', 'text-red-700');
-            } else if (type === 'success') {
-                box.classList.add('bg-green-100', 'text-green-700');
-            } else { // info
-                box.classList.add('bg-blue-100', 'text-blue-700');
-            }
-        }
-        
-        // Function to hide the message box
-        function hideMessage() {
-            document.getElementById('message-box').classList.add('hidden');
-        }
-
-        // --- ID Card Scanner Functions ---
-
-        // Open the scanner modal and start webcam
-        async function openIdScanner() {
-            hideMessage();
-            const modal = document.getElementById('scanner-modal');
-            const video = document.getElementById('webcam-video');
-            const statusEl = document.getElementById('scanner-status');
-            
-            modal.classList.remove('hidden');
-            statusEl.textContent = '';
-            
-            try {
-                // Request camera access
-                currentWebcamStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' } // Prefer rear camera
-                });
-                video.srcObject = currentWebcamStream;
-            } catch (err) {
-                console.error("Error accessing webcam:", err);
-                statusEl.textContent = 'ไม่สามารถเปิดกล้องได้ (อาจไม่ได้รับอนุญาต)';
-                // Fallback to user-facing camera if environment fails
-                try {
-                     currentWebcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                     video.srcObject = currentWebcamStream;
-                     statusEl.textContent = 'ไม่พบกล้องหลัง, ใช้กล้องหน้าแทน';
-                } catch (err2) {
-                    console.error("Error accessing any webcam:", err2);
-                    statusEl.textContent = 'ไม่สามารถเปิดกล้องได้เลย';
-                    closeIdScanner();
-                }
-            }
-        }
-        window.openIdScanner = openIdScanner;
-
-        // Close the scanner modal and stop webcam
-        function closeIdScanner() {
-            const modal = document.getElementById('scanner-modal');
-            modal.classList.add('hidden');
-            
-            if (currentWebcamStream) {
-                currentWebcamStream.getTracks().forEach(track => track.stop());
-                currentWebcamStream = null;
-            }
-        }
-        window.closeIdScanner = closeIdScanner;
-        
-        // Capture image from webcam and send to Gemini
-        async function captureAndAnalyzeId() {
-            const video = document.getElementById('webcam-video');
-            const canvas = document.getElementById('webcam-canvas');
-            const context = canvas.getContext('2d');
-            const button = document.getElementById('capture-button');
-            const buttonText = document.getElementById('capture-button-text');
-            const spinner = document.getElementById('capture-spinner');
-            const statusEl = document.getElementById('scanner-status');
-
-            // Set canvas size to video feed size
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            // Draw current video frame onto canvas
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Convert canvas to Base64 image
-            const base64ImageData = canvas.toDataURL('image/jpeg').split(',')[1];
-            
-            // Set loading state
-            button.disabled = true;
-            buttonText.textContent = 'กำลังวิเคราะห์...';
-            spinner.classList.remove('hidden');
-            statusEl.textContent = 'กำลังส่งภาพไปวิเคราะห์...';
-
-            try {
-                const ocrResult = await callGeminiOCR(base64ImageData);
-                
-                if (!ocrResult.id_number && !ocrResult.name) {
-                     throw new Error("AI ไม่สามารถอ่านข้อมูลจากภาพได้");
-                }
-                
-                // Populate fields
-                if (ocrResult.id_number) {
-                    // Clean up ID (remove spaces, dashes)
-                    const cleanedId = ocrResult.id_number.replace(/[\s-]/g, '');
-                    document.getElementById('patient-id').value = cleanedId;
-                }
-                if (ocrResult.name) {
-                    document.getElementById('patient-name').value = ocrResult.name;
-                }
-                
-                statusEl.textContent = 'สแกนสำเร็จ!';
-                displayMessage('สแกนข้อมูลสำเร็จ กรุณาตรวจสอบความถูกต้อง', 'success');
-                validateSaveButton(); // Re-check validation
-                closeIdScanner();
-
-            } catch (error) {
-                console.error("OCR analysis failed:", error);
-                statusEl.textContent = `วิเคราะห์ล้มเหลว: ${error.message}`;
-            } finally {
-                // Restore button state
-                button.disabled = false;
-                buttonText.textContent = 'ถ่ายภาพและวิเคราะห์';
-                spinner.classList.add('hidden');
-            }
-        }
-        window.captureAndAnalyzeId = captureAndAnalyzeId;
-
-        // Call Gemini API for OCR
-        async function callGeminiOCR(base64ImageData) {
-            const systemPrompt = "You are an OCR assistant specialized in reading Thai ID cards. Extract the 13-digit identification number and the full name (Name and Last Name). Return ONLY a structured JSON.";
-            const userQuery = "Extract the ID number and Full Name from this image.";
-            
-            const responseSchema = {
-                type: "OBJECT",
-                properties: {
-                    id_number: { "type": "STRING", "description": "The 13-digit Thai ID number (e.g., 1234567890123)" },
-                    name: { "type": "STRING", "description": "The full name in Thai (e.g., นายตัวอย่าง ทดสอบ)" }
-                },
-                required: ["id_number", "name"]
-            };
-
-            const payload = {
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            { text: userQuery },
-                            {
-                                inlineData: {
-                                    mimeType: "image/jpeg",
-                                    data: base64ImageData
-                                }
-                            }
-                        ]
-                    }
-                ],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: responseSchema
-                }
-            };
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                throw new Error(`API call failed with status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            const candidate = result?.candidates?.[0];
-            const jsonText = candidate?.content?.parts?.[0]?.text;
-            
-            if (!jsonText) {
-                 throw new Error("Invalid or empty response from AI.");
-            }
-            
-            let cleanedJson = jsonText.replace(/```json\n|```/g, '').trim();
-            return JSON.parse(cleanedJson);
-        }
-
-        // --- End ID Card Scanner Functions ---
-
-
-        // --- Form Validation and Save Functions ---
-
-        // Check if required fields are filled to enable save button
-        function validateSaveButton() {
-            const patientId = document.getElementById('patient-id').value;
-            const patientName = document.getElementById('patient-name').value;
-            const saveButton = document.getElementById('save-button');
-            
-            // Basic validation
-            if (patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '') {
-                saveButton.disabled = false;
-            } else {
-                saveButton.disabled = true;
-            }
-        }
-
-        // Function to clear the entire form
-        function clearForm() {
-            // Clear all inputs in Section 1, 2, 3
-            document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => input.value = '');
-            document.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
-            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-            
-            // Hide conditional fields
-            togglePreviousExamCount(false);
-            
-            // Reset save button
-            validateSaveButton();
-        }
-
-        // Function to save the patient data to Firestore
-        async function savePatientData() {
-            const db = window.getDb ? window.getDb() : null;
-            const appId = window.getAppId ? window.getAppId() : 'default-app-id';
-            const auth = window.getAuth ? window.getAuth() : null;
-            
-            if (!db || !auth) {
-                displayMessage('ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรชหน้า', 'error');
-                return;
-            }
-            
-            const userId = auth.currentUser ? auth.currentUser.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
-            
-            // --- Set Loading State ---
-            const saveButton = document.getElementById('save-button');
-            const buttonText = document.getElementById('save-button-text');
-            const spinner = document.getElementById('save-spinner');
-            saveButton.disabled = true;
-            buttonText.textContent = 'กำลังบันทึก...';
-            spinner.classList.remove('hidden');
-            hideMessage();
-
-            try {
-                // --- Collect Data from All Sections ---
-                const recordData = {
-                    // Section 1
-                    patientId: document.getElementById('patient-id').value.trim(),
-                    patientName: document.getElementById('patient-name').value.trim(),
-                    diabetesYears: Number(document.getElementById('diabetes-years').value) || null,
-                    hba1c: document.getElementById('hba1c').value.trim(),
-                    bloodPressure: document.getElementById('blood-pressure').value.trim(),
-                    weight: Number(document.getElementById('weight').value) || null,
-                    height: Number(document.getElementById('height').value) || null,
-                    vaOD: document.getElementById('va-od').value,
-                    vaOS: document.getElementById('va-os').value,
-                    isWheelchair: document.getElementById('is-wheelchair').checked,
-                    hasPreviousExam: document.getElementById('has-previous-exam').checked,
-                    previousExamCount: document.getElementById('has-previous-exam').checked ? Number(document.getElementById('previous-exam-count').value) : null,
-                    
-                    // Section 2
-                    hasCataract: document.getElementById('has-cataract').checked,
-                    hearingClear: document.getElementById('hearing-clear').checked,
-                    canSitChair: document.getElementById('can-sit-chair').checked,
-                    needsEyelidLift: document.getElementById('needs-eyelid-lift').checked,
-                    
-                    // Section 3
-                    findings: {
-                        normal: {
-                            or: document.getElementById('finding-normal-or').checked,
-                            ol: document.getElementById('finding-normal-ol').checked
-                        },
-                        microaneurysm: {
-                            or: document.getElementById('finding-microaneurysm-or').checked,
-                            ol: document.getElementById('finding-microaneurysm-ol').checked
-                        },
-                        hardExudate: {
-                            or: document.getElementById('finding-hardexudate-or').checked,
-                            ol: document.getElementById('finding-hardexudate-ol').checked
-                        },
-                        flameHemorrhage: {
-                            or: document.getElementById('finding-flame-or').checked,
-                            ol: document.getElementById('finding-flame-ol').checked
-                        },
-                        venousBeading: {
-                            or: document.getElementById('finding-venous-or').checked,
-                            ol: document.getElementById('finding-venous-ol').checked
-                        },
-                        irma: {
-                            or: document.getElementById('finding-irma-or').checked,
-                            ol: document.getElementById('finding-irma-ol').checked
-                        },
-                        newVessel: {
-                            or: document.getElementById('finding-newvessel-or').checked,
-                            ol: document.getElementById('finding-newvessel-ol').checked
-                        },
-                        preretinalHemorrhage: {
-                            or: document.getElementById('finding-preretinal-or').checked,
-                            ol: document.getElementById('finding-preretinal-ol').checked
-                        },
-                        vitreousHemorrhage: {
-                            or: document.getElementById('finding-vitreous-or').checked,
-                            ol: document.getElementById('finding-vitreous-ol').checked
-                        },
-                        fibrousProliferation: {
-                            or: document.getElementById('finding-fibrous-or').checked,
-                            ol: document.getElementById('finding-fibrous-ol').checked
-                        }
-                    },
-                    referralNeeded: document.getElementById('referral-needed').checked,
-                    
-                    // Metadata
-                    timestamp: new Date().toISOString(),
-                    uploaderId: userId,
-                };
-
-                // --- Save to Firestore ---
-                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
-                await addDoc(collection(db, collectionPath), recordData);
-                
-                displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
-                clearForm(); // Clear form after successful save
-
-            } catch (error) {
-                console.error("Error saving patient data:", error);
-                displayMessage(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`, 'error');
-            } finally {
-                // --- Restore Button State ---
-                validateSaveButton(); // Re-validate (will set to disabled)
-                buttonText.textContent = 'บันทึกข้อมูลผู้ป่วย';
-                spinner.classList.add('hidden');
-            }
-        }
-        window.savePatientData = savePatientData;
-
-        // --- Excel Import Functions ---
-        
-        // Helper to convert flexible boolean inputs from Excel
-        function convertExcelBoolean(value) {
-            if (typeof value === 'boolean') {
-                return value;
-            }
-            if (typeof value === 'number') {
-                return value > 0;
-            }
-            if (typeof value === 'string') {
-                const lowerVal = value.trim().toLowerCase();
-                // Check for Thai 'yes'
-                if (lowerVal === 'ใช่') {
-                    return true;
-                }
-                // Check for English 'yes'
-                if (lowerVal === 'true' || lowerVal === 'yes' || lowerVal === 'y') {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        async function importFromExcel() {
-            const fileInput = document.getElementById('excel-file-input');
-            const importButton = document.getElementById('import-button');
-            const buttonText = document.getElementById('import-button-text');
-            const spinner = document.getElementById('import-spinner');
-            const statusEl = document.getElementById('import-status');
-
-            const file = fileInput.files[0];
-
-            if (!file) {
-                statusEl.textContent = 'กรุณาเลือกไฟล์ Excel (.xlsx) ก่อนครับ';
-                statusEl.className = 'text-red-600 text-sm';
-                return;
-            }
-
-            // Set loading state
-            importButton.disabled = true;
-            buttonText.textContent = 'กำลังนำเข้า...';
-            spinner.classList.remove('hidden');
-            statusEl.textContent = 'กำลังอ่านไฟล์...';
-            statusEl.className = 'text-gray-600 text-sm';
-
-            try {
-                const data = await file.arrayBuffer();
-                const workbook = XLSX.read(data);
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-                    defval: "" // Ensure empty cells are read as empty strings
-                });
-
-                if (jsonData.length === 0) {
-                    throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
-                }
-
-                statusEl.textContent = `พบข้อมูล ${jsonData.length} รายการ กำลังนำเข้า...`;
-                
-                // Process the import
-                const result = await processImport(jsonData);
-                
-                statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
-                statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
-                if (result.errorCount > 0) {
-                     statusEl.textContent += ' (กรุณาตรวจสอบ Console log สำหรับข้อมูลที่ผิดพลาด)';
-                }
-                fileInput.value = ''; // Clear the file input
-
-            } catch (error) {
-                console.error("Error importing from Excel:", error);
-                statusEl.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
-                statusEl.className = 'text-red-600 text-sm';
-            } finally {
-                // Restore button state
-                importButton.disabled = false;
-                buttonText.textContent = 'เริ่มนำเข้า';
-                spinner.classList.add('hidden');
-            }
-        }
-        window.importFromExcel = importFromExcel;
-
-        // Process and save imported data to Firestore
-        async function processImport(jsonData) {
-            const db = window.getDb ? window.getDb() : null;
-            if (!db) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน");
-            
-            const appId = window.getAppId();
-            const auth = window.getAuth();
-            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
-            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
-            
-            let successCount = 0;
-            let errorCount = 0;
-            const statusEl = document.getElementById('import-status');
-
-            for (let i = 0; i < jsonData.length; i++) {
-                const row = jsonData[i];
-                statusEl.textContent = `กำลังประมวลผล ${i + 1} / ${jsonData.length}...`;
-                
-                try {
-                    // --- Map Excel (Thai) headers to (English) DB keys ---
-                    // This mapping MUST match the <pre> tag help text
-                    const mappedData = {
-                        // Section 1
-                        patientId: String(row["เลขบัตรประชาชน"] || "").trim(),
-                        patientName: String(row["ชื่อ-สกุล"] || "").trim(),
-                        diabetesYears: Number(row["ป่วยเบาหวานปี"]) || null,
-                        hba1c: String(row["HbA1C"] || "").trim(),
-                        bloodPressure: String(row["ความดัน"] || "").trim(),
-                        weight: Number(row["น้ำหนัก"]) || null,
-                        height: Number(row["ส่วนสูง"]) || null,
-                        vaOD: String(row["VA (OD)"] || "").trim(),
-                        vaOS: String(row["VA (OS)"] || "").trim(),
-                        
-                        // Use the robust boolean converter
-                        isWheelchair: convertExcelBoolean(row["นั่งรถเข็น"]),
-                        hasPreviousExam: convertExcelBoolean(row["เคยตรวจ"]),
-                        previousExamCount: Number(row["จำนวนครั้ง"]) || null,
-                        
-                        // Section 2 & 3 are set to default (false/empty)
-                        // as they require manual clinical examination
-                        hasCataract: false,
-                        hearingClear: false,
-                        canSitChair: false,
-                        needsEyelidLift: false,
-                        findings: {}, // Empty findings
-                        referralNeeded: false,
-
-                        timestamp: new Date().toISOString(),
-                        uploaderId: userId,
-                    };
-                    
-                    // Basic validation for import
-                    if (!mappedData.patientId || mappedData.patientId.length !== 13 || !/^\d+$/.test(mappedData.patientId) || !mappedData.patientName) {
-                        console.warn("Skipping row (Missing or Invalid ID, or Missing Name):", row);
-                        errorCount++;
-                        continue;
-                    }
-                    
-                    // Add to Firestore
-                    await addDoc(collection(db, collectionPath), mappedData);
-                    successCount++;
-                    
-                } catch (err) {
-                    console.error("Error importing row:", row, err);
-                    errorCount++;
-                }
-            }
-            return { successCount, errorCount };
-        }
-
-        // --- End Excel Import Functions ---
-
-
-        // Function to search Firestore records by patient ID
-        async function searchPatientRecords() {
-            const searchId = document.getElementById('search-id').value.trim();
-            const searchStatus = document.getElementById('search-status');
-            const resultsContainer = document.getElementById('search-results');
-            const resultsTableBody = document.getElementById('results-table-body');
-            const searchButton = document.getElementById('search-button');
-
-            // Basic validation
-            if (searchId.length !== 13 || !/^\d+$/.test(searchId)) {
-                searchStatus.textContent = 'กรุณาป้อนเลขบัตรประชาชน 13 หลักให้ถูกต้อง';
-                resultsContainer.classList.add('hidden');
-                return;
-            }
-
-            const db = window.getDb ? window.getDb() : null;
-            const appId = window.getAppId ? window.getAppId() : 'default-app-id';
-            const auth = window.getAuth ? window.getAuth() : null;
-            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
-
-            if (!db) {
-                searchStatus.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน (Firebase configuration missing).';
-                resultsContainer.classList.add('hidden');
-                return;
-            }
-
-            searchButton.disabled = true;
-            searchButton.textContent = 'กำลังค้นหา...';
-            searchStatus.textContent = 'กำลังค้นหาข้อมูลในฐานข้อมูล...';
-            resultsContainer.classList.add('hidden');
-            resultsTableBody.innerHTML = ''; // Clear previous results
-
-            try {
-                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
-                const q = query(
-                    collection(db, collectionPath),
-                    where("patientId", "==", searchId)
-                );
-
-                const querySnapshot = await getDocs(q);
-                const records = [];
-                querySnapshot.forEach((doc) => {
-                    records.push(doc.data());
-                });
-
-                if (records.length === 0) {
-                    searchStatus.textContent = `ไม่พบประวัติการตรวจสำหรับเลขบัตรประชาชน ${searchId}`;
-                    resultsContainer.classList.add('hidden');
-                } else {
-                    // Sort by timestamp (newest first) in JavaScript
-                    records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    
-                    searchStatus.textContent = `พบ ${records.length} รายการสำหรับ ${records[0].patientName} (ID: ${searchId})`;
-                    resultsContainer.classList.remove('hidden');
-
-                    records.forEach(record => {
-                        const date = new Date(record.timestamp).toLocaleString('th-TH', { 
-                            year: 'numeric', month: 'short', day: 'numeric', 
-                            hour: '2-digit', minute: '2-digit' 
-                        });
-                        
-                        // Summarize findings
-                        let findingsSummary = "Normal";
-                        if (record.findings) {
-                            const found = Object.keys(record.findings).filter(key => 
-                                key !== 'normal' && (record.findings[key].or || record.findings[key].ol)
-                            );
-                            if (found.length > 0) {
-                                findingsSummary = found.slice(0, 2).join(', ') + (found.length > 2 ? '...' : '');
-                            } else if (!record.findings.normal?.or && !record.findings.normal?.ol) {
-                                findingsSummary = "N/A";
-                            }
-                        }
-                        
-                        const referralText = record.referralNeeded ? '<span class="font-bold text-red-600">ใช่</span>' : 'ไม่';
-
-                        const row = `
-                            <tr class="hover:bg-blue-50 transition duration-150">
-                                <td class="px-4 py-2 text-sm text-gray-500">${date}</td>
-                                <td class="px-4 py-2 text-sm font-medium text-gray-900">${record.patientName}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${record.hba1c || 'N/A'}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOD || 'N/A'}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOS || 'N/A'}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${findingsSummary}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${referralText}</td>
-                            </tr>
-                        `;
-                        resultsTableBody.innerHTML += row;
-                    });
-                }
-
-            } catch (error) {
-                console.error("Error searching Firestore:", error);
-                searchStatus.textContent = `เกิดข้อผิดพลาดในการค้นหา: ${error.message}`;
-                resultsContainer.classList.add('hidden');
-            } finally {
-                searchButton.disabled = false;
-                searchButton.textContent = 'ค้นหาข้อมูล';
-            }
-        }
-        // Expose the function globally
-        window.searchPatientRecords = searchPatientRecords;
-    </script>
+    
 </body>
 </html>
