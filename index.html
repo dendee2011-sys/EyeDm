@@ -10,9 +10,8 @@
     <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <script type="module">
+    <script type"module">
         // --- Firebase SDK Imports ---
-        // **ปรับปรุง** เรากลับมาใช้แค่ signInAnonymously และเพิ่ม onAuthStateChanged
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, 
@@ -29,97 +28,73 @@
             getDocs     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- START: Hybrid Configuration ---
-        const firebaseConfig_Hardcoded = {
-            apiKey: "AIzaSyCqJ4V6EMgqt5Th4Bhq-pDhX36emqDJ8xw",
-            authDomain: "eyedm-3ebc8.firebaseapp.com",
-            projectId: "eyedm-3ebc8",
-            storageBucket: "eyedm-3ebc8.firebasestorage.app",
-            messagingSenderId: "691083987178",
-            appId: "1:691083987178:web:6bc26b3c03479166512f93",
-            measurementId: "G-LKH0EBXFE5"
-        };
-
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : firebaseConfig_Hardcoded;
-        
-        const appId = typeof __app_id !== 'undefined' 
-            ? __app_id 
-            : (firebaseConfig.projectId || 'default-app-id');
-        
-        // --- END: Hybrid Configuration ---
+        // --- START: GitHub-Safe Configuration ---
+        // **ปรับปรุง** ลบ Hardcoded config ออกทั้งหมดเพื่อความปลอดภัย
+        // เราจะอ่านค่าเหล่านี้จาก LocalStorage ที่ผู้ใช้ป้อนเข้ามา
+        let app, db, auth;
+        let globalGeminiApiKey = ""; // Key สำหรับ Gemini AI
+        let globalAppId = "default-app-id"; // App ID สำหรับ Firebase path
+        let isFirebaseReady = false; 
+        let currentUserId = null;
+        // --- END: GitHub-Safe Configuration ---
         
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
-        let app, db, auth;
-        let isFirebaseReady = false; 
-        let currentUserId = null;
-
-        async function initializeFirebase() {
+        // **ปรับปรุง** ฟังก์ชัน initializeFirebase จะรับ config จาก LocalStorage
+        async function initializeFirebase(firebaseConfig) {
             const userIdElement = document.getElementById('user-info');
             try {
                 if (Object.keys(firebaseConfig).length > 0) {
                     app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
                     auth = getAuth(app);
+                    
+                    globalAppId = firebaseConfig.appId || 'default-app-id'; // ตั้งค่า globalAppId
 
-                    // **นี่คือส่วนสำคัญ (กลอุบาย)**
-                    // 1. เราจะ "รอฟัง" สถานะการล็อกอิน
+                    // (ส่วน Logic การล็อกอินสำหรับ iPad/PC ยังคงเหมือนเดิม)
                     onAuthStateChanged(auth, (user) => {
                         if (user) {
-                            // --- เมื่อล็อกอินสำเร็จ (ไม่ว่าจะครั้งแรก หรือ ครั้งที่สอง) ---
                             console.log("Auth State Changed: Logged IN", user.uid);
                             isFirebaseReady = true;
                             currentUserId = user.uid;
-                            
-                            displayUserId(user); // แสดง "เชื่อมต่อสำเร็จ"
-                            validateSaveButton(); // อัปเดตปุ่ม
-
-                            // **สำคัญ:** ซ่อนปุ่ม "ปลดล็อก" และแสดงแอป
+                            displayUserId(user); 
+                            validateSaveButton(); 
                             document.getElementById('unlock-overlay').classList.add('hidden');
                             document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
                         } else {
-                            // --- เมื่อล็อกเอาต์ (หรือยังไม่ล็อกอิน) ---
                             console.log("Auth State Changed: Logged OUT");
                             isFirebaseReady = false;
                             currentUserId = null;
-                            displayUserId(null); // แสดง "ยังไม่เชื่อมต่อ"
-                            validateSaveButton(); // ปิดปุ่ม
-                            
-                            // **สำคัญ:** แสดงแอปแบบจางๆ (เผื่อผู้ใช้ล็อกเอาต์เอง)
+                            displayUserId(null); 
+                            validateSaveButton(); 
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
                         }
                     });
 
-                    // 2. เราจะพยายาม "ล็อกอินอัตโนมัติ" (สำหรับ PC/Chrome)
                     try {
                         console.log("Attempting automatic anonymous sign-in...");
                         await signInAnonymously(auth);
-                        // ถ้าสำเร็จ: onAuthStateChanged ด้านบนจะทำงาน
                         console.log("Automatic sign-in SUCCESS");
                     } catch (error) {
-                        // 3. **ถ้าล้มเหลว (นี่คือ iPad/Safari)**
                         console.warn("Automatic sign-in FAILED (This is expected on iPad). Showing unlock button.");
-                        // **อย่า** แสดง Auth Error
-                        // แต่ให้ "แสดงปุ่มปลดล็อก"
-                        displayUserId(null); // แสดง "ยังไม่เชื่อมต่อ"
+                        displayUserId(null); 
                         document.getElementById('unlock-overlay').classList.remove('hidden');
                     }
 
                 } else {
-                    console.error("Firebase configuration is missing.");
+                    console.error("Firebase configuration is missing or empty.");
                     displayUserId(null, "เชื่อมต่อล้มเหลว (Config missing)");
+                    showSettingsModal(false); // **ใหม่** ถ้า config ผิด ให้เปิดหน้าตั้งค่า
                 }
             } catch (error) {
                 console.error("Firebase Initialization failed:", error);
                 displayUserId(null, `เชื่อมต่อล้มเหลว (Init Error)`);
+                showSettingsModal(false); // **ใหม่** ถ้า init พัง ให้เปิดหน้าตั้งค่า
             }
         }
         
-        // **ใหม่** ฟังก์ชันสำหรับ "ปุ่มปลดล็อก"
         async function manualSignIn() {
             const unlockButton = document.getElementById('unlock-button');
             const unlockStatus = document.getElementById('unlock-status');
@@ -128,25 +103,107 @@
             unlockStatus.textContent = 'กำลังเชื่อมต่อ...';
 
             try {
-                // พยายามล็อกอินอีกครั้ง (ครั้งนี้มาจากการ "คลิก")
                 await signInAnonymously(auth);
-                // ถ้าสำเร็จ: onAuthStateChanged จะทำงาน และซ่อน Overlay นี้เอง
                 console.log("Manual sign-in SUCCESS");
             } catch (error) {
-                // ถ้าล้มเหลว "อีกครั้ง" (แสดงว่ามีปัญหาจริงๆ)
                 console.error("Manual sign-in FAILED:", error);
                 unlockStatus.textContent = `เชื่อมต่อล้มเหลว: ${error.message}`;
                 unlockButton.disabled = false;
             }
         }
 
+        // --- **ใหม่** Logic สำหรับการตั้งค่า (Settings Modal) ---
+        function showSettingsModal(populateExisting = false) {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.remove('hidden');
 
-        // --- Global App Logic (เหมือนเดิมทุกประการ) ---
+            if (populateExisting) {
+                try {
+                    const settings = JSON.parse(localStorage.getItem('appSettings'));
+                    if (settings) {
+                        document.getElementById('setting-gemini-key').value = settings.geminiKey || '';
+                        document.getElementById('setting-fb-api-key').value = settings.firebaseConfig.apiKey || '';
+                        document.getElementById('setting-fb-auth-domain').value = settings.firebaseConfig.authDomain || '';
+                        document.getElementById('setting-fb-project-id').value = settings.firebaseConfig.projectId || '';
+                        document.getElementById('setting-fb-app-id').value = settings.firebaseConfig.appId || '';
+                    }
+                } catch (e) {
+                    console.error("Could not populate settings:", e);
+                }
+            }
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        function saveSettings() {
+            const settings = {
+                geminiKey: document.getElementById('setting-gemini-key').value.trim(),
+                firebaseConfig: {
+                    apiKey: document.getElementById('setting-fb-api-key').value.trim(),
+                    authDomain: document.getElementById('setting-fb-auth-domain').value.trim(),
+                    projectId: document.getElementById('setting-fb-project-id').value.trim(),
+                    appId: document.getElementById('setting-fb-app-id').value.trim(),
+                    // เพิ่มค่าคงที่ที่มักจะไม่ค่อยเปลี่ยน
+                    storageBucket: `${document.getElementById('setting-fb-project-id').value.trim()}.appspot.com`,
+                    messagingSenderId: "", // มักจะไม่จำเป็นสำหรับ Firestore
+                }
+            };
+
+            if (!settings.geminiKey || !settings.firebaseConfig.apiKey || !settings.firebaseConfig.projectId) {
+                document.getElementById('settings-status').textContent = 'กรุณากรอก Gemini Key, Firebase API Key และ Project ID';
+                return;
+            }
+
+            try {
+                localStorage.setItem('appSettings', JSON.stringify(settings));
+                document.getElementById('settings-status').textContent = 'บันทึกสำเร็จ! กำลังรีโหลดแอป...';
+                // รีโหลดหน้าเพื่อให้ config ใหม่ทำงาน
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } catch (e) {
+                console.error("Failed to save settings:", e);
+                document.getElementById('settings-status').textContent = `เกิดข้อผิดพลาด: ${e.message}`;
+            }
+        }
+
+        // --- **ใหม่** ฟังก์ชันเริ่มต้นแอป (ตรวจสอบ Config ก่อน) ---
+        async function loadConfigAndInitialize() {
+            const settingsString = localStorage.getItem('appSettings');
+            if (!settingsString) {
+                // ถ้าไม่มีการตั้งค่า (เปิดครั้งแรก)
+                console.warn("No settings found. Showing settings modal.");
+                displayUserId(null, "กรุณาตั้งค่า API Keys");
+                document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none'); // ซ่อนแอปไว้
+                showSettingsModal(false);
+            } else {
+                // ถ้าพบการตั้งค่า
+                console.log("Settings found. Initializing...");
+                try {
+                    const settings = JSON.parse(settingsString);
+                    globalGeminiApiKey = settings.geminiKey; // ตั้งค่า Key ของ Gemini
+                    
+                    // **สำคัญมาก** แจ้งเตือนผู้ใช้ให้ไปเพิ่ม Domain ใน Firebase
+                    console.log(`%c[ACTION REQUIRED] Please authorize this domain in your Firebase Authentication settings: ${window.location.hostname}`, "color: blue; font-weight: bold; font-size: 14px;");
+
+                    await initializeFirebase(settings.firebaseConfig); // เริ่ม Firebase
+                } catch (e) {
+                    console.error("Failed to parse settings. Clearing and showing modal.", e);
+                    localStorage.removeItem('appSettings');
+                    displayUserId(null, "ตั้งค่าไม่ถูกต้อง กรุณาตั้งค่าใหม่");
+                    showSettingsModal(false);
+                }
+            }
+        }
+
+
+        // --- Global App Logic (เหมือนเดิม) ---
         let currentWebcamStream = null;
-        const apiKey = ""; 
         const modelName = "gemini-2.5-flash-preview-09-2025";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
+        // **ปรับปรุง** เราจะสร้าง apiUrl ในฟังก์ชันที่เรียกใช้แทน
+        
         let searchTimeout;
         function debounce(func, delay = 300) {
             return function(...args) {
@@ -172,7 +229,8 @@
                 return;
             }
             const userId = currentUserId;
-            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+            // **ปรับปรุง** ใช้ globalAppId ที่ได้มาจาก settings
+            const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
             const q = query(
                 collection(db, collectionPath),
                 where("patientId", ">=", searchId),
@@ -211,6 +269,7 @@
         }, 300);
 
         function populateFormWithPatientData(data) {
+            // (ส่วนนี้เหมือนเดิมทุกประการ)
             const findingsContainer = document.getElementById('section3-findings');
             findingsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
             document.getElementById('patient-id').value = data.patientId || '';
@@ -270,7 +329,6 @@
             }
         });
 
-        // **ปรับปรุง** ฟังก์ชันแสดงสถานะ
         function displayUserId(user, errorMessage = null) {
             const userIdElement = document.getElementById('user-info');
             if (errorMessage) {
@@ -314,6 +372,13 @@
         }
 
         async function openIdScanner() {
+            // **ปรับปรุง** ตรวจสอบว่ามี Gemini Key หรือยัง
+            if (!globalGeminiApiKey) {
+                displayMessage('กรุณาตั้งค่า Gemini API Key (ที่ปุ่มรูปเฟือง) ก่อนสแกนบัตร', 'error');
+                showSettingsModal(true);
+                return;
+            }
+
             hideMessage();
             const modal = document.getElementById('scanner-modal');
             const video = document.getElementById('webcam-video');
@@ -392,6 +457,9 @@
         }
 
         async function callGeminiOCR(base64ImageData) {
+            // **ปรับปรุง** สร้าง apiUrl ที่นี่โดยใช้ key จาก global
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${globalGeminiApiKey}`;
+            
             const systemPrompt = "You are an OCR assistant specialized in reading Thai ID cards. Extract the 13-digit identification number and the full name (Name and Last Name). Return ONLY a structured JSON.";
             const userQuery = "Extract the ID number and Full Name from this image.";
             const responseSchema = {
@@ -431,6 +499,10 @@
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
+                // **ปรับปรุง** ให้คำแนะนำเรื่อง Key ถ้า API พัง
+                if (response.status === 400 || response.status === 403) {
+                     throw new Error(`API call failed (สถานะ ${response.status}). ตรวจสอบว่า Gemini API Key ถูกต้องและเปิดใช้งานแล้ว (ที่ปุ่มรูปเฟือง)`);
+                }
                 throw new Error(`API call failed with status: ${response.status}`);
             }
             const result = await response.json();
@@ -451,7 +523,7 @@
             const isValid = patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '';
             const isAnythingToClear = patientId.trim() !== '' || patientName.trim() !== '';
             
-            // **ปรับปรุง** ปุ่มจะกดได้ ก็ต่อเมื่อ ล็อกอินแล้ว (isFirebaseReady) และ ข้อมูลครบ (isValid)
+            // ปุ่มจะกดได้ ก็ต่อเมื่อ ล็อกอินแล้ว (isFirebaseReady) และ ข้อมูลครบ (isValid)
             saveButton.disabled = !isValid || !isFirebaseReady; 
             clearButton.disabled = !isAnythingToClear; 
         }
@@ -515,7 +587,8 @@
                     timestamp: new Date().toISOString(),
                     uploaderId: userId,
                 };
-                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                // **ปรับปรุง** ใช้ globalAppId ที่ได้มาจาก settings
+                const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
                 await addDoc(collection(db, collectionPath), recordData);
                 displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
                 clearForm(); 
@@ -582,11 +655,21 @@
                 spinner.classList.add('hidden');
             }
         }
+        
+        function convertExcelBoolean(value) {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+                const lower = value.toLowerCase().trim();
+                return lower === 'true' || lower === 'yes' || lower === 'ใช่' || lower === 'y';
+            }
+            return !!value;
+        }
 
         async function processImport(jsonData) {
             if (!db || !currentUserId) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน หรือยังไม่ได้ล็อกอิน");
             const userId = currentUserId;
-            const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+            // **ปรับปรุง** ใช้ globalAppId ที่ได้มาจาก settings
+            const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
             let successCount = 0;
             let errorCount = 0;
             const statusEl = document.getElementById('import-status');
@@ -653,7 +736,8 @@
             resultsTableBody.innerHTML = '';
             try {
                 const userId = currentUserId;
-                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                // **ปรับปรุง** ใช้ globalAppId ที่ได้มาจาก settings
+                const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
                 const q = query(
                     collection(db, collectionPath),
                     where("patientId", "==", searchId)
@@ -715,6 +799,11 @@
             // **ใหม่** ปุ่มปลดล็อก (สำหรับ iPad)
             document.getElementById('unlock-button').addEventListener('click', manualSignIn);
 
+            // **ใหม่** ปุ่มตั้งค่า
+            document.getElementById('open-settings-button').addEventListener('click', () => showSettingsModal(true));
+            document.getElementById('close-settings-button').addEventListener('click', closeSettingsModal);
+            document.getElementById('save-settings-button').addEventListener('click', saveSettings);
+
             // (ที่เหลือเหมือนเดิม)
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
             document.getElementById('patient-name').addEventListener('input', validateSaveButton);
@@ -727,17 +816,18 @@
             document.getElementById('search-button').addEventListener('click', searchPatientRecords);
             document.getElementById('close-scanner-button').addEventListener('click', closeIdScanner);
             document.getElementById('capture-button').addEventListener('click', captureAndAnalyzeId);
+            
             validateSaveButton();
-        });
 
-        // Kick off Firebase initialization
-        initializeFirebase();
+            // **ปรับปรุง** Kick off โดยการโหลด Config ก่อน
+            loadConfigAndInitialize();
+        });
 
     </script>
 </head>
 <body class="bg-gray-50 p-4 sm:p-8 min-h-screen flex items-center justify-center font-['Inter']">
 
-    <!-- **ใหม่** Overlay สำหรับ "ปลดล็อก" บน iPad (จะซ่อนอยู่บน PC) -->
+    <!-- **ใหม่** Overlay สำหรับ "ปลดล็อก" บน iPad (เหมือนเดิม) -->
     <div id="unlock-overlay" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-lg shadow-2xl p-8 text-center">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">กรุณาเริ่มต้นการเชื่อมต่อ</h2>
@@ -751,6 +841,47 @@
         </div>
     </div>
 
+    <!-- **ใหม่** Modal สำหรับการตั้งค่า API Keys (ซ่อนไว้ตอนแรก) -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-[60]">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">การตั้งค่า (API Keys)</h2>
+                <button id="close-settings-button" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">
+                กรุณากรอก API Keys จาก Firebase และ Google AI Studio (Gemini)
+                ข้อมูลนี้จะถูกเก็บไว้ในเครื่องของคุณเท่านั้น
+            </p>
+            <div class="space-y-4">
+                <div>
+                    <label for="setting-gemini-key" class="block text-sm font-medium text-gray-700">Gemini API Key (สำหรับสแกนบัตร)</label>
+                    <input type="password" id="setting-gemini-key" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="AIzaSy...">
+                </div>
+                <hr>
+                <div>
+                    <label for="setting-fb-api-key" class="block text-sm font-medium text-gray-700">Firebase API Key</label>
+                    <input type="password" id="setting-fb-api-key" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="AIzaSy...">
+                </div>
+                <div>
+                    <label for="setting-fb-auth-domain" class="block text-sm font-medium text-gray-700">Firebase Auth Domain</label>
+                    <input type="text" id="setting-fb-auth-domain" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="xxxx.firebaseapp.com">
+                </div>
+                <div>
+                    <label for="setting-fb-project-id" class="block text-sm font-medium text-gray-700">Firebase Project ID (สำคัญมาก)</label>
+                    <input type="text" id="setting-fb-project-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="my-project-xxxx">
+                </div>
+                <div>
+                    <label for="setting-fb-app-id" class="block text-sm font-medium text-gray-700">Firebase App ID (สำคัญมาก)</label>
+                    <input type="text" id="setting-fb-app-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="1:xxxx:web:xxxx">
+                </div>
+            </div>
+            <button id="save-settings-button" class="mt-6 w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
+                บันทึกการตั้งค่า
+            </button>
+            <p id="settings-status" class="text-center text-sm text-red-500 mt-2"></p>
+        </div>
+    </div>
+
 
     <!-- Main Container -->
     <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-6xl">
@@ -761,10 +892,19 @@
             บันทึกและค้นหาข้อมูลการตรวจจอประสาทตา (ตามแบบฟอร์ม รพ.ศรีสะเกษ)
         </p>
 
-        <!-- **ปรับปรุง** ส่วนแสดงสถานะ (ไม่มีปุ่มล็อกอินแล้ว) -->
-        <div id="user-info" class="text-sm text-right text-gray-500 mb-4">
-            กำลังเชื่อมต่อ...
+        <!-- **ปรับปรุง** ส่วนแสดงสถานะ + ปุ่มตั้งค่า -->
+        <div class="flex justify-between items-center mb-4">
+             <div id="user-info" class="text-sm text-left text-gray-500 flex-grow">
+                กำลังโหลดการตั้งค่า...
+            </div>
+            <button id="open-settings-button" class="p-2 text-gray-500 hover:text-blue-600 transition duration-150" title="การตั้งค่า API Keys">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
         </div>
+
 
         <!-- **ปรับปรุง** เนื้อหาหลักจะจางลงในตอนแรก จนกว่าจะเชื่อมต่อสำเร็จ -->
         <div id="main-app-content" class="transition duration-300 opacity-20 pointer-events-none">
