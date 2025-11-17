@@ -7,14 +7,14 @@
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- NEW: Load SheetJS (xlsx.js) for Excel Reading -->
+    <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <!-- Load Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Import collection, addDoc, query, where, and getDocs for saving and searching data
+        // Import collection, addDoc, query, where, getDocs, setLogLevel
         import { getFirestore, collection, addDoc, setLogLevel, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Enable Firebase debug logging
@@ -64,17 +64,25 @@
             font-family: 'Inter', sans-serif;
             background-color: #f3f4f6;
         }
+        /* Hide scrollbar for autocomplete */
+        #autocomplete-results::-webkit-scrollbar {
+            display: none;
+        }
+        #autocomplete-results {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </head>
 <body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
 
     <!-- Main Container -->
-    <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-5xl">
+    <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-6xl">
         <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-800 mb-2 text-center">
             ระบบบันทึกข้อมูลผู้ป่วยเบาหวาน
         </h1>
         <p class="text-gray-600 mb-8 text-center">
-            กรอกข้อมูลผู้ป่วยตามแบบฟอร์มด้านล่างเพื่อบันทึกลงในฐานข้อมูล
+            บันทึกและค้นหาข้อมูลการตรวจจอประสาทตา (ตามแบบฟอร์ม รพ.ศรีสะเกษ)
         </p>
 
         <!-- User ID Display (Mandatory for multi-user apps) -->
@@ -82,20 +90,19 @@
             <!-- User ID will be populated by JS -->
         </div>
 
-        <!-- Patient Information Section (Expanded based on PDF) -->
+        <!-- Section 1: Patient Info (from PCU) -->
         <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
             <h2 class="text-xl font-bold text-blue-700 mb-4">ส่วนที่ 1: ข้อมูลผู้ป่วย (จาก รพ.สต./PCU)</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="relative"> <!-- Add relative positioning -->
+            <!-- Row 1: ID, Name, Diabetes Years -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="relative"> <!-- Add relative positioning for autocomplete -->
                     <label for="patient-id" class="block text-sm font-medium text-gray-700">เลขบัตรประชาชน 13 หลัก</label>
                     <div class="flex mt-1">
                         <!-- MODIFIED: Added oninput and autocomplete=off -->
                         <input type="text" id="patient-id" oninput="debouncedSearchPatient()" class="block w-full rounded-l-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
                         <button onclick="openIdScanner()" class="px-3 py-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" title="สแกนบัตรด้วยกล้อง">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm3.5 1a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM16.5 6a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
-                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L5.293 8.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                <path fill-rule="evenodd" d="M11.293 7.293a1 1 0 011.414 0l2 2a1 1 0 01-1.414 1.414L11.293 8.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm1 3a1 1 0 011-1h8a1 1 0 011 1v2a1 1 0 01-1 1H6a1 1 0 01-1-1V5zm1 4a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zM5 14a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                             </svg>
                         </button>
                     </div>
@@ -109,117 +116,128 @@
                     <input type="text" id="patient-name" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="กรุณาระบุชื่อ">
                 </div>
                 <div>
-                    <label for="diabetes-years" class="block text-sm font-medium text-gray-700">ป่วยเป็นเบาหวาน (ปี)</label>
-                    <input type="number" id="diabetes-years" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="จำนวนปี">
+                    <label for="diabetes-years" class="block text-sm font-medium text-gray-700">ป่วยเป็นเบาหวานมาแล้ว (ปี)</label>
+                    <input type="number" id="diabetes-years" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="0">
                 </div>
+            </div>
+            
+            <!-- Row 2: Clinical Data (HbA1c, BP, Weight, Height) -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div>
-                    <label for="hba1c" class="block text-sm font-medium text-gray-700">ค่าน้ำตาลสะสม (HbA1C)</label>
+                    <label for="hba1c" class="block text-sm font-medium text-gray-700">HbA1C (ล่าสุด)</label>
                     <input type="text" id="hba1c" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 7.5">
                 </div>
-                <div>
-                    <label for="blood-pressure" class="block text-sm font-medium text-gray-700">ค่าความดันโลหิต</label>
+                 <div>
+                    <label for="blood-pressure" class="block text-sm font-medium text-gray-700">ค่าความดัน (BP)</label>
                     <input type="text" id="blood-pressure" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 130/80">
                 </div>
-                
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label for="weight" class="block text-sm font-medium text-gray-700">น้ำหนัก (กก.)</label>
-                        <input type="number" id="weight" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
-                    </div>
-                     <div>
-                        <label for="height" class="block text-sm font-medium text-gray-700">ส่วนสูง (ซม.)</label>
-                        <input type="number" id="height" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
-                    </div>
+                <div>
+                    <label for="weight" class="block text-sm font-medium text-gray-700">น้ำหนัก (kg)</label>
+                    <input type="number" id="weight" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="0.0">
                 </div>
-               
+                <div>
+                    <label for="height" class="block text-sm font-medium text-gray-700">ส่วนสูง (cm)</label>
+                    <input type="number" id="height" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="0">
+                </div>
+            </div>
+            
+            <!-- Row 3: VA and Previous Exam -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                     <label for="va-od" class="block text-sm font-medium text-gray-700">VA (ตาขวา - OD)</label>
-                    <select id="va-od" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 bg-white">
-                        <option value="">-- เลือกค่า VA --</option>
-                        <option value="20/20">20/20 (6/6)</option>
+                    <select id="va-od" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">-- เลือกค่าสายตา --</option>
+                        <option value="20/20">20/20</option>
                         <option value="20/25">20/25</option>
-                        <option value="20/30">20/30 (6/9)</option>
-                        <option value="20/40">20/40 (6/12)</option>
+                        <option value="20/30">20/30</option>
+                        <option value="20/40">20/40</option>
                         <option value="20/50">20/50</option>
-                        <option value="20/60">20/60 (6/18)</option>
+                        <option value="20/60">20/60</option>
                         <option value="20/70">20/70</option>
                         <option value="20/80">20/80</option>
-                        <option value="20/100">20/100 (6/30)</option>
-                        <option value="20/200">20/200 (6/60)</option>
-                        <option value="CF">CF (Count Fingers)</option>
+                        <option value_a="20/100">20/100</option>
+                        <option value="20/200">20/200</option>
+                        <option value="20/400">20/400</option>
+                        <option value="CF 1ft">CF 1ft</option>
+                        <option value="CF 2ft">CF 2ft</option>
+                        <option value="CF 3ft">CF 3ft</option>
                         <option value="HM">HM (Hand Motion)</option>
                         <option value="LP">LP (Light Perception)</option>
                         <option value="NLP">NLP (No Light Perception)</option>
-                        <option value="N/A">N/A (ไม่ไดัตรวจ)</option>
+                        <option value="N/A">N/A (ตรวจไม่ได้)</option>
                     </select>
                 </div>
                 <div>
                     <label for="va-os" class="block text-sm font-medium text-gray-700">VA (ตาซ้าย - OS)</label>
-                    <select id="va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 bg-white">
-                        <option value="">-- เลือกค่า VA --</option>
-                        <option value="20/20">20/20 (6/6)</option>
+                     <select id="va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">-- เลือกค่าสายตา --</option>
+                        <option value="20/20">20/20</option>
                         <option value="20/25">20/25</option>
-                        <option value="20/30">20/30 (6/9)</option>
-                        <option value="20/40">20/40 (6/12)</option>
+                        <option value="20/30">20/30</option>
+                        <option value="20/40">20/40</option>
                         <option value="20/50">20/50</option>
-                        <option value="20/60">20/60 (6/18)</option>
+                        <option value="20/60">20/60</option>
                         <option value="20/70">20/70</option>
                         <option value="20/80">20/80</option>
-                        <option value="20/100">20/100 (6/30)</option>
-                        <option value="20/200">20/200 (6/60)</option>
-                        <option value="CF">CF (Count Fingers)</option>
+                        <option value="20/100">20/100</option>
+                        <option value="20/200">20/200</option>
+                        <option value="20/400">20/400</option>
+                        <option value="CF 1ft">CF 1ft</option>
+                        <option value="CF 2ft">CF 2ft</option>
+                        <option value="CF 3ft">CF 3ft</option>
                         <option value="HM">HM (Hand Motion)</option>
                         <option value="LP">LP (Light Perception)</option>
                         <option value="NLP">NLP (No Light Perception)</option>
-                        <option value="N/A">N/A (ไม่ไดัตรวจ)</option>
+                        <option value="N/A">N/A (ตรวจไม่ได้)</option>
                     </select>
                 </div>
-                
-                <div class="flex items-center pt-6">
-                    <input id="is-wheelchair" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="is-wheelchair" class="ml-2 block text-sm font-medium text-gray-700">นั่งรถเข็น</label>
+                <div class="flex items-end">
+                    <div class="flex items-center">
+                        <input id="is-wheelchair" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="is-wheelchair" class="ml-2 block text-sm font-medium text-gray-700">นั่งรถเข็น (Wheelchair)</label>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Previous Exam Section -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div class="flex items-center">
-                    <input id="has-previous-exam" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" onchange="togglePreviousExamCount(this.checked)">
-                    <label for="has-previous-exam" class="ml-2 block text-sm font-medium text-gray-700">เคยตรวจจอประสาทตามาก่อน</label>
-                </div>
-                <div>
-                    <label for="previous-exam-count" class="block text-sm font-medium text-gray-700">ถ้าเคย, ตรวจมาแล้วกี่ครั้ง</label>
-                    <input type="number" id="previous-exam-count" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 bg-gray-100" placeholder="จำนวนครั้ง" disabled>
+                <div class="flex items-end">
+                    <div class="flex flex-col">
+                        <div class="flex items-center">
+                            <input id="has-previous-exam" type="checkbox" onchange="togglePreviousExamCount(this.checked)" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="has-previous-exam" class="ml-2 block text-sm font-medium text-gray-700">เคยตรวจจอประสาทตา</Mabel>
+                        </div>
+                        <div id="previous-exam-count-container" class="mt-2 hidden">
+                            <label for="previous-exam-count" class="block text-xs font-medium text-gray-600">ถ้าเคย, กี่ครั้ง?</label>
+                            <input type="number" id="previous-exam-count" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border text-sm" placeholder="0">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <!-- Clinical Info Section (based on PDF Part 2) -->
-        <div class="mb-8 p-6 bg-gray-50 rounded-xl border border-gray-200">
-            <h2 class="text-xl font-bold text-gray-700 mb-4">ส่วนที่ 2: ข้อมูลทางคลินิก (สำหรับ รพ.)</h2>
+        
+        <!-- Section 2: Hospital Staff Info -->
+        <div class="mb-8 p-6 bg-gray-100 rounded-xl border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-700 mb-4">ส่วนที่ 2: ข้อมูลสำหรับเจ้าหน้าที่ (Hospital)</h2>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="flex items-center">
-                    <input id="has-cataract" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="has-cataract" class="ml-2 block text-sm font-medium text-gray-700">เป็นต้อกระจก</label>
+                    <input id="has-cataract" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="has-cataract" class="ml-2 block text-sm font-medium text-gray-700">เป็นต้อกระจก (Cataract)</label>
                 </div>
                 <div class="flex items-center">
-                    <input id="hearing-clear" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <input id="hearing-clear" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
                     <label for="hearing-clear" class="ml-2 block text-sm font-medium text-gray-700">การได้ยินชัดเจน</label>
                 </div>
                 <div class="flex items-center">
-                    <input id="can-sit-chair" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="can-sit-chair" class="ml-2 block text-sm font-medium text-gray-700">นั่งเก้าอี้ตรวจได้</label>
+                    <input id="can-sit-chair" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="can-sit-chair" class="ml-2 block text-sm font-medium text-gray-700">นั่งเก้าอี้ตรวจตาได้</label>
                 </div>
-                 <div class="flex items-center">
-                    <input id="needs-eyelid-lift" type="checkbox" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <div class="flex items-center">
+                    <input id="needs-eyelid-lift" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
                     <label for="needs-eyelid-lift" class="ml-2 block text-sm font-medium text-gray-700">ต้องช่วยยกหนังตา</label>
                 </div>
             </div>
         </div>
 
-        <!-- NEW Section 3: Eye Exam Findings (from PDF) -->
-        <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
-            <h2 class="text-xl font-bold text-blue-700 mb-6">ส่วนที่ 3: ผลการตรวจจอประสาทตา</h2>
+        <!-- Section 3: Retina Exam Results -->
+        <div class="mb-8 p-6 bg-green-50 rounded-xl border border-green-200">
+            <h2 class="text-xl font-bold text-green-700 mb-4">ส่วนที่ 3: ผลการตรวจจอประสาทตา</h2>
             
             <!-- Findings Grid Header -->
             <div class="grid grid-cols-3 gap-4 mb-2">
@@ -229,93 +247,90 @@
             </div>
 
             <!-- Findings Grid Rows -->
-            <div class="space-y-3" id="section3-findings"> <!-- NEW ID added -->
+            <div class="space-y-3" id="section3-findings">
                 <!-- Normal -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-normal-or" class="font-medium text-gray-800">Normal</label>
-                    <input type="checkbox" id="finding-normal-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-normal-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-normal-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-normal-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Micro aneurysm -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-microaneurysm-or" class="font-medium text-gray-800">Micro aneurysm / Dot-Blot HE</label>
-                    <input type="checkbox" id="finding-microaneurysm-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-microaneurysm-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-microaneurysm-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-microaneurysm-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Hard exudate -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-hardexudate-or" class="font-medium text-gray-800">Hard exudate</label>
-                    <input type="checkbox" id="finding-hardexudate-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-hardexudate-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-hardexudate-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-hardexudate-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Flame-shaped hemorrhage -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-flame-or" class="font-medium text-gray-800">Flame-shaped hemorrhage</label>
-                    <input type="checkbox" id="finding-flame-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-flame-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-flame-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-flame-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Venous beading -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-venous-or" class="font-medium text-gray-800">Venous beading</label>
-                    <input type="checkbox" id="finding-venous-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-venous-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-venous-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-venous-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- IRMA -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-irma-or" class="font-medium text-gray-800">IRMA</label>
-                    <input type="checkbox" id="finding-irma-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-irma-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-irma-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-irma-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
-                <!-- New vessel -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <!-- New vessel (neovascularization) -->
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-newvessel-or" class="font-medium text-gray-800">New vessel (neovascularization)</label>
-                    <input type="checkbox" id="finding-newvessel-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-newvessel-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-newvessel-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-newvessel-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Preretinal hemorrhage -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-preretinal-or" class="font-medium text-gray-800">Preretinal hemorrhage</label>
-                    <input type="checkbox" id="finding-preretinal-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-preretinal-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-preretinal-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-preretinal-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Vitreous hemorrhage -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-vitreous-or" class="font-medium text-gray-800">Vitreous hemorrhage</label>
-                    <input type="checkbox" id="finding-vitreous-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-vitreous-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-vitreous-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-vitreous-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
                 <!-- Fibrous proliferation -->
-                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-blue-100">
+                <div class="grid grid-cols-3 gap-4 p-2 rounded-lg hover:bg-green-100">
                     <label for="finding-fibrous-or" class="font-medium text-gray-800">Fibrous proliferation</label>
-                    <input type="checkbox" id="finding-fibrous-or" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
-                    <input type="checkbox" id="finding-fibrous-ol" class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 place-self-center">
+                    <input id="finding-fibrous-or" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
+                    <input id="finding-fibrous-ol" type="checkbox" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500 justify-self-center">
                 </div>
             </div>
 
             <!-- Referral Section -->
-            <div class="mt-6 pt-4 border-t border-blue-200">
+            <div class="mt-6 border-t border-green-200 pt-4">
                  <div class="flex items-center">
-                    <input id="referral-needed" type="checkbox" class="h-5 w-5 text-red-600 border-gray-300 rounded focus:ring-red-500">
-                    <label for="referral-needed" class="ml-2 block text-sm font-bold text-red-700">ส่งต่อ (Referral)</label>
+                    <input id="referral-needed" type="checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                    <label for="referral-needed" class="ml-2 block text-sm font-medium text-red-700">ส่งต่อ (Referral Needed)</label>
                 </div>
             </div>
         </div>
 
-
-        <!-- REMOVED Uploader & Preview Section -->
-
         <!-- Save Button (Replaced Analysis Button) -->
         <div class="mt-8 text-center">
             <button id="save-button" onclick="savePatientData()" class="w-full sm:w-auto px-10 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" disabled>
-                <span id="button-text">บันทึกข้อมูลผู้ป่วย</span>
-                <svg id="loading-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <span id="save-button-text">บันทึกข้อมูลผู้ป่วย</span>
+                <svg id="save-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
             </button>
         </div>
 
-        <!-- NEW: Excel Import Section -->
+        <!-- Excel Import Section -->
         <div class="mt-10 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
             <h2 class="text-2xl font-bold text-yellow-800 mb-4 flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -354,8 +369,8 @@
 - ส่วนสูง
 - VA (OD)
 - VA (OS)
-- นั่งรถเข็น (ใส่ TRUE หรือ FALSE)
-- เคยตรวจ (ใส่ TRUE หรือ FALSE)
+- นั่งรถเข็น (ใส่ TRUE, Yes, หรือ 'ใช่')
+- เคยตรวจ (ใส่ TRUE, Yes, หรือ 'ใช่')
 - จำนวนครั้ง
                 </pre>
             </details>
@@ -391,12 +406,11 @@
                                 <tr>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">วัน/เวลา</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ชื่อ-สกุล</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">HbA1C</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OD)</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OS)</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">HbA1c</th>
-                                    <!-- NEW Columns -->
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ผลการตรวจ (ย่อ)</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">การส่งต่อ</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ผลตรวจ (ย่อ)</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ส่งต่อ</th>
                                 </tr>
                             </thead>
                             <tbody id="results-table-body" class="bg-white divide-y divide-gray-200">
@@ -407,42 +421,35 @@
                 </div>
             </div>
         </div>
-        
     </div>
-
-    <!-- NEW: ID Card Scanner Modal -->
+    
+    <!-- ID Card Scanner Modal -->
     <div id="scanner-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
-            <h3 class="text-2xl font-bold text-gray-800 mb-4">สแกนบัตรประชาชน (ทดลอง)</h3>
-            <p class="text-sm text-gray-600 mb-4">
-                ถือบัตรให้นิ่งในที่มีแสงสว่างเพียงพอและไม่มีแสงสะท้อน จากนั้นกด "ถ่ายภาพและวิเคราะห์"
-            </p>
-            <div class="relative w-full bg-gray-200 rounded-lg overflow-hidden" style="padding-bottom: 75%;"> <!-- 4:3 Aspect Ratio -->
-                <video id="webcam-stream" autoplay playsinline class="absolute top-0 left-0 w-full h-full object-cover"></video>
-                <canvas id="capture-canvas" class="hidden"></canvas>
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">สแกนบัตรประชาชน</h2>
+                <button onclick="closeIdScanner()" class="text-gray-500 hover:text-gray-800">&times;</button>
             </div>
-            
-            <div id="scanner-message" class="mt-4 p-3 rounded-lg text-center hidden"></div>
-
-            <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                <button id="capture-button" onclick="captureAndProcess()" class="flex-1 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300 flex items-center justify-center">
-                    <svg id="capture-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span id="capture-button-text">ถ่ายภาพและวิเคราะห์</span>
-                </button>
-                <button onclick="closeIdScanner()" class="flex-1 px-6 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition duration-300">
-                    ปิด
-                </button>
+            <div class="relative bg-black rounded-lg overflow-hidden w-full aspect-video">
+                <video id="webcam-video" class="w-full h-full object-cover" autoplay playsinline></video>
+                <div class="absolute inset-0 border-8 border-white border-opacity-50 rounded-lg"></div>
             </div>
-            <p class="text-xs text-red-600 text-center mt-4">
-                **ฟีเจอร์นี้อาจไม่แม่นยำ** กรุณาตรวจสอบข้อมูลที่ได้ก่อนบันทึกเสมอ
-            </p>
+            <canvas id="webcam-canvas" class="hidden"></canvas>
+            <p class="text-sm text-gray-600 mt-2 text-center">จัดบัตรให้อยู่ในกรอบในที่ที่มีแสงสว่างเพียงพอ</p>
+            <button onclick="captureAndAnalyzeId()" id="capture-button" class="mt-4 w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
+                <span id="capture-button-text">ถ่ายภาพและวิเคราะห์</span>
+                <svg id="capture-spinner" class="animate-spin mx-auto h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+            <p id="scanner-status" class="text-center text-sm text-red-500 mt-2"></p>
         </div>
     </div>
 
+
     <script>
+        // Global state
         let currentWebcamStream = null;
         const apiKey = ""; // API key is provided by the environment
         const modelName = "gemini-2.5-flash-preview-09-2025";
@@ -498,7 +505,12 @@
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
                     // Store the full data object, keyed by patientId
-                    patientMap.set(data.patientId, data);
+                    // This naturally keeps only the latest one if the query returns multiple
+                    // (Though Firestore behavior might vary, we'll sort later)
+                    // Let's refine: store the *most recent* data
+                    if (!patientMap.has(data.patientId) || new Date(data.timestamp) > new Date(patientMap.get(data.patientId).timestamp)) {
+                         patientMap.set(data.patientId, data);
+                    }
                 });
 
                 resultsContainer.innerHTML = ''; // Clear old results
@@ -607,36 +619,20 @@
 
 
         document.addEventListener('DOMContentLoaded', () => {
-            // ... (existing code)
-// ... existing code ... -->
-        // ... (existing code)
-
-        // --- NEW ID Scanner Functions ---
-
-        // Function to show a message inside the modal
-        function showScannerMessage(message, type = 'info') {
-            const box = document.getElementById('scanner-message');
-            box.textContent = message;
-            box.className = 'mt-4 p-3 rounded-lg text-center';
-            box.classList.remove('hidden');
+            // Display User ID after auth check
+            const auth = window.getAuth ? window.getAuth() : null;
+            const userIdElement = document.getElementById('user-info');
             
-            if (type === 'error') {
-                box.classList.add('bg-red-100', 'text-red-700');
-            } else if (type === 'success') {
-                box.classList.add('bg-green-100', 'text-green-700');
-            } else { // info
-                box.classList.add('bg-blue-100', 'text-blue-700');
+            if (auth) {
+                // Wait for auth to be ready
+                auth.onAuthStateChanged((user) => {
+                    const userId = user ? user.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+                    userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${userId}`;
+                });
+            } else {
+                 userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user'}`;
             }
-        }
-        function hideScannerMessage() {
-            document.getElementById('scanner-message').classList.add('hidden');
-        }
 
-        // Open the webcam modal
-        async function openIdScanner() {
-            const modal = document.getElementById('scanner-modal');
-            const video = document.getElementById('webcam-stream');
-            
             // Add input listeners for validation
             const inputsToValidate = [
                 'patient-id', 'patient-name'
@@ -652,25 +648,375 @@
 
         // Function to toggle previous exam count input
         function togglePreviousExamCount(isChecked) {
-                if (err.name === "NotAllowedError") {
-                    showScannerMessage('คุณต้องอนุญาตให้เว็บใช้กล้องก่อน', 'error');
-                } else {
-                     showScannerMessage('ไม่สามารถเปิดกล้องได้ อาจมีโปรแกรมอื่นใช้งานอยู่', 'error');
-                }
-                // Fallback to any camera
+            const container = document.getElementById('previous-exam-count-container');
+            if (isChecked) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+                document.getElementById('previous-exam-count').value = ''; // Clear value
+            }
+        }
+        window.togglePreviousExamCount = togglePreviousExamCount; // Expose globally
+
+        // Function to display messages (instead of alert)
+        function displayMessage(message, type = 'info') {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.className = 'mt-8 p-4 rounded-xl text-center';
+            box.classList.remove('hidden');
+            
+            // Apply styling based on type
+            if (type === 'error') {
+                box.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                box.classList.add('bg-green-100', 'text-green-700');
+            } else { // info
+                box.classList.add('bg-blue-100', 'text-blue-700');
+            }
+        }
+        
+        // Function to hide the message box
+        function hideMessage() {
+            document.getElementById('message-box').classList.add('hidden');
+        }
+
+        // --- ID Card Scanner Functions ---
+
+        // Open the scanner modal and start webcam
+        async function openIdScanner() {
+            hideMessage();
+            const modal = document.getElementById('scanner-modal');
+            const video = document.getElementById('webcam-video');
+            const statusEl = document.getElementById('scanner-status');
+            
+            modal.classList.remove('hidden');
+            statusEl.textContent = '';
+            
+            try {
+                // Request camera access
+                currentWebcamStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' } // Prefer rear camera
+                });
+                video.srcObject = currentWebcamStream;
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                statusEl.textContent = 'ไม่สามารถเปิดกล้องได้ (อาจไม่ได้รับอนุญาต)';
+                // Fallback to user-facing camera if environment fails
                 try {
                      currentWebcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
                      video.srcObject = currentWebcamStream;
-                     hideScannerMessage();
-                } catch (fallbackErr) {
-                    console.error("Fallback camera error:", fallbackErr);
-                    showScannerMessage('ไม่สามารถเปิดกล้องได้', 'error');
+                     statusEl.textContent = 'ไม่พบกล้องหลัง, ใช้กล้องหน้าแทน';
+                } catch (err2) {
+                    console.error("Error accessing any webcam:", err2);
+                    statusEl.textContent = 'ไม่สามารถเปิดกล้องได้เลย';
+                    closeIdScanner();
                 }
+            }
+        }
+        window.openIdScanner = openIdScanner;
+
+        // Close the scanner modal and stop webcam
+        function closeIdScanner() {
+            const modal = document.getElementById('scanner-modal');
+            modal.classList.add('hidden');
+            
+            if (currentWebcamStream) {
+                currentWebcamStream.getTracks().forEach(track => track.stop());
+                currentWebcamStream = null;
+            }
+        }
+        window.closeIdScanner = closeIdScanner;
+        
+        // Capture image from webcam and send to Gemini
+        async function captureAndAnalyzeId() {
+            const video = document.getElementById('webcam-video');
+            const canvas = document.getElementById('webcam-canvas');
+            const context = canvas.getContext('2d');
+            const button = document.getElementById('capture-button');
+            const buttonText = document.getElementById('capture-button-text');
+            const spinner = document.getElementById('capture-spinner');
+            const statusEl = document.getElementById('scanner-status');
+
+            // Set canvas size to video feed size
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw current video frame onto canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Convert canvas to Base64 image
+            const base64ImageData = canvas.toDataURL('image/jpeg').split(',')[1];
+            
+            // Set loading state
+            button.disabled = true;
+            buttonText.textContent = 'กำลังวิเคราะห์...';
+            spinner.classList.remove('hidden');
+            statusEl.textContent = 'กำลังส่งภาพไปวิเคราะห์...';
+
+            try {
+                const ocrResult = await callGeminiOCR(base64ImageData);
+                
+                if (!ocrResult.id_number && !ocrResult.name) {
+                     throw new Error("AI ไม่สามารถอ่านข้อมูลจากภาพได้");
+                }
+                
+                // Populate fields
+                if (ocrResult.id_number) {
+                    // Clean up ID (remove spaces, dashes)
+                    const cleanedId = ocrResult.id_number.replace(/[\s-]/g, '');
+                    document.getElementById('patient-id').value = cleanedId;
+                }
+                if (ocrResult.name) {
+                    document.getElementById('patient-name').value = ocrResult.name;
+                }
+                
+                statusEl.textContent = 'สแกนสำเร็จ!';
+                displayMessage('สแกนข้อมูลสำเร็จ กรุณาตรวจสอบความถูกต้อง', 'success');
+                validateSaveButton(); // Re-check validation
+                closeIdScanner();
+
+            } catch (error) {
+                console.error("OCR analysis failed:", error);
+                statusEl.textContent = `วิเคราะห์ล้มเหลว: ${error.message}`;
+            } finally {
+                // Restore button state
+                button.disabled = false;
+                buttonText.textContent = 'ถ่ายภาพและวิเคราะห์';
+                spinner.classList.add('hidden');
+            }
+        }
+        window.captureAndAnalyzeId = captureAndAnalyzeId;
+
+        // Call Gemini API for OCR
+        async function callGeminiOCR(base64ImageData) {
+            const systemPrompt = "You are an OCR assistant specialized in reading Thai ID cards. Extract the 13-digit identification number and the full name (Name and Last Name). Return ONLY a structured JSON.";
+            const userQuery = "Extract the ID number and Full Name from this image.";
+            
+            const responseSchema = {
+                type: "OBJECT",
+                properties: {
+                    id_number: { "type": "STRING", "description": "The 13-digit Thai ID number (e.g., 1234567890123)" },
+                    name: { "type": "STRING", "description": "The full name in Thai (e.g., นายตัวอย่าง ทดสอบ)" }
+                },
+                required: ["id_number", "name"]
+            };
+
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: userQuery },
+                            {
+                                inlineData: {
+                                    mimeType: "image/jpeg",
+                                    data: base64ImageData
+                                }
+                            }
+                        ]
+                    }
+                ],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API call failed with status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const candidate = result?.candidates?.[0];
+            const jsonText = candidate?.content?.parts?.[0]?.text;
+            
+            if (!jsonText) {
+                 throw new Error("Invalid or empty response from AI.");
+            }
+            
+            let cleanedJson = jsonText.replace(/```json\n|```/g, '').trim();
+            return JSON.parse(cleanedJson);
+        }
+
+        // --- End ID Card Scanner Functions ---
+
+
+        // --- Form Validation and Save Functions ---
+
+        // Check if required fields are filled to enable save button
+        function validateSaveButton() {
+            const patientId = document.getElementById('patient-id').value;
+            const patientName = document.getElementById('patient-name').value;
+            const saveButton = document.getElementById('save-button');
+            
+            // Basic validation
+            if (patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '') {
+                saveButton.disabled = false;
+            } else {
+                saveButton.disabled = true;
+            }
+        }
+
+        // Function to clear the entire form
+        function clearForm() {
+            // Clear all inputs in Section 1, 2, 3
+            document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => input.value = '');
+            document.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            
+            // Hide conditional fields
+            togglePreviousExamCount(false);
+            
+            // Reset save button
+            validateSaveButton();
+        }
+
+        // Function to save the patient data to Firestore
+        async function savePatientData() {
+            const db = window.getDb ? window.getDb() : null;
+            const appId = window.getAppId ? window.getAppId() : 'default-app-id';
+            const auth = window.getAuth ? window.getAuth() : null;
+            
+            if (!db || !auth) {
+                displayMessage('ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรชหน้า', 'error');
+                return;
+            }
+            
+            const userId = auth.currentUser ? auth.currentUser.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
+            
+            // --- Set Loading State ---
+            const saveButton = document.getElementById('save-button');
+            const buttonText = document.getElementById('save-button-text');
+            const spinner = document.getElementById('save-spinner');
+            saveButton.disabled = true;
+            buttonText.textContent = 'กำลังบันทึก...';
+            spinner.classList.remove('hidden');
+            hideMessage();
+
+            try {
+                // --- Collect Data from All Sections ---
+                const recordData = {
+                    // Section 1
+                    patientId: document.getElementById('patient-id').value.trim(),
+                    patientName: document.getElementById('patient-name').value.trim(),
+                    diabetesYears: Number(document.getElementById('diabetes-years').value) || null,
+                    hba1c: document.getElementById('hba1c').value.trim(),
+                    bloodPressure: document.getElementById('blood-pressure').value.trim(),
+                    weight: Number(document.getElementById('weight').value) || null,
+                    height: Number(document.getElementById('height').value) || null,
+                    vaOD: document.getElementById('va-od').value,
+                    vaOS: document.getElementById('va-os').value,
+                    isWheelchair: document.getElementById('is-wheelchair').checked,
+                    hasPreviousExam: document.getElementById('has-previous-exam').checked,
+                    previousExamCount: document.getElementById('has-previous-exam').checked ? Number(document.getElementById('previous-exam-count').value) : null,
+                    
+                    // Section 2
+                    hasCataract: document.getElementById('has-cataract').checked,
+                    hearingClear: document.getElementById('hearing-clear').checked,
+                    canSitChair: document.getElementById('can-sit-chair').checked,
+                    needsEyelidLift: document.getElementById('needs-eyelid-lift').checked,
+                    
+                    // Section 3
+                    findings: {
+                        normal: {
+                            or: document.getElementById('finding-normal-or').checked,
+                            ol: document.getElementById('finding-normal-ol').checked
+                        },
+                        microaneurysm: {
+                            or: document.getElementById('finding-microaneurysm-or').checked,
+                            ol: document.getElementById('finding-microaneurysm-ol').checked
+                        },
+                        hardExudate: {
+                            or: document.getElementById('finding-hardexudate-or').checked,
+                            ol: document.getElementById('finding-hardexudate-ol').checked
+                        },
+                        flameHemorrhage: {
+                            or: document.getElementById('finding-flame-or').checked,
+                            ol: document.getElementById('finding-flame-ol').checked
+                        },
+                        venousBeading: {
+                            or: document.getElementById('finding-venous-or').checked,
+                            ol: document.getElementById('finding-venous-ol').checked
+                        },
+                        irma: {
+                            or: document.getElementById('finding-irma-or').checked,
+                            ol: document.getElementById('finding-irma-ol').checked
+                        },
+                        newVessel: {
+                            or: document.getElementById('finding-newvessel-or').checked,
+                            ol: document.getElementById('finding-newvessel-ol').checked
+                        },
+                        preretinalHemorrhage: {
+                            or: document.getElementById('finding-preretinal-or').checked,
+                            ol: document.getElementById('finding-preretinal-ol').checked
+                        },
+                        vitreousHemorrhage: {
+                            or: document.getElementById('finding-vitreous-or').checked,
+                            ol: document.getElementById('finding-vitreous-ol').checked
+                        },
+                        fibrousProliferation: {
+                            or: document.getElementById('finding-fibrous-or').checked,
+                            ol: document.getElementById('finding-fibrous-ol').checked
+                        }
+                    },
+                    referralNeeded: document.getElementById('referral-needed').checked,
+                    
+                    // Metadata
+                    timestamp: new Date().toISOString(),
+                    uploaderId: userId,
+                };
+
+                // --- Save to Firestore ---
+                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                await addDoc(collection(db, collectionPath), recordData);
+                
+                displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
+                clearForm(); // Clear form after successful save
+
+            } catch (error) {
+                console.error("Error saving patient data:", error);
+                displayMessage(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`, 'error');
+            } finally {
+                // --- Restore Button State ---
+                validateSaveButton(); // Re-validate (will set to disabled)
+                buttonText.textContent = 'บันทึกข้อมูลผู้ป่วย';
+                spinner.classList.add('hidden');
             }
         }
         window.savePatientData = savePatientData;
 
-        // --- NEW Excel Import Functions ---
+        // --- Excel Import Functions ---
+        
+        // Helper to convert flexible boolean inputs from Excel
+        function convertExcelBoolean(value) {
+            if (typeof value === 'boolean') {
+                return value;
+            }
+            if (typeof value === 'number') {
+                return value > 0;
+            }
+            if (typeof value === 'string') {
+                const lowerVal = value.trim().toLowerCase();
+                // Check for Thai 'yes'
+                if (lowerVal === 'ใช่') {
+                    return true;
+                }
+                // Check for English 'yes'
+                if (lowerVal === 'true' || lowerVal === 'yes' || lowerVal === 'y') {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         async function importFromExcel() {
             const fileInput = document.getElementById('excel-file-input');
@@ -713,7 +1059,10 @@
                 const result = await processImport(jsonData);
                 
                 statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
-                statusEl.className = 'text-green-700 text-sm font-semibold';
+                statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
+                if (result.errorCount > 0) {
+                     statusEl.textContent += ' (กรุณาตรวจสอบ Console log สำหรับข้อมูลที่ผิดพลาด)';
+                }
                 fileInput.value = ''; // Clear the file input
 
             } catch (error) {
@@ -761,8 +1110,10 @@
                         height: Number(row["ส่วนสูง"]) || null,
                         vaOD: String(row["VA (OD)"] || "").trim(),
                         vaOS: String(row["VA (OS)"] || "").trim(),
-                        isWheelchair: (String(row["นั่งรถเข็น"] || "false").toLowerCase() === 'true'),
-                        hasPreviousExam: (String(row["เคยตรวจ"] || "false").toLowerCase() === 'true'),
+                        
+                        // Use the robust boolean converter
+                        isWheelchair: convertExcelBoolean(row["นั่งรถเข็น"]),
+                        hasPreviousExam: convertExcelBoolean(row["เคยตรวจ"]),
                         previousExamCount: Number(row["จำนวนครั้ง"]) || null,
                         
                         // Section 2 & 3 are set to default (false/empty)
@@ -777,10 +1128,10 @@
                         timestamp: new Date().toISOString(),
                         uploaderId: userId,
                     };
-
+                    
                     // Basic validation for import
-                    if (!mappedData.patientId || mappedData.patientId.length !== 13 || !mappedData.patientName) {
-                        console.warn("Skipping row (Missing ID or Name):", row);
+                    if (!mappedData.patientId || mappedData.patientId.length !== 13 || !/^\d+$/.test(mappedData.patientId) || !mappedData.patientName) {
+                        console.warn("Skipping row (Missing or Invalid ID, or Missing Name):", row);
                         errorCount++;
                         continue;
                     }
@@ -802,19 +1153,106 @@
 
         // Function to search Firestore records by patient ID
         async function searchPatientRecords() {
-            const result = await response.json();
-            const candidate = result?.candidates?.[0];
-            const jsonText = candidate?.content?.parts?.[0]?.text;
+            const searchId = document.getElementById('search-id').value.trim();
+            const searchStatus = document.getElementById('search-status');
+            const resultsContainer = document.getElementById('search-results');
+            const resultsTableBody = document.getElementById('results-table-body');
+            const searchButton = document.getElementById('search-button');
 
-            if (!jsonText) {
-                throw new Error("AI response was empty or malformed.");
+            // Basic validation
+            if (searchId.length !== 13 || !/^\d+$/.test(searchId)) {
+                searchStatus.textContent = 'กรุณาป้อนเลขบัตรประชาชน 13 หลักให้ถูกต้อง';
+                resultsContainer.classList.add('hidden');
+                return;
             }
 
-            let cleanedJson = jsonText.replace(/```json\n|```/g, '').trim();
-            return JSON.parse(cleanedJson);
-        }
+            const db = window.getDb ? window.getDb() : null;
+            const appId = window.getAppId ? window.getAppId() : 'default-app-id';
+            const auth = window.getAuth ? window.getAuth() : null;
+            const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
 
-        // --- End ID Scanner Functions ---
+            if (!db) {
+                searchStatus.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน (Firebase configuration missing).';
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            searchButton.disabled = true;
+            searchButton.textContent = 'กำลังค้นหา...';
+            searchStatus.textContent = 'กำลังค้นหาข้อมูลในฐานข้อมูล...';
+            resultsContainer.classList.add('hidden');
+            resultsTableBody.innerHTML = ''; // Clear previous results
+
+            try {
+                const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
+                const q = query(
+                    collection(db, collectionPath),
+                    where("patientId", "==", searchId)
+                );
+
+                const querySnapshot = await getDocs(q);
+                const records = [];
+                querySnapshot.forEach((doc) => {
+                    records.push(doc.data());
+                });
+
+                if (records.length === 0) {
+                    searchStatus.textContent = `ไม่พบประวัติการตรวจสำหรับเลขบัตรประชาชน ${searchId}`;
+                    resultsContainer.classList.add('hidden');
+                } else {
+                    // Sort by timestamp (newest first) in JavaScript
+                    records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    
+                    searchStatus.textContent = `พบ ${records.length} รายการสำหรับ ${records[0].patientName} (ID: ${searchId})`;
+                    resultsContainer.classList.remove('hidden');
+
+                    records.forEach(record => {
+                        const date = new Date(record.timestamp).toLocaleString('th-TH', { 
+                            year: 'numeric', month: 'short', day: 'numeric', 
+                            hour: '2-digit', minute: '2-digit' 
+                        });
+                        
+                        // Summarize findings
+                        let findingsSummary = "Normal";
+                        if (record.findings) {
+                            const found = Object.keys(record.findings).filter(key => 
+                                key !== 'normal' && (record.findings[key].or || record.findings[key].ol)
+                            );
+                            if (found.length > 0) {
+                                findingsSummary = found.slice(0, 2).join(', ') + (found.length > 2 ? '...' : '');
+                            } else if (!record.findings.normal?.or && !record.findings.normal?.ol) {
+                                findingsSummary = "N/A";
+                            }
+                        }
+                        
+                        const referralText = record.referralNeeded ? '<span class="font-bold text-red-600">ใช่</span>' : 'ไม่';
+
+                        const row = `
+                            <tr class="hover:bg-blue-50 transition duration-150">
+                                <td class="px-4 py-2 text-sm text-gray-500">${date}</td>
+                                <td class="px-4 py-2 text-sm font-medium text-gray-900">${record.patientName}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.hba1c || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOD || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOS || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${findingsSummary}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${referralText}</td>
+                            </tr>
+                        `;
+                        resultsTableBody.innerHTML += row;
+                    });
+                }
+
+            } catch (error) {
+                console.error("Error searching Firestore:", error);
+                searchStatus.textContent = `เกิดข้อผิดพลาดในการค้นหา: ${error.message}`;
+                resultsContainer.classList.add('hidden');
+            } finally {
+                searchButton.disabled = false;
+                searchButton.textContent = 'ค้นหาข้อมูล';
+            }
+        }
+        // Expose the function globally
+        window.searchPatientRecords = searchPatientRecords;
     </script>
 </body>
 </html>
