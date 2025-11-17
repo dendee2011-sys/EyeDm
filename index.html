@@ -10,10 +10,6 @@
     <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- 
-      FIX: All JavaScript is now inside this single <script type="module"> block 
-      Using environment variables for Firebase and modern event listeners.
-    -->
     <script type="module">
         // --- Firebase SDK Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -28,11 +24,37 @@
             getDocs     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- Environment-Safe Firebase Config ---
-        // Use environment variables provided by the platform (Canvas)
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : (firebaseConfig.projectId || 'default-app-id');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- START: Hybrid Configuration ---
+
+        // 1. Define the Hardcoded Fallback Config (for GitHub Pages)
+        // This is the config you provided in your very first file
+        const firebaseConfig_Hardcoded = {
+            apiKey: "AIzaSyCqJ4V6EMgqt5Th4Bhq-pDhX36emqDJ8xw",
+            authDomain: "eyedm-3ebc8.firebaseapp.com",
+            projectId: "eyedm-3ebc8",
+            storageBucket: "eyedm-3ebc8.firebasestorage.app",
+            messagingSenderId: "691083987178",
+            appId: "1:691083987178:web:6bc26b3c03479166512f93",
+            measurementId: "G-LKH0EBXFE5"
+        };
+
+        // 2. Try to use Canvas-injected config first, otherwise use the hardcoded one.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : firebaseConfig_Hardcoded;
+        
+        // 3. Get the App ID (from Canvas or from the config)
+        const appId = typeof __app_id !== 'undefined' 
+            ? __app_id 
+            : (firebaseConfig.projectId || 'default-app-id');
+        
+        // 4. Get the Auth Token (will be null on GitHub, which is correct)
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' 
+            ? __initial_auth_token 
+            : null;
+
+        // --- END: Hybrid Configuration ---
+        
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
@@ -49,12 +71,13 @@
                     auth = getAuth(app);
 
                     if (initialAuthToken) {
+                        // This will run in Canvas Preview
                         await signInWithCustomToken(auth, initialAuthToken);
-                        console.log("Firebase signed in with custom token.");
+                        console.log("Firebase signed in with custom token (Canvas Mode).");
                     } else {
-                        // Fallback for standalone testing or missing token
+                        // This will run on GitHub Pages
                         await signInAnonymously(auth);
-                        console.log("Firebase signed in anonymously.");
+                        console.log("Firebase signed in anonymously (GitHub Mode).");
                     }
                     
                     isFirebaseReady = true; // Set flag *after* auth is complete
@@ -227,7 +250,7 @@
             }
         });
 
-        // NEW: Updated function to show connection status
+        // Updated function to show connection status
         function displayUserId() {
             const userIdElement = document.getElementById('user-info');
             const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
