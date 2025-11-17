@@ -15,9 +15,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, 
-            signInWithEmailAndPassword, // **ใหม่** ใช้สำหรับล็อกอินด้วยชื่อผู้ใช้/รหัสผ่าน
+            signInWithEmailAndPassword,
             onAuthStateChanged,
-            signOut // **ใหม่** สำหรับปุ่ม Logout
+            signOut
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -26,7 +26,8 @@
             setLogLevel, 
             query,      
             where,      
-            getDocs     
+            getDocs,
+            Timestamp // **เพิ่ม** Timestamp เพื่อใช้ในการ query วันที่
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- START: Configuration ---
@@ -41,13 +42,13 @@
           measurementId: "G-N48NPP7K9J"
         };
         
-        // **Domain ที่ใช้สร้างบัญชี Firebase (ต้องตรงกับที่คุณตั้งใน Console)**
+        // Domain ที่ใช้สร้างบัญชี Firebase (ต้องตรงกับที่คุณตั้งใน Console)
         const LOGIN_EMAIL_SUFFIX = "@sisaket-clinic.org"; 
         
-        // **Hardcoded Staff Name Mapping (สำหรับแสดงชื่อ รพ.สต. บนหน้าจอ)**
+        // Hardcoded Staff Name Mapping (สำหรับแสดงชื่อ รพ.สต. บนหน้าจอ)
         const STAFF_MAPPING = {
             "03280": "รพ.สต.หนองครก",
-            // เพิ่ม ID อื่นๆ ที่นี่: "ID": "ชื่อ รพ.สต.",
+            // กรุณาเพิ่ม ID อื่นๆ ที่นี่: "ID": "ชื่อ รพ.สต.",
         };
 
         let app, db, auth;
@@ -76,7 +77,6 @@
                             isFirebaseReady = true;
                             currentUserId = user.uid;
                             
-                            // ดึง User ID (03280) จาก Email (03280@...)
                             const staffId = user.email ? user.email.split('@')[0] : user.uid;
                             currentStaffName = STAFF_MAPPING[staffId] || `User ID: ${staffId}`;
                             
@@ -86,6 +86,10 @@
                             // ซ่อน Login Modal และแสดงเนื้อหาหลัก
                             document.getElementById('login-modal').classList.add('hidden');
                             document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
+                            
+                            // **NEW** ปิดการใช้งาน Sections 2 และ 3 สำหรับ รพ.สต./PCU
+                            toggleSectionsReadOnly(true); 
+
                         } else {
                             console.log("Auth State Changed: Logged OUT");
                             isFirebaseReady = false;
@@ -97,6 +101,9 @@
                             // แสดง Login Modal และซ่อนเนื้อหาหลัก
                             document.getElementById('login-modal').classList.remove('hidden');
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
+                            
+                            // **NEW** เปิดการใช้งาน (ในทางเทคนิค) แต่เนื้อหาหลักถูกซ่อนอยู่
+                            toggleSectionsReadOnly(false); 
                         }
                     });
 
@@ -110,7 +117,22 @@
             }
         }
         
-        // **NEW** Login Function
+        // **NEW** ฟังก์ชันควบคุมการปิดใช้งาน Sections
+        function toggleSectionsReadOnly(disable) {
+            const sections = [
+                document.getElementById('section2-container'),
+                document.getElementById('section3-container')
+            ];
+            
+            sections.forEach(section => {
+                if (section) {
+                    section.classList.toggle('opacity-50', disable);
+                    section.classList.toggle('pointer-events-none', disable);
+                    section.title = disable ? "จำกัดสิทธิ์: รพ.สต./PCU กรอกได้เฉพาะส่วนที่ 1" : "";
+                }
+            });
+        }
+        
         async function handleLogin() {
             const userIdInput = document.getElementById('login-user-id').value.trim();
             const passwordInput = document.getElementById('login-password').value.trim();
@@ -122,7 +144,6 @@
                 return;
             }
             
-            // สร้าง Email จาก User ID
             const email = userIdInput + LOGIN_EMAIL_SUFFIX;
 
             loginButton.disabled = true;
@@ -130,7 +151,6 @@
 
             try {
                 await signInWithEmailAndPassword(auth, email, passwordInput);
-                // ถ้าสำเร็จ onAuthStateChanged จะทำงานเอง
                 loginStatus.textContent = 'เข้าสู่ระบบสำเร็จ!';
             } catch (error) {
                 console.error("Login FAILED:", error);
@@ -148,11 +168,10 @@
             }
         }
         
-        // **NEW** Logout Function
         async function handleLogout() {
              try {
                 await signOut(auth);
-                displayMessage('ออกจากระบบสำเร็จ', 'info');
+                hideMessage();
              } catch (error) {
                  console.error("Logout FAILED:", error);
                  displayMessage(`ออกจากระบบล้มเหลว: ${error.message}`, 'error');
@@ -171,7 +190,7 @@
                 logoutButton.classList.add('hidden');
                 staffNameDisplay.textContent = 'ไม่ได้เข้าสู่ระบบ';
             } else if (user) {
-                userIdElement.innerHTML = `<span class="font-bold text-green-600">เชื่อมต่อสำเร็จ</span> | ID: <span class="text-xs">${user.uid}</span>`;
+                userIdElement.innerHTML = `<span class="font-bold text-green-600">เชื่อมต่อสำเร็จ</span> | UID: <span class="text-xs">${user.uid.substring(0, 10)}...</span>`;
                 staffNameDisplay.textContent = `ผู้ใช้งานปัจจุบัน: ${currentStaffName}`;
                 userIdElement.className = "text-sm text-gray-700";
                 logoutButton.classList.remove('hidden');
@@ -183,17 +202,6 @@
             }
         }
         
-        // ... (ส่วนอื่น ๆ ของ App Logic เหมือนเดิม)
-        let searchTimeout;
-        function debounce(func, delay = 300) {
-            return function(...args) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    func.apply(this, args);
-                }, delay);
-            };
-        }
-
         const debouncedSearchPatient = debounce(async () => {
             if (!isFirebaseReady) return; 
             validateSaveButton(); 
@@ -230,9 +238,13 @@
                     resultsContainer.innerHTML = '<div class="p-2 text-gray-500 text-sm">ไม่พบข้อมูล</div>';
                 } else {
                     patientMap.forEach((patientData, patientId) => {
+                        const staffId = (patientData.uploaderId || '').split('@')[0];
+                        const staffName = STAFF_MAPPING[staffId] || staffId;
+                        const queueNo = patientData.queueNumber || 'N/A';
+                        
                         const item = document.createElement('div');
                         item.className = 'p-2 text-sm text-gray-800 hover:bg-blue-100 cursor-pointer';
-                        item.textContent = `${patientId} - ${patientData.patientName} (${STAFF_MAPPING[patientData.uploaderId.split('@')[0]] || 'N/A'})`;
+                        item.textContent = `${patientId} - ${patientData.patientName} (คิว: ${queueNo}, บันทึกโดย: ${staffName})`;
                         item.onclick = (e) => {
                             e.stopPropagation(); 
                             populateFormWithPatientData(patientData);
@@ -249,6 +261,7 @@
         }, 300);
 
         function populateFormWithPatientData(data) {
+            // ... (populateFormWithPatientData logic remains the same)
             const findingsContainer = document.getElementById('section3-findings');
             findingsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
             document.getElementById('patient-id').value = data.patientId || '';
@@ -300,14 +313,7 @@
             displayMessage('โหลดข้อมูลผู้ป่วยสำเร็จ กรุณาตรวจสอบและอัปเดตข้อมูล', 'success');
         }
 
-        document.addEventListener('click', (e) => {
-            const resultsContainer = document.getElementById('autocomplete-results');
-            const searchInput = document.getElementById('patient-id');
-            if (resultsContainer && !resultsContainer.contains(e.target) && e.target !== searchInput) {
-                resultsContainer.classList.add('hidden');
-            }
-        });
-
+        // ... (other helper functions remain the same)
         function togglePreviousExamCount(isChecked) {
             const container = document.getElementById('previous-exam-count-container');
             if (isChecked) {
@@ -359,13 +365,66 @@
             resultsContainer.classList.add('hidden');
             validateSaveButton();
         }
+        
+        // **NEW** Helper Function to get today's queue count
+        async function getTodayQueueNumber() {
+            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+            
+            // 1. กำหนดขอบเขตของวันนี้ (00:00:00 ถึง 23:59:59 ใน Local Time)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            // 2. สร้าง Query เพื่อหาเอกสารที่สร้างระหว่าง today@00:00:00 ถึง tomorrow@00:00:00
+            const q = query(
+                collection(db, collectionPath),
+                where("queueDate", "==", today.toISOString().split('T')[0]) // ใช้ date string สำหรับการกรองวันที่
+            );
+            
+            try {
+                const querySnapshot = await getDocs(q);
+                // คิวจะเป็นจำนวนเอกสารที่พบ + 1
+                return querySnapshot.size + 1;
+            } catch (error) {
+                console.error("Error fetching today's queue count:", error);
+                // ถ้ามี error ให้ถือว่าเป็นคิวแรก
+                return 1;
+            }
+        }
+        
+        // **NEW** Function to display queue result
+        function displayQueueResult(patientName, queueNumber, staffName) {
+            const queueBox = document.getElementById('queue-display-box');
+            queueBox.innerHTML = `
+                <div class="p-6 bg-yellow-100 border border-yellow-300 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-extrabold text-yellow-800 mb-2">🎉 บันทึกสำเร็จ!</h3>
+                    <p class="text-6xl font-black text-red-600 mb-4">${queueNumber}</p>
+                    <p class="text-lg font-semibold text-gray-800">ผู้ป่วย: ${patientName}</p>
+                    <p class="text-sm text-gray-600 mt-2">คิวสำหรับวันที่: ${new Date().toLocaleDateString('th-TH')}</p>
+                    <p class="text-xs text-gray-500">บันทึกโดย: ${staffName}</p>
+                </div>
+            `;
+            // ซ่อนฟอร์มและแสดงคิว
+            document.getElementById('main-app-content').classList.add('hidden');
+            queueBox.classList.remove('hidden');
+            
+            // ตั้งเวลาให้กลับไปหน้าฟอร์มหลังจาก 5 วินาที
+            setTimeout(() => {
+                queueBox.classList.add('hidden');
+                document.getElementById('main-app-content').classList.remove('hidden');
+                clearForm();
+            }, 5000);
+        }
+
 
         async function savePatientData() {
             if (!isFirebaseReady || !currentUserId) {
                 displayMessage('กรุณาล็อกอินก่อนบันทึกข้อมูล', 'error');
                 return;
             }
-            const userId = auth.currentUser.email; // **สำคัญ** บันทึกด้วย Email ของผู้ใช้
+            const userEmail = auth.currentUser.email; 
             const saveButton = document.getElementById('save-button');
             const buttonText = document.getElementById('save-button-text');
             const spinner = document.getElementById('save-spinner');
@@ -374,6 +433,10 @@
             spinner.classList.remove('hidden');
             hideMessage();
             try {
+                // **NEW** 1. Get today's queue number
+                const queueNumber = await getTodayQueueNumber();
+                const todayDateString = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+                
                 const recordData = {
                     patientId: document.getElementById('patient-id').value.trim(),
                     patientName: document.getElementById('patient-name').value.trim(),
@@ -387,30 +450,27 @@
                     isWheelchair: document.getElementById('is-wheelchair').checked,
                     hasPreviousExam: document.getElementById('has-previous-exam').checked,
                     previousExamCount: document.getElementById('has-previous-exam').checked ? Number(document.getElementById('previous-exam-count').value) : null,
-                    hasCataract: document.getElementById('has-cataract').checked,
-                    hearingClear: document.getElementById('hearing-clear').checked,
-                    canSitChair: document.getElementById('can-sit-chair').checked,
-                    needsEyelidLift: document.getElementById('needs-eyelid-lift').checked,
-                    findings: {
-                        normal: { or: document.getElementById('finding-normal-or').checked, ol: document.getElementById('finding-normal-ol').checked },
-                        microaneurysm: { or: document.getElementById('finding-microaneurysm-or').checked, ol: document.getElementById('finding-microaneurysm-ol').checked },
-                        hardExudate: { or: document.getElementById('finding-hardexudate-or').checked, ol: document.getElementById('finding-hardexudate-ol').checked },
-                        flameHemorrhage: { or: document.getElementById('finding-flame-or').checked, ol: document.getElementById('finding-flame-ol').checked },
-                        venousBeading: { or: document.getElementById('finding-venous-or').checked, ol: document.getElementById('finding-venous-ol').checked },
-                        irma: { or: document.getElementById('finding-irma-or').checked, ol: document.getElementById('finding-irma-ol').checked },
-                        newVessel: { or: document.getElementById('finding-newvessel-or').checked, ol: document.getElementById('finding-newvessel-ol').checked },
-                        preretinalHemorrhage: { or: document.getElementById('finding-preretinal-or').checked, ol: document.getElementById('finding-preretinal-ol').checked },
-                        vitreousHemorrhage: { or: document.getElementById('finding-vitreous-or').checked, ol: document.getElementById('finding-vitreous-ol').checked },
-                        fibrousProliferation: { or: document.getElementById('finding-fibrous-or').checked, ol: document.getElementById('finding-fibrous-ol').checked }
-                    },
-                    referralNeeded: document.getElementById('referral-needed').checked,
+                    
+                    // **ส่วนที่ 2 และ 3 ถูกบันทึกเป็นค่าว่าง เพราะ รพ.สต./PCU ไม่ได้กรอก**
+                    hasCataract: false,
+                    hearingClear: false,
+                    canSitChair: false,
+                    needsEyelidLift: false,
+                    findings: {}, 
+                    referralNeeded: false,
+                    // -----------------------------------------------------------------
+
                     timestamp: new Date().toISOString(),
-                    uploaderId: userId, // **บันทึก Email (ID) ผู้บันทึก**
+                    uploaderId: userEmail,
+                    queueNumber: queueNumber, // **NEW** Queue Number
+                    queueDate: todayDateString // **NEW** Date for queue grouping
                 };
                 const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 await addDoc(collection(db, collectionPath), recordData);
-                displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
-                clearForm(); 
+                
+                // **NEW** 2. Display the Queue Result
+                displayQueueResult(recordData.patientName, queueNumber, currentStaffName);
+
             } catch (error) {
                 console.error("Error saving patient data:", error);
                 displayMessage(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`, 'error');
@@ -420,13 +480,13 @@
                 spinner.classList.add('hidden');
             }
         }
-
+        // ... (importFromExcel logic needs uploaderEmail)
         async function importFromExcel() {
             if (!isFirebaseReady || !currentUserId) {
                 displayMessage('กรุณาล็อกอินก่อนนำเข้าข้อมูล', 'error');
                 return;
             }
-            const userId = auth.currentUser.email; // **สำคัญ** ใช้ Email ของผู้ใช้
+            const userEmail = auth.currentUser.email;
             const fileInput = document.getElementById('excel-file-input');
             const importButton = document.getElementById('import-button');
             const buttonText = document.getElementById('import-button-text');
@@ -458,7 +518,8 @@
                     throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
                 }
                 statusEl.textContent = `พบข้อมูล ${jsonData.length} รายการ กำลังนำเข้า...`;
-                const result = await processImport(jsonData, userId);
+                // **NEW** Pass uploader email for tracking
+                const result = await processImport(jsonData, userEmail); 
                 statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
                 statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
                 if (result.errorCount > 0) {
@@ -491,10 +552,17 @@
             let successCount = 0;
             let errorCount = 0;
             const statusEl = document.getElementById('import-status');
+            const todayDateString = new Date().toISOString().split('T')[0];
+            
+            // **NEW** ต้องดึงคิวปัจจุบันมาก่อน เพื่อให้คิวที่นำเข้าต่อจากคิวล่าสุด
+            let currentQueue = await getTodayQueueNumber(); 
+            currentQueue--; // ลดลง 1 เพราะ queueNumber++ ใน loop
+
             for (let i = 0; i < jsonData.length; i++) {
                 const row = jsonData[i];
                 statusEl.textContent = `กำลังประมวลผล ${i + 1} / ${jsonData.length}...`;
                 try {
+                    currentQueue++; // เพิ่มคิวสำหรับรายการใหม่
                     const mappedData = {
                         patientId: String(row["เลขบัตรประชาชน"] || "").trim(),
                         patientName: String(row["ชื่อ-สกุล"] || "").trim(),
@@ -510,7 +578,9 @@
                         previousExamCount: Number(row["จำนวนครั้ง"]) || null,
                         hasCataract: false, hearingClear: false, canSitChair: false, needsEyelidLift: false, findings: {}, referralNeeded: false,
                         timestamp: new Date().toISOString(),
-                        uploaderId: uploaderEmail, // **บันทึก Email (ID) ผู้บันทึก**
+                        uploaderId: uploaderEmail,
+                        queueNumber: currentQueue, // **NEW** Queue Number
+                        queueDate: todayDateString // **NEW** Date for queue grouping
                     };
                     if (!mappedData.patientId || mappedData.patientId.length !== 13 || !/^\d+$/.test(mappedData.patientId) || !mappedData.patientName) {
                         console.warn("Skipping row (Missing or Invalid ID, or Missing Name):", row);
@@ -567,11 +637,22 @@
                     searchStatus.textContent = `ไม่พบประวัติการตรวจสำหรับเลขบัตรประชาชน ${searchId}`;
                     resultsContainer.classList.add('hidden');
                 } else {
-                    records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    // Sort by queueDate and then queueNumber (if available) or timestamp
+                    records.sort((a, b) => {
+                        const dateA = a.queueDate || a.timestamp;
+                        const dateB = b.queueDate || b.timestamp;
+                        if (dateB > dateA) return 1;
+                        if (dateB < dateA) return -1;
+                        // Secondary sort by queueNumber if dates are the same
+                        const qA = a.queueNumber || 9999;
+                        const qB = b.queueNumber || 9999;
+                        return qA - qB;
+                    });
+                    
                     searchStatus.textContent = `พบ ${records.length} รายการสำหรับ ${records[0].patientName} (ID: ${searchId})`;
                     resultsContainer.classList.remove('hidden');
                     records.forEach(record => {
-                        const date = new Date(record.timestamp).toLocaleString('th-TH', { 
+                        const date = new Date(record.timestamp).toLocaleDateString('th-TH', { 
                             year: 'numeric', month: 'short', day: 'numeric', 
                             hour: '2-digit', minute: '2-digit' 
                         });
@@ -581,25 +662,25 @@
                                 key !== 'normal' && (record.findings[key].or || record.findings[key].ol)
                             );
                             if (found.length > 0) {
-                                findingsSummary = found.slice(0, 2).join(', ') + (found.length > 2 ? '...' : '');
+                                findingsSummary = found.length > 0 ? "มีผลตรวจ" : "Normal";
                             } else if (!record.findings.normal?.or && !record.findings.normal?.ol) {
                                 findingsSummary = "N/A";
                             }
                         }
                         const referralText = record.referralNeeded ? '<span class="font-bold text-red-600">ใช่</span>' : 'ไม่';
                         
-                        // แสดงชื่อ รพ.สต. ที่บันทึก
                         const staffEmail = record.uploaderId || '';
                         const staffId = staffEmail.split('@')[0];
                         const staffName = STAFF_MAPPING[staffId] || staffId;
+                        const queueNo = record.queueNumber || 'N/A';
 
                         const row = `
                             <tr class="hover:bg-blue-50 transition duration-150">
                                 <td class="px-4 py-2 text-sm text-gray-500">${date}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${queueNo}</td>
                                 <td class="px-4 py-2 text-sm font-medium text-gray-900">${record.patientName}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${staffName}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${record.vaOD || 'N/A'}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${record.vaOS || 'N/A'}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${findingsSummary}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${referralText}</td>
                             </tr>
@@ -616,13 +697,12 @@
             }
         }
 
+
         // --- Setup Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
-            // ลบ manualSignIn ออก
             document.getElementById('login-button').addEventListener('click', handleLogin);
             document.getElementById('logout-button').addEventListener('click', handleLogout);
             
-            // ทำให้สามารถกด Enter เพื่อ Login ได้
             document.getElementById('login-modal').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     handleLogin();
@@ -646,7 +726,7 @@
 </head>
 <body class="bg-gray-50 p-4 sm:p-8 min-h-screen flex items-center justify-center font-['Inter']">
 
-    <!-- **NEW** Login Modal (แทน Unlock Overlay) -->
+    <!-- Login Modal -->
     <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm">
             <h2 class="text-2xl font-bold text-blue-800 mb-2 text-center">เข้าสู่ระบบเจ้าหน้าที่</h2>
@@ -693,6 +773,14 @@
             <div id="user-info" class="text-sm text-right text-gray-500">
                 กำลังเชื่อมต่อ...
             </div>
+        </div>
+
+        <!-- **NEW** Queue Display Box (ซ่อนอยู่) -->
+        <div id="queue-display-box" class="fixed inset-0 bg-gray-50 bg-opacity-75 flex items-center justify-center p-4 z-40 hidden">
+            <div class="w-full max-w-md text-center">
+                <!-- เนื้อหาจะถูกสร้างด้วย JS -->
+            </div>
+            <button onclick="document.getElementById('queue-display-box').classList.add('hidden'); document.getElementById('main-app-content').classList.remove('hidden'); clearForm();" class="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-3xl">&times;</button>
         </div>
 
 
@@ -809,7 +897,8 @@
                 </div>
             </div>
             
-            <div class="mb-8 p-6 bg-gray-100 rounded-xl border border-gray-200">
+            <!-- **NEW** Section 2 Container (Disabled for PCU) -->
+            <div id="section2-container" class="mb-8 p-6 bg-gray-100 rounded-xl border border-gray-200 transition duration-300">
                 <h2 class="text-xl font-bold text-gray-700 mb-4">ส่วนที่ 2: ข้อมูลสำหรับเจ้าหน้าที่ (Hospital)</h2>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="flex items-center">
@@ -831,7 +920,8 @@
                 </div>
             </div>
 
-            <div class="mb-8 p-6 bg-green-50 rounded-xl border border-green-200">
+            <!-- **NEW** Section 3 Container (Disabled for PCU) -->
+            <div id="section3-container" class="mb-8 p-6 bg-green-50 rounded-xl border border-green-200 transition duration-300">
                 <h2 class="text-xl font-bold text-green-700 mb-4">ส่วนที่ 3: ผลการตรวจจอประสาทตา</h2>
                 <div class="grid grid-cols-3 gap-4 mb-2">
                     <div class="font-bold text-gray-700">ผลการตรวจ (Findings)</div>
@@ -978,10 +1068,10 @@
                                 <thead class="bg-gray-200">
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">วัน/เวลา</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">คิว</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ชื่อ-สกุล</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">รพ.สต. ผู้บันทึก</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OD)</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OS)</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ผลตรวจ (ย่อ)</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ส่งต่อ</th>
                                     </tr>
