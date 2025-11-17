@@ -29,7 +29,7 @@
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- START: Direct Configuration (Hardcoded) ---
-        // **คำเตือนด้านความปลอดภัย**: การใส่คีย์ลงในโค้ดโดยตรงมีความเสี่ยง หากโค้ดนี้ถูกเผยแพร่สู่สาธารณะบน GitHub
+        // Config ที่คุณให้มา
         const firebaseConfig = {
           apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
           authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
@@ -41,7 +41,7 @@
         };
         
         let app, db, auth;
-        let globalAppId = firebaseConfig.appId || "default-app-id"; // ใช้ App ID โดยตรง
+        let globalAppId = firebaseConfig.appId || "default-app-id";
         let isFirebaseReady = false; 
         let currentUserId = null;
         // --- END: Direct Configuration ---
@@ -50,7 +50,6 @@
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
-        // ฟังก์ชันเริ่มต้น Firebase โดยรับ Config ที่ Hardcode มา
         async function initializeFirebase(config) {
             const userIdElement = document.getElementById('user-info');
             try {
@@ -117,7 +116,7 @@
             }
         }
 
-        // --- Global App Logic (ส่วนอื่น ๆ ของแอปยังคงเหมือนเดิม) ---
+        // --- Global App Logic ---
         let searchTimeout;
         function debounce(func, delay = 300) {
             return function(...args) {
@@ -142,8 +141,10 @@
                 console.warn("DB not ready for autocomplete");
                 return;
             }
-            const userId = currentUserId;
-            const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
+            
+            // **การแก้ไข 1/4: เปลี่ยนเป็น Public Path สำหรับค้นหาแบบ Autocomplete**
+            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`; 
+
             const q = query(
                 collection(db, collectionPath),
                 where("patientId", ">=", searchId),
@@ -354,7 +355,8 @@
                     timestamp: new Date().toISOString(),
                     uploaderId: userId,
                 };
-                const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
+                // **การแก้ไข 2/4: เปลี่ยนเป็น Public Path สำหรับการบันทึกข้อมูล**
+                const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 await addDoc(collection(db, collectionPath), recordData);
                 displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
                 clearForm(); 
@@ -434,7 +436,8 @@
         async function processImport(jsonData) {
             if (!db || !currentUserId) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน หรือยังไม่ได้ล็อกอิน");
             const userId = currentUserId;
-            const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
+            // **การแก้ไข 3/4: เปลี่ยนเป็น Public Path สำหรับการนำเข้า Excel**
+            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             let successCount = 0;
             let errorCount = 0;
             const statusEl = document.getElementById('import-status');
@@ -501,7 +504,8 @@
             resultsTableBody.innerHTML = '';
             try {
                 const userId = currentUserId;
-                const collectionPath = `/artifacts/${globalAppId}/users/${userId}/retina_records`;
+                // **การแก้ไข 4/4: เปลี่ยนเป็น Public Path สำหรับการค้นหาข้อมูล**
+                const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 const q = query(
                     collection(db, collectionPath),
                     where("patientId", "==", searchId)
@@ -562,8 +566,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('unlock-button').addEventListener('click', manualSignIn);
 
-            // ลบ Event Listener ของปุ่มตั้งค่าออก
-
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
             document.getElementById('patient-name').addEventListener('input', validateSaveButton);
             document.getElementById('patient-id').addEventListener('input', validateSaveButton); 
@@ -574,7 +576,6 @@
             document.getElementById('search-button').addEventListener('click', searchPatientRecords);
             
             validateSaveButton();
-            // เรียกใช้ initializeFirebase ทันทีด้วย config ที่ฝังไว้
             initializeFirebase(firebaseConfig);
         });
 
@@ -605,12 +606,11 @@
             บันทึกและค้นหาข้อมูลการตรวจจอประสาทตา (ตามแบบฟอร์ม รพ.ศรีสะเกษ)
         </p>
 
-        <!-- ส่วนแสดงสถานะ + ปุ่มตั้งค่า (เหลือแค่สถานะ) -->
+        <!-- ส่วนแสดงสถานะ -->
         <div class="flex justify-between items-center mb-4">
              <div id="user-info" class="text-sm text-left text-gray-500 flex-grow text-right">
                 กำลังเชื่อมต่อ...
             </div>
-            <!-- ปุ่มตั้งค่าถูกลบออกแล้ว -->
         </div>
 
 
