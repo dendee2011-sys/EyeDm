@@ -15,8 +15,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, 
-            signInAnonymously, 
-            onAuthStateChanged
+            signInWithEmailAndPassword, // **ใหม่** ใช้สำหรับล็อกอินด้วยชื่อผู้ใช้/รหัสผ่าน
+            onAuthStateChanged,
+            signOut // **ใหม่** สำหรับปุ่ม Logout
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -28,8 +29,8 @@
             getDocs     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- START: Direct Configuration (Hardcoded) ---
-        // Config ที่คุณให้มา
+        // --- START: Configuration ---
+        // Config ที่คุณให้มา (Hardcoded)
         const firebaseConfig = {
           apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
           authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
@@ -40,18 +41,27 @@
           measurementId: "G-N48NPP7K9J"
         };
         
+        // **Domain ที่ใช้สร้างบัญชี Firebase (ต้องตรงกับที่คุณตั้งใน Console)**
+        const LOGIN_EMAIL_SUFFIX = "@sisaket-clinic.org"; 
+        
+        // **Hardcoded Staff Name Mapping (สำหรับแสดงชื่อ รพ.สต. บนหน้าจอ)**
+        const STAFF_MAPPING = {
+            "03280": "รพ.สต.หนองครก",
+            // เพิ่ม ID อื่นๆ ที่นี่: "ID": "ชื่อ รพ.สต.",
+        };
+
         let app, db, auth;
         let globalAppId = firebaseConfig.appId || "default-app-id";
         let isFirebaseReady = false; 
         let currentUserId = null;
-        // --- END: Direct Configuration ---
+        let currentStaffName = null;
+        // --- END: Configuration ---
         
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
         async function initializeFirebase(config) {
-            const userIdElement = document.getElementById('user-info');
             try {
                 if (config.apiKey) {
                     app = initializeApp(config);
@@ -62,32 +72,33 @@
 
                     onAuthStateChanged(auth, (user) => {
                         if (user) {
-                            console.log("Auth State Changed: Logged IN", user.uid);
+                            console.log("Auth State Changed: Logged IN", user.uid, user.email);
                             isFirebaseReady = true;
                             currentUserId = user.uid;
+                            
+                            // ดึง User ID (03280) จาก Email (03280@...)
+                            const staffId = user.email ? user.email.split('@')[0] : user.uid;
+                            currentStaffName = STAFF_MAPPING[staffId] || `User ID: ${staffId}`;
+                            
                             displayUserId(user); 
                             validateSaveButton(); 
-                            document.getElementById('unlock-overlay').classList.add('hidden');
+                            
+                            // ซ่อน Login Modal และแสดงเนื้อหาหลัก
+                            document.getElementById('login-modal').classList.add('hidden');
                             document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
                         } else {
                             console.log("Auth State Changed: Logged OUT");
                             isFirebaseReady = false;
                             currentUserId = null;
+                            currentStaffName = null;
                             displayUserId(null); 
                             validateSaveButton(); 
+                            
+                            // แสดง Login Modal และซ่อนเนื้อหาหลัก
+                            document.getElementById('login-modal').classList.remove('hidden');
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
                         }
                     });
-
-                    try {
-                        console.log("Attempting automatic anonymous sign-in...");
-                        await signInAnonymously(auth);
-                        console.log("Automatic sign-in SUCCESS");
-                    } catch (error) {
-                        console.warn("Automatic sign-in FAILED (This is expected on iPad). Showing unlock button.");
-                        displayUserId(null); 
-                        document.getElementById('unlock-overlay').classList.remove('hidden');
-                    }
 
                 } else {
                     console.error("Firebase configuration is missing or empty.");
@@ -99,24 +110,80 @@
             }
         }
         
-        async function manualSignIn() {
-            const unlockButton = document.getElementById('unlock-button');
-            const unlockStatus = document.getElementById('unlock-status');
+        // **NEW** Login Function
+        async function handleLogin() {
+            const userIdInput = document.getElementById('login-user-id').value.trim();
+            const passwordInput = document.getElementById('login-password').value.trim();
+            const loginStatus = document.getElementById('login-status');
+            const loginButton = document.getElementById('login-button');
+
+            if (!userIdInput || !passwordInput) {
+                loginStatus.textContent = "กรุณากรอกทั้งชื่อผู้ใช้และรหัสผ่าน";
+                return;
+            }
             
-            unlockButton.disabled = true;
-            unlockStatus.textContent = 'กำลังเชื่อมต่อ...';
+            // สร้าง Email จาก User ID
+            const email = userIdInput + LOGIN_EMAIL_SUFFIX;
+
+            loginButton.disabled = true;
+            loginStatus.textContent = 'กำลังตรวจสอบข้อมูล...';
 
             try {
-                await signInAnonymously(auth);
-                console.log("Manual sign-in SUCCESS");
+                await signInWithEmailAndPassword(auth, email, passwordInput);
+                // ถ้าสำเร็จ onAuthStateChanged จะทำงานเอง
+                loginStatus.textContent = 'เข้าสู่ระบบสำเร็จ!';
             } catch (error) {
-                console.error("Manual sign-in FAILED:", error);
-                unlockStatus.textContent = `เชื่อมต่อล้มเหลว: ${error.message}`;
-                unlockButton.disabled = false;
+                console.error("Login FAILED:", error);
+                let errorMessage = "เข้าสู่ระบบล้มเหลว";
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    errorMessage = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "รูปแบบชื่อผู้ใช้ไม่ถูกต้อง";
+                } else {
+                    errorMessage = `ข้อผิดพลาด: ${error.message}`;
+                }
+                loginStatus.textContent = errorMessage;
+            } finally {
+                loginButton.disabled = false;
             }
+        }
+        
+        // **NEW** Logout Function
+        async function handleLogout() {
+             try {
+                await signOut(auth);
+                displayMessage('ออกจากระบบสำเร็จ', 'info');
+             } catch (error) {
+                 console.error("Logout FAILED:", error);
+                 displayMessage(`ออกจากระบบล้มเหลว: ${error.message}`, 'error');
+             }
         }
 
         // --- Global App Logic ---
+
+        function displayUserId(user, errorMessage = null) {
+            const userIdElement = document.getElementById('user-info');
+            const logoutButton = document.getElementById('logout-button');
+            const staffNameDisplay = document.getElementById('staff-name-display');
+
+            if (errorMessage) {
+                userIdElement.innerHTML = `<span class="font-bold text-red-600">${errorMessage}</span>`;
+                logoutButton.classList.add('hidden');
+                staffNameDisplay.textContent = 'ไม่ได้เข้าสู่ระบบ';
+            } else if (user) {
+                userIdElement.innerHTML = `<span class="font-bold text-green-600">เชื่อมต่อสำเร็จ</span> | ID: <span class="text-xs">${user.uid}</span>`;
+                staffNameDisplay.textContent = `ผู้ใช้งานปัจจุบัน: ${currentStaffName}`;
+                userIdElement.className = "text-sm text-gray-700";
+                logoutButton.classList.remove('hidden');
+            } else {
+                userIdElement.innerHTML = `<span class="font-bold text-red-600">กรุณาเข้าสู่ระบบ</span>`;
+                staffNameDisplay.textContent = 'ไม่ได้เข้าสู่ระบบ';
+                userIdElement.className = "text-sm text-red-600";
+                logoutButton.classList.add('hidden');
+            }
+        }
+        
+        // ... (ส่วนอื่น ๆ ของ App Logic เหมือนเดิม)
         let searchTimeout;
         function debounce(func, delay = 300) {
             return function(...args) {
@@ -142,7 +209,6 @@
                 return;
             }
             
-            // **การแก้ไข 1/4: เปลี่ยนเป็น Public Path สำหรับค้นหาแบบ Autocomplete**
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`; 
 
             const q = query(
@@ -166,7 +232,7 @@
                     patientMap.forEach((patientData, patientId) => {
                         const item = document.createElement('div');
                         item.className = 'p-2 text-sm text-gray-800 hover:bg-blue-100 cursor-pointer';
-                        item.textContent = `${patientId} - ${patientData.patientName}`;
+                        item.textContent = `${patientId} - ${patientData.patientName} (${STAFF_MAPPING[patientData.uploaderId.split('@')[0]] || 'N/A'})`;
                         item.onclick = (e) => {
                             e.stopPropagation(); 
                             populateFormWithPatientData(patientData);
@@ -242,20 +308,6 @@
             }
         });
 
-        function displayUserId(user, errorMessage = null) {
-            const userIdElement = document.getElementById('user-info');
-            if (errorMessage) {
-                userIdElement.innerHTML = `<span class="font-bold text-red-600">${errorMessage}</span>`;
-                userIdElement.className = "text-sm text-right text-red-600 mb-4";
-            } else if (user) {
-                userIdElement.innerHTML = `<span class="font-bold text-green-600">เชื่อมต่อสำเร็จ</span> | ID: <span class="text-xs">${user.uid}</span>`;
-                userIdElement.className = "text-sm text-right text-gray-700 mb-4";
-            } else {
-                userIdElement.innerHTML = `<span class="font-bold text-red-600">ยังไม่เชื่อมต่อ</span>`;
-                userIdElement.className = "text-sm text-right text-red-600 mb-4";
-            }
-        }
-
         function togglePreviousExamCount(isChecked) {
             const container = document.getElementById('previous-exam-count-container');
             if (isChecked) {
@@ -313,7 +365,7 @@
                 displayMessage('กรุณาล็อกอินก่อนบันทึกข้อมูล', 'error');
                 return;
             }
-            const userId = currentUserId; 
+            const userId = auth.currentUser.email; // **สำคัญ** บันทึกด้วย Email ของผู้ใช้
             const saveButton = document.getElementById('save-button');
             const buttonText = document.getElementById('save-button-text');
             const spinner = document.getElementById('save-spinner');
@@ -353,9 +405,8 @@
                     },
                     referralNeeded: document.getElementById('referral-needed').checked,
                     timestamp: new Date().toISOString(),
-                    uploaderId: userId,
+                    uploaderId: userId, // **บันทึก Email (ID) ผู้บันทึก**
                 };
-                // **การแก้ไข 2/4: เปลี่ยนเป็น Public Path สำหรับการบันทึกข้อมูล**
                 const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 await addDoc(collection(db, collectionPath), recordData);
                 displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
@@ -375,6 +426,7 @@
                 displayMessage('กรุณาล็อกอินก่อนนำเข้าข้อมูล', 'error');
                 return;
             }
+            const userId = auth.currentUser.email; // **สำคัญ** ใช้ Email ของผู้ใช้
             const fileInput = document.getElementById('excel-file-input');
             const importButton = document.getElementById('import-button');
             const buttonText = document.getElementById('import-button-text');
@@ -406,7 +458,7 @@
                     throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
                 }
                 statusEl.textContent = `พบข้อมูล ${jsonData.length} รายการ กำลังนำเข้า...`;
-                const result = await processImport(jsonData);
+                const result = await processImport(jsonData, userId);
                 statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
                 statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
                 if (result.errorCount > 0) {
@@ -433,10 +485,8 @@
             return !!value;
         }
 
-        async function processImport(jsonData) {
+        async function processImport(jsonData, uploaderEmail) {
             if (!db || !currentUserId) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน หรือยังไม่ได้ล็อกอิน");
-            const userId = currentUserId;
-            // **การแก้ไข 3/4: เปลี่ยนเป็น Public Path สำหรับการนำเข้า Excel**
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             let successCount = 0;
             let errorCount = 0;
@@ -460,7 +510,7 @@
                         previousExamCount: Number(row["จำนวนครั้ง"]) || null,
                         hasCataract: false, hearingClear: false, canSitChair: false, needsEyelidLift: false, findings: {}, referralNeeded: false,
                         timestamp: new Date().toISOString(),
-                        uploaderId: userId,
+                        uploaderId: uploaderEmail, // **บันทึก Email (ID) ผู้บันทึก**
                     };
                     if (!mappedData.patientId || mappedData.patientId.length !== 13 || !/^\d+$/.test(mappedData.patientId) || !mappedData.patientName) {
                         console.warn("Skipping row (Missing or Invalid ID, or Missing Name):", row);
@@ -503,8 +553,6 @@
             resultsContainer.classList.add('hidden');
             resultsTableBody.innerHTML = '';
             try {
-                const userId = currentUserId;
-                // **การแก้ไข 4/4: เปลี่ยนเป็น Public Path สำหรับการค้นหาข้อมูล**
                 const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 const q = query(
                     collection(db, collectionPath),
@@ -539,11 +587,17 @@
                             }
                         }
                         const referralText = record.referralNeeded ? '<span class="font-bold text-red-600">ใช่</span>' : 'ไม่';
+                        
+                        // แสดงชื่อ รพ.สต. ที่บันทึก
+                        const staffEmail = record.uploaderId || '';
+                        const staffId = staffEmail.split('@')[0];
+                        const staffName = STAFF_MAPPING[staffId] || staffId;
+
                         const row = `
                             <tr class="hover:bg-blue-50 transition duration-150">
                                 <td class="px-4 py-2 text-sm text-gray-500">${date}</td>
                                 <td class="px-4 py-2 text-sm font-medium text-gray-900">${record.patientName}</td>
-                                <td class="px-4 py-2 text-sm text-gray-700">${record.hba1c || 'N/A'}</td>
+                                <td class="px-4 py-2 text-sm text-gray-700">${staffName}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${record.vaOD || 'N/A'}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${record.vaOS || 'N/A'}</td>
                                 <td class="px-4 py-2 text-sm text-gray-700">${findingsSummary}</td>
@@ -564,7 +618,16 @@
 
         // --- Setup Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('unlock-button').addEventListener('click', manualSignIn);
+            // ลบ manualSignIn ออก
+            document.getElementById('login-button').addEventListener('click', handleLogin);
+            document.getElementById('logout-button').addEventListener('click', handleLogout);
+            
+            // ทำให้สามารถกด Enter เพื่อ Login ได้
+            document.getElementById('login-modal').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    handleLogin();
+                }
+            });
 
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
             document.getElementById('patient-name').addEventListener('input', validateSaveButton);
@@ -583,19 +646,30 @@
 </head>
 <body class="bg-gray-50 p-4 sm:p-8 min-h-screen flex items-center justify-center font-['Inter']">
 
-    <!-- Overlay สำหรับ "ปลดล็อก" บน iPad -->
-    <div id="unlock-overlay" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-lg shadow-2xl p-8 text-center">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">กรุณาเริ่มต้นการเชื่อมต่อ</h2>
-            <p class="text-gray-600 mb-6">
-                (สำหรับ iPad/Safari) เพื่อความปลอดภัย, กรุณากดปุ่มด้านล่างเพื่ออนุญาตการเชื่อมต่อกับฐานข้อมูล
+    <!-- **NEW** Login Modal (แทน Unlock Overlay) -->
+    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm">
+            <h2 class="text-2xl font-bold text-blue-800 mb-2 text-center">เข้าสู่ระบบเจ้าหน้าที่</h2>
+            <p class="text-gray-600 mb-6 text-center text-sm">
+                กรุณาใช้ ID และรหัสผ่านที่กำหนด
             </p>
-            <button id="unlock-button" class="w-full px-10 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300">
-                คลิกเพื่อเริ่มต้นใช้งาน
+            <div class="space-y-4">
+                <div>
+                    <label for="login-user-id" class="block text-sm font-medium text-gray-700">ชื่อผู้ใช้ (ID รพ.สต.)</label>
+                    <input type="text" id="login-user-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 03280" value="03280">
+                </div>
+                <div>
+                    <label for="login-password" class="block text-sm font-medium text-gray-700">รหัสผ่าน</label>
+                    <input type="password" id="login-password" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 border focus:border-blue-500 focus:ring-blue-500" placeholder="รหัสผ่าน" value="03280">
+                </div>
+            </div>
+            <button id="login-button" class="mt-6 w-full px-10 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300">
+                เข้าสู่ระบบ
             </button>
-            <p id="unlock-status" class="text-center text-sm text-red-500 mt-4"></p>
+            <p id="login-status" class="text-center text-sm text-red-500 mt-4"></p>
         </div>
     </div>
+
 
     <!-- Main Container -->
     <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-6xl">
@@ -607,8 +681,16 @@
         </p>
 
         <!-- ส่วนแสดงสถานะ -->
-        <div class="flex justify-between items-center mb-4">
-             <div id="user-info" class="text-sm text-left text-gray-500 flex-grow text-right">
+        <div class="flex justify-between items-center mb-4 border-b pb-3">
+             <div id="staff-name-display" class="text-base font-bold text-gray-800 flex-grow">
+                กำลังโหลด...
+            </div>
+            <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden">
+                ออกจากระบบ
+            </button>
+        </div>
+        <div class="flex justify-end mb-4">
+            <div id="user-info" class="text-sm text-right text-gray-500">
                 กำลังเชื่อมต่อ...
             </div>
         </div>
@@ -897,7 +979,7 @@
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">วัน/เวลา</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ชื่อ-สกุล</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">HbA1C</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">รพ.สต. ผู้บันทึก</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OD)</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">VA (OS)</th>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ผลตรวจ (ย่อ)</th>
