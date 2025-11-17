@@ -27,7 +27,6 @@
         // --- START: Hybrid Configuration ---
 
         // 1. Define the Hardcoded Fallback Config (for GitHub Pages)
-        // This is the config you provided in your very first file
         const firebaseConfig_Hardcoded = {
             apiKey: "AIzaSyCqJ4V6EMgqt5Th4Bhq-pDhX36emqDJ8xw",
             authDomain: "eyedm-3ebc8.firebaseapp.com",
@@ -75,7 +74,7 @@
                         await signInWithCustomToken(auth, initialAuthToken);
                         console.log("Firebase signed in with custom token (Canvas Mode).");
                     } else {
-                        // This will run on GitHub Pages
+                        // This will run on GitHub Pages (after you enable Anonymous auth)
                         await signInAnonymously(auth);
                         console.log("Firebase signed in anonymously (GitHub Mode).");
                     }
@@ -86,7 +85,6 @@
 
                 } else {
                     console.error("Firebase configuration is missing.");
-                    // NEW: Update UI on config failure
                     if(userIdElement) {
                          userIdElement.innerHTML = `<span class="font-bold text-red-600">เชื่อมต่อล้มเหลว (Config missing)</span>`;
                          userIdElement.className = "text-sm text-right text-red-600 mb-4";
@@ -94,7 +92,7 @@
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Authentication failed:", error);
-                // NEW: Update UI on auth failure
+                // This is the "Auth Error" you are seeing on GitHub
                 if(userIdElement) {
                     userIdElement.innerHTML = `<span class="font-bold text-red-600">เชื่อมต่อล้มเหลว (Auth Error)</span>`;
                     userIdElement.className = "text-sm text-right text-red-600 mb-4";
