@@ -12,7 +12,7 @@
 
     <!-- 
       FIX: All JavaScript is now inside this single <script type="module"> block 
-      to ensure all functions can see the imported Firebase commands (addDoc, query, etc.)
+      Using environment variables for Firebase and modern event listeners.
     -->
     <script type="module">
         // --- Firebase SDK Imports ---
@@ -21,21 +21,24 @@
         import { 
             getFirestore, 
             collection, 
-            addDoc,       // <-- Function that was previously 'not defined'
+            addDoc,     
             setLogLevel, 
-            query,        // <-- Function that was previously 'not defined'
-            where,        // <-- Function that was previously 'not defined'
-            getDocs       // <-- Function that was previously 'not defined'
+            query,      
+            where,      
+            getDocs     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Environment-Safe Firebase Config ---
+        // Use environment variables provided by the platform (Canvas)
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : (firebaseConfig.projectId || 'default-app-id');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
         let app, db, auth;
+        let isFirebaseReady = false; // Flag to prevent actions before DB is ready
 
         async function initializeFirebase() {
             try {
@@ -48,36 +51,28 @@
                         await signInWithCustomToken(auth, initialAuthToken);
                         console.log("Firebase signed in with custom token.");
                     } else {
+                        // Fallback for standalone testing or missing token
                         await signInAnonymously(auth);
                         console.log("Firebase signed in anonymously.");
                     }
                     
-                    // Now that auth is ready, display User ID
                     displayUserId();
+                    isFirebaseReady = true; // Set flag *after* auth is complete
+                    validateSaveButton(); // Re-check button states now that Firebase is ready
 
                 } else {
-                    console.error("Firebase configuration is missing. Running in non-persistent mode.");
-                    displayUserId(); // Display a fallback ID even if Firebase fails
+                    console.error("Firebase configuration is missing.");
+                    displayUserId(); 
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Authentication failed:", error);
-                displayUserId(); // Display a fallback ID on error
+                displayUserId();
             }
         }
         
-        initializeFirebase();
-
-        // Expose necessary variables globally for use in the main script
-        // Note: Functions defined in this module script are NOT global by default.
-        // We must attach them to the 'window' object to be called by 'onclick' attributes in HTML.
-        window.getAuth = () => auth;
-        window.getDb = () => db;
-        window.getAppId = () => appId;
-
-        // --- Global App Logic (Moved inside module) ---
-
+        // --- Global App Logic ---
         let currentWebcamStream = null;
-        const apiKey = ""; // API key is provided by the environment
+        const apiKey = ""; // API key is handled by the platform
         const modelName = "gemini-2.5-flash-preview-09-2025";
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
@@ -93,6 +88,8 @@
 
         // --- Autocomplete Functions ---
         const debouncedSearchPatient = debounce(async () => {
+            if (!isFirebaseReady) return; // Guard against running before Firebase is ready
+
             validateSaveButton(); 
             
             const searchId = document.getElementById('patient-id').value.trim();
@@ -104,17 +101,14 @@
                 return;
             }
 
-            // Check if db is initialized (it might not be if Firebase failed)
             if (!db) {
                 console.warn("DB not ready for autocomplete");
                 return;
             }
 
-            const appId = window.getAppId();
             const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
             const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
 
-            // Firestore "starts with" query
             const q = query(
                 collection(db, collectionPath),
                 where("patientId", ">=", searchId),
@@ -126,6 +120,7 @@
                 const patientMap = new Map();
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
+                    // Get the most recent record for each patient ID
                     if (!patientMap.has(data.patientId) || new Date(data.timestamp) > new Date(patientMap.get(data.patientId).timestamp)) {
                          patientMap.set(data.patientId, data);
                     }
@@ -155,7 +150,6 @@
                 resultsContainer.classList.remove('hidden');
             }
         }, 300);
-        window.debouncedSearchPatient = debouncedSearchPatient;
 
         function populateFormWithPatientData(data) {
             const findingsContainer = document.getElementById('section3-findings');
@@ -214,7 +208,6 @@
             validateSaveButton();
             displayMessage('โหลดข้อมูลผู้ป่วยสำเร็จ กรุณาตรวจสอบและอัปเดตข้อมูล', 'success');
         }
-        window.populateFormWithPatientData = populateFormWithPatientData;
 
         // Close dropdown if clicking outside
         document.addEventListener('click', (e) => {
@@ -225,29 +218,14 @@
             }
         });
 
-        // --- End Autocomplete Functions ---
-
         function displayUserId() {
             const userIdElement = document.getElementById('user-info');
+            // Wait for auth to be ready if possible
             const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
             if (userIdElement) {
                 userIdElement.innerHTML = `**รหัสผู้ใช้งาน (User ID):** ${userId}`;
             }
         }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            // Display User ID (will be called again once auth is ready)
-            displayUserId();
-
-            // Add input listeners for validation
-            const inputsToValidate = ['patient-id', 'patient-name'];
-            inputsToValidate.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.addEventListener('input', validateSaveButton); 
-                }
-            });
-        });
 
         function togglePreviousExamCount(isChecked) {
             const container = document.getElementById('previous-exam-count-container');
@@ -258,7 +236,6 @@
                 document.getElementById('previous-exam-count').value = '';
             }
         }
-        window.togglePreviousExamCount = togglePreviousExamCount;
 
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
@@ -308,7 +285,6 @@
                 }
             }
         }
-        window.openIdScanner = openIdScanner;
 
         function closeIdScanner() {
             const modal = document.getElementById('scanner-modal');
@@ -319,7 +295,6 @@
                 currentWebcamStream = null;
             }
         }
-        window.closeIdScanner = closeIdScanner;
         
         async function captureAndAnalyzeId() {
             const video = document.getElementById('webcam-video');
@@ -370,7 +345,6 @@
                 spinner.classList.add('hidden');
             }
         }
-        window.captureAndAnalyzeId = captureAndAnalyzeId;
 
         async function callGeminiOCR(base64ImageData) {
             const systemPrompt = "You are an OCR assistant specialized in reading Thai ID cards. Extract the 13-digit identification number and the full name (Name and Last Name). Return ONLY a structured JSON.";
@@ -431,19 +405,19 @@
             return JSON.parse(cleanedJson);
         }
 
-        // --- End ID Card Scanner Functions ---
-
         // --- Form Validation and Save Functions ---
         function validateSaveButton() {
             const patientId = document.getElementById('patient-id').value;
             const patientName = document.getElementById('patient-name').value;
             const saveButton = document.getElementById('save-button');
+            const clearButton = document.getElementById('clear-button'); 
             
-            if (patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '') {
-                saveButton.disabled = false;
-            } else {
-                saveButton.disabled = true;
-            }
+            const isValid = patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '';
+            const isAnythingToClear = patientId.trim() !== '' || patientName.trim() !== '';
+
+            // CRITICAL: Don't enable save button if Firebase isn't ready
+            saveButton.disabled = !isValid || !isFirebaseReady; 
+            clearButton.disabled = !isAnythingToClear; 
         }
 
         function clearForm() {
@@ -452,17 +426,21 @@
             document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
             
             togglePreviousExamCount(false);
-            validateSaveButton();
+            
+            hideMessage();
+            const resultsContainer = document.getElementById('autocomplete-results');
+            resultsContainer.innerHTML = '';
+            resultsContainer.classList.add('hidden');
+
+            validateSaveButton(); // Re-validate buttons (both will be disabled)
         }
 
         async function savePatientData() {
-            // Now 'db' and 'auth' are available in this scope
-            if (!db || !auth) {
-                displayMessage('ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรชหน้า', 'error');
+            if (!isFirebaseReady || !db || !auth) {
+                displayMessage('ฐานข้อมูลยังไม่พร้อม กรุณารอสักครู่...', 'error');
                 return;
             }
             
-            const appId = window.getAppId();
             const userId = auth.currentUser ? auth.currentUser.uid : (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
             
             const saveButton = document.getElementById('save-button');
@@ -543,8 +521,6 @@
 
                 const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
                 
-                // --- THIS IS THE FIX ---
-                // 'addDoc' and 'collection' are now visible in this scope.
                 await addDoc(collection(db, collectionPath), recordData);
                 
                 displayMessage('บันทึกข้อมูลผู้ป่วยสำเร็จ!', 'success');
@@ -559,7 +535,6 @@
                 spinner.classList.add('hidden');
             }
         }
-        window.savePatientData = savePatientData;
 
         // --- Excel Import Functions ---
         function convertExcelBoolean(value) {
@@ -574,6 +549,11 @@
         }
 
         async function importFromExcel() {
+            if (!isFirebaseReady) {
+                displayMessage('ฐานข้อมูลยังไม่พร้อม กรุณารอสักครู่...', 'error');
+                return;
+            }
+
             const fileInput = document.getElementById('excel-file-input');
             const importButton = document.getElementById('import-button');
             const buttonText = document.getElementById('import-button-text');
@@ -587,9 +567,8 @@
                 return;
             }
 
-            // Check if db is ready
             if (!db) {
-                statusEl.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน กรุณารีเฟรช';
+                statusEl.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการเชื่อมต่อ';
                 statusEl.className = 'text-red-600 text-sm';
                 return;
             }
@@ -632,12 +611,10 @@
                 spinner.classList.add('hidden');
             }
         }
-        window.importFromExcel = importFromExcel;
 
         async function processImport(jsonData) {
             if (!db) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน");
             
-            const appId = window.getAppId();
             const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
             const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
             
@@ -681,7 +658,6 @@
                         continue;
                     }
                     
-                    // 'addDoc' and 'collection' are visible here too
                     await addDoc(collection(db, collectionPath), mappedData);
                     successCount++;
                     
@@ -692,10 +668,14 @@
             }
             return { successCount, errorCount };
         }
-        // --- End Excel Import Functions ---
 
         // --- Search History Function ---
         async function searchPatientRecords() {
+            if (!isFirebaseReady) {
+                displayMessage('ฐานข้อมูลยังไม่พร้อม กรุณารอสักครู่...', 'error');
+                return;
+            }
+
             const searchId = document.getElementById('search-id').value.trim();
             const searchStatus = document.getElementById('search-status');
             const resultsContainer = document.getElementById('search-results');
@@ -721,17 +701,14 @@
             resultsTableBody.innerHTML = '';
 
             try {
-                const appId = window.getAppId();
                 const userId = auth?.currentUser?.uid || (typeof crypto !== 'undefined' ? crypto.randomUUID() : 'anonymous-user');
                 const collectionPath = `/artifacts/${appId}/users/${userId}/retina_records`;
                 
-                // 'query', 'collection', 'where' are visible here
                 const q = query(
                     collection(db, collectionPath),
                     where("patientId", "==", searchId)
                 );
 
-                // 'getDocs' is visible here
                 const querySnapshot = await getDocs(q);
                 const records = [];
                 querySnapshot.forEach((doc) => {
@@ -790,11 +767,45 @@
                 searchButton.textContent = 'ค้นหาข้อมูล';
             }
         }
-        window.searchPatientRecords = searchPatientRecords;
+
+        // --- Setup Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            displayUserId(); // Initial display (might be anonymous or waiting for auth)
+
+            // Section 1
+            document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
+            document.getElementById('patient-name').addEventListener('input', validateSaveButton);
+            document.getElementById('patient-id').addEventListener('input', validateSaveButton); // Also validate on ID input
+            document.getElementById('open-scanner-button').addEventListener('click', openIdScanner);
+            document.getElementById('has-previous-exam').addEventListener('change', (e) => togglePreviousExamCount(e.target.checked));
+
+            // Section 3 (Findings) - No buttons, validation is not needed here
+
+            // Action Buttons
+            document.getElementById('clear-button').addEventListener('click', clearForm);
+            document.getElementById('save-button').addEventListener('click', savePatientData);
+
+            // Excel Import
+            document.getElementById('import-button').addEventListener('click', importFromExcel);
+
+            // Search History
+            document.getElementById('search-button').addEventListener('click', searchPatientRecords);
+
+            // Modal Buttons
+            document.getElementById('close-scanner-button').addEventListener('click', closeIdScanner);
+            document.getElementById('capture-button').addEventListener('click', captureAndAnalyzeId);
+
+            // Initial validation check
+            validateSaveButton();
+        });
+
+        // Kick off Firebase initialization
+        initializeFirebase();
 
     </script>
 </head>
-<body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
+<!-- BODY uses Inter font and a light gray background -->
+<body class="bg-gray-50 p-4 sm:p-8 min-h-screen flex items-center justify-center font-['Inter']">
 
     <!-- Main Container -->
     <div class="bg-white p-6 sm:p-10 rounded-xl shadow-2xl w-full max-w-6xl">
@@ -807,7 +818,7 @@
 
         <!-- User ID Display (Mandatory for multi-user apps) -->
         <div id="user-info" class="text-sm text-right text-gray-500 mb-4">
-            <!-- User ID will be populated by JS -->
+            กำลังเชื่อมต่อ...
         </div>
 
         <!-- Section 1: Patient Info (from PCU) -->
@@ -818,9 +829,10 @@
                 <div class="relative"> <!-- Add relative positioning for autocomplete -->
                     <label for="patient-id" class="block text-sm font-medium text-gray-700">เลขบัตรประชาชน 13 หลัก</label>
                     <div class="flex mt-1">
-                        <!-- MODIFIED: Added oninput and autocomplete=off -->
-                        <input type="text" id="patient-id" oninput="debouncedSearchPatient()" class="block w-full rounded-l-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
-                        <button onclick="openIdScanner()" class="px-3 py-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" title="สแกนบัตรด้วยกล้อง">
+                        <!-- Removed oninput, will be added by JS -->
+                        <input type="text" id="patient-id" class="block w-full rounded-l-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
+                        <!-- Added id="open-scanner-button" -->
+                        <button id="open-scanner-button" class="px-3 py-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" title="สแกนบัตรด้วยกล้อง">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm1 3a1 1 0 011-1h8a1 1 0 011 1v2a1 1 0 01-1 1H6a1 1 0 01-1-1V5zm1 4a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zm3 0a1 1 0 00-1 1v1a1 1 0 102 0v-1a1 1 0 00-1-1zM5 14a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                             </svg>
@@ -920,7 +932,8 @@
                 <div class="flex items-end">
                     <div class="flex flex-col">
                         <div class="flex items-center">
-                            <input id="has-previous-exam" type="checkbox" onchange="togglePreviousExamCount(this.checked)" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <!-- Removed onchange -->
+                            <input id="has-previous-exam" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
                             <label for="has-previous-exam" class="ml-2 block text-sm font-medium text-gray-700">เคยตรวจจอประสาทตา</label>
                         </div>
                         <div id="previous-exam-count-container" class="mt-2 hidden">
@@ -1039,16 +1052,23 @@
             </div>
         </div>
 
-        <!-- Save Button (Replaced Analysis Button) -->
-        <div class="mt-8 text-center">
-            <button id="save-button" onclick="savePatientData()" class="w-full sm:w-auto px-10 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+        <!-- Action Buttons (Save and Clear) -->
+        <div class="mt-8 flex flex-col sm:flex-row justify-center items-center gap-4">
+            <!-- Clear Button -->
+            <button id="clear-button" class="w-full sm:w-auto px-10 py-3 bg-gray-500 text-white font-bold rounded-xl shadow-lg hover:bg-gray-600 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                ล้างข้อมูล (Clear Form)
+            </button>
+            
+            <!-- Save Button -->
+            <button id="save-button" class="w-full sm:w-auto px-10 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" disabled>
                 <span id="save-button-text">บันทึกข้อมูลผู้ป่วย</span>
-                <svg id="save-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg id="save-spinner" class="animate-spin ml-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
             </button>
         </div>
+
 
         <!-- Excel Import Section -->
         <div class="mt-10 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
@@ -1063,7 +1083,7 @@
             </p>
             <div class="flex flex-col sm:flex-row gap-4 mb-4">
                 <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-grow block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer">
-                <button onclick="importFromExcel()" class="px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300" id="import-button">
+                <button id="import-button" class="px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300" id="import-button">
                     <span id="import-button-text">เริ่มนำเข้า</span>
                     <svg id="import-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -1110,7 +1130,7 @@
             </h2>
             <div class="flex flex-col sm:flex-row gap-4 mb-6">
                 <input type="text" id="search-id" class="flex-grow rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="กรุณาป้อนเลขบัตรประชาชน 13 หลักที่ต้องการค้นหา" maxlength="13">
-                <button onclick="searchPatientRecords()" class="px-6 py-2 bg-green-600 text-white font-bold rounded-xl shadow-md hover:bg-green-700 transition duration-300" id="search-button">
+                <button id="search-button" class="px-6 py-2 bg-green-600 text-white font-bold rounded-xl shadow-md hover:bg-green-700 transition duration-300">
                     ค้นหาข้อมูล
                 </button>
             </div>
@@ -1148,7 +1168,8 @@
         <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold text-gray-800">สแกนบัตรประชาชน</h2>
-                <button onclick="closeIdScanner()" class="text-gray-500 hover:text-gray-800">&times;</button>
+                <!-- Added id="close-scanner-button" -->
+                <button id="close-scanner-button" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
             </div>
             <div class="relative bg-black rounded-lg overflow-hidden w-full aspect-video">
                 <video id="webcam-video" class="w-full h-full object-cover" autoplay playsinline></video>
@@ -1156,7 +1177,7 @@
             </div>
             <canvas id="webcam-canvas" class="hidden"></canvas>
             <p class="text-sm text-gray-600 mt-2 text-center">จัดบัตรให้อยู่ในกรอบในที่ที่มีแสงสว่างเพียงพอ</p>
-            <button onclick="captureAndAnalyzeId()" id="capture-button" class="mt-4 w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
+            <button id="capture-button" class="mt-4 w-full px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
                 <span id="capture-button-text">ถ่ายภาพและวิเคราะห์</span>
                 <svg id="capture-spinner" class="animate-spin mx-auto h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
