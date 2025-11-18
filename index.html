@@ -10,6 +10,20 @@
     <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+    <style>
+        .font-['Inter'] {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for better visibility */
+        .custom-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #9ca3af;
+            border-radius: 10px;
+        }
+    </style>
+
     <script type="module">
         // --- Firebase SDK Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -237,10 +251,25 @@
                 const findingKeys = ['normal', 'microaneurysm', 'hardexudate', 'flame', 'venous', 'irma', 'newvessel', 'preretinal', 'vitreous', 'fibrous'];
                 const findings = data.findings || {};
                 findingKeys.forEach(key => {
+                    // Check for key case sensitivity in existing data and use defaults
+                    const findingsKeyMap = {
+                        'microaneurysm': findings.microaneurysm, 
+                        'hardexudate': findings.hardExudate, 
+                        'flame': findings.flameHemorrhage, 
+                        'venous': findings.venousBeading,
+                        'irma': findings.irma,
+                        'newvessel': findings.newVessel,
+                        'preretinal': findings.preretinalHemorrhage,
+                        'vitreous': findings.vitreousHemorrhage,
+                        'fibrous': findings.fibrousProliferation,
+                        'normal': findings.normal,
+                    };
+                    const currentFinding = findingsKeyMap[key] || {};
+
                     const orEl = document.getElementById(`admin-finding-${key}-or`);
                     const olEl = document.getElementById(`admin-finding-${key}-ol`);
-                    if (orEl) orEl.checked = findings[key]?.or || false;
-                    if (olEl) olEl.checked = findings[key]?.ol || false;
+                    if (orEl) orEl.checked = currentFinding.or || false;
+                    if (olEl) olEl.checked = currentFinding.ol || false;
                 });
 
                 document.getElementById('admin-referral-needed').checked = data.referralNeeded || false;
@@ -348,7 +377,7 @@
                     isWheelchair: getElementChecked('is-wheelchair'),
                     hasPreviousExam: getElementChecked('has-previous-exam'),
                     previousExamCount: getElementChecked('has-previous-exam') ? getElementNumber('previous-exam-count') : null,
-                    // Sections 2 & 3 Defaults (PCU only updates these if they are false)
+                    // Sections 2 & 3 Defaults 
                     hasCataract: false, hearingClear: false, canSitChair: false, needsEyelidLift: false, findings: {}, referralNeeded: false,
                     // Metadata
                     updatedTimestamp: new Date().toISOString(), 
@@ -363,23 +392,23 @@
                     const existingData = existingDoc.exists() ? existingDoc.data() : {};
                     
                     const updateData = {
-                         ...existingData, 
-                         ...recordData,
-                         // Ensure original metadata is preserved unless explicitly updating
-                         uploaderId: existingData.uploaderId, 
-                         queueNumber: existingData.queueNumber,
-                         // Only update the PCU-editable fields 
-                         diabetesYears: recordData.diabetesYears,
-                         hba1c: recordData.hba1c,
-                         bloodPressure: recordData.bloodPressure,
-                         weight: recordData.weight,
-                         height: recordData.height,
-                         vaOD: recordData.vaOD,
-                         vaOS: recordData.vaOS,
-                         isWheelchair: recordData.isWheelchair,
-                         hasPreviousExam: recordData.hasPreviousExam,
-                         previousExamCount: recordData.previousExamCount,
-                         updatedTimestamp: recordData.updatedTimestamp,
+                        ...existingData, 
+                        ...recordData,
+                        // Ensure original metadata is preserved unless explicitly updating
+                        uploaderId: existingData.uploaderId, 
+                        queueNumber: existingData.queueNumber,
+                        // Only update the PCU-editable fields 
+                        diabetesYears: recordData.diabetesYears,
+                        hba1c: recordData.hba1c,
+                        bloodPressure: recordData.bloodPressure,
+                        weight: recordData.weight,
+                        height: recordData.height,
+                        vaOD: recordData.vaOD,
+                        vaOS: recordData.vaOS,
+                        isWheelchair: recordData.isWheelchair,
+                        hasPreviousExam: recordData.hasPreviousExam,
+                        previousExamCount: recordData.previousExamCount,
+                        updatedTimestamp: recordData.updatedTimestamp,
                     };
 
                     await setDoc(docRef, updateData);
@@ -500,24 +529,56 @@
             }
         }
 
+        // --- Custom Confirmation Modal Logic ---
+        function showConfirmModal(title, message, onConfirm) {
+            document.getElementById('custom-confirm-title').textContent = title;
+            document.getElementById('custom-confirm-message').textContent = message;
+
+            const modal = document.getElementById('custom-confirm-modal');
+            modal.classList.remove('hidden');
+
+            const confirmBtn = document.getElementById('confirm-action-button');
+            const cancelBtn = document.getElementById('cancel-action-button');
+
+            // Clear previous listeners (important)
+            confirmBtn.onclick = null;
+            cancelBtn.onclick = null;
+
+            // Set new listeners
+            confirmBtn.onclick = () => {
+                modal.classList.add('hidden');
+                onConfirm();
+            };
+
+            cancelBtn.onclick = () => {
+                modal.classList.add('hidden');
+            };
+        }
+
         // --- Delete Record Function (Admin Only) ---
         async function handleDeleteQueueItem(docId, patientName) {
             if (!isAdmin) {
                 displayMessage('ไม่มีสิทธิ์ลบข้อมูล', 'error');
                 return;
             }
-            if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว?`)) {
-                try {
-                    const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
-                    const docRef = doc(db, collection(db, collectionPath).path, docId);
-                    await deleteDoc(docRef);
-                    displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
-                    fetchAndRenderQueue(); // Refresh queue
-                } catch (error) {
-                    console.error("Error deleting document:", error);
-                    displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
+            
+            // Use custom modal instead of window.confirm()
+            showConfirmModal(
+                'ยืนยันการลบข้อมูล',
+                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของผู้ป่วย: ${patientName} ออกจากคิว? การดำเนินการนี้ไม่สามารถยกเลิกได้`,
+                async () => {
+                    try {
+                        const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+                        const docRef = doc(db, collection(db, collectionPath).path, docId);
+                        await deleteDoc(docRef);
+                        displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
+                        fetchAndRenderQueue(); // Refresh queue
+                    } catch (error) {
+                        console.error("Error deleting document:", error);
+                        displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
+                    }
                 }
-            }
+            );
         }
         window.handleDeleteQueueItem = handleDeleteQueueItem; // Make function accessible from inline HTML
 
@@ -563,6 +624,7 @@
 
             try {
                 const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+                // Note: Query without orderBy for better performance and compliance with instruction
                 const allRecordsSnapshot = await getDocs(query(collection(db, collectionPath)));
                 
                 const today = new Date();
@@ -579,7 +641,8 @@
                     }
                 });
 
-                todayRecords.sort((a, b) => a.queueNumber - b.queueNumber);
+                // Sort in memory by queueNumber
+                todayRecords.sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
                 
                 queueList.innerHTML = '';
                 if (todayRecords.length === 0) {
@@ -594,12 +657,12 @@
                         const actionsHtml = `
                             <div class="flex space-x-2 mt-2 sm:mt-0">
                                 <button onclick="handleEditQueueItem('${record.docId}', '${isAdmin ? 'admin' : 'pcu'}')" 
-                                    class="px-3 py-1 text-xs font-semibold bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-150">
+                                    class="px-3 py-1 text-xs font-semibold bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-150 shadow-md">
                                     แก้ไข
                                 </button>
                                 ${isAdmin ? `
                                 <button onclick="handleDeleteQueueItem('${record.docId}', '${record.patientName}')" 
-                                    class="px-3 py-1 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150">
+                                    class="px-3 py-1 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150 shadow-md">
                                     ลบ
                                 </button>
                                 ` : ''}
@@ -683,6 +746,24 @@
                     const staffIdMatch = staffUploaderId.match(/^(\d+)_/);
                     const staffId = staffIdMatch ? staffIdMatch[1] : 'N/A';
                     const staffName = STAFF_MAPPING[staffId] || staffId;
+                    
+                    // Handle findings mapping with case safety
+                    const findings = record.findings || {};
+                    const getFinding = (key) => {
+                        const keyMap = {
+                            'microaneurysm': findings.microaneurysm, 
+                            'hardexudate': findings.hardExudate, 
+                            'flame': findings.flameHemorrhage, 
+                            'venous': findings.venousBeading,
+                            'irma': findings.irma,
+                            'newvessel': findings.newVessel,
+                            'preretinal': findings.preretinalHemorrhage,
+                            'vitreous': findings.vitreousHemorrhage,
+                            'fibrous': findings.fibrousProliferation,
+                            'normal': findings.normal,
+                        };
+                        return keyMap[key] || {};
+                    };
 
                     return [
                         record.queueNumber || '',
@@ -704,26 +785,26 @@
                         record.hearingClear ? 'ใช่' : 'ไม่',
                         record.canSitChair ? 'ใช่' : 'ไม่',
                         record.needsEyelidLift ? 'ใช่' : 'ไม่',
-                        record.findings?.normal?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.normal?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.microaneurysm?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.microaneurysm?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.hardExudate?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.hardExudate?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.flameHemorrhage?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.flameHemorrhage?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.venousBeading?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.venousBeading?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.irma?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.irma?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.newVessel?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.newVessel?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.preretinalHemorrhage?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.preretinalHemorrhage?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.vitreousHemorrhage?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.vitreousHemorrhage?.ol ? 'ใช่' : 'ไม่',
-                        record.findings?.fibrousProliferation?.or ? 'ใช่' : 'ไม่',
-                        record.findings?.fibrousProliferation?.ol ? 'ใช่' : 'ไม่',
+                        getFinding('normal').or ? 'ใช่' : 'ไม่',
+                        getFinding('normal').ol ? 'ใช่' : 'ไม่',
+                        getFinding('microaneurysm').or ? 'ใช่' : 'ไม่',
+                        getFinding('microaneurysm').ol ? 'ใช่' : 'ไม่',
+                        getFinding('hardexudate').or ? 'ใช่' : 'ไม่',
+                        getFinding('hardexudate').ol ? 'ใช่' : 'ไม่',
+                        getFinding('flame').or ? 'ใช่' : 'ไม่',
+                        getFinding('flame').ol ? 'ใช่' : 'ไม่',
+                        getFinding('venous').or ? 'ใช่' : 'ไม่',
+                        getFinding('venous').ol ? 'ใช่' : 'ไม่',
+                        getFinding('irma').or ? 'ใช่' : 'ไม่',
+                        getFinding('irma').ol ? 'ใช่' : 'ไม่',
+                        getFinding('newvessel').or ? 'ใช่' : 'ไม่',
+                        getFinding('newvessel').ol ? 'ใช่' : 'ไม่',
+                        getFinding('preretinal').or ? 'ใช่' : 'ไม่',
+                        getFinding('preretinal').ol ? 'ใช่' : 'ไม่',
+                        getFinding('vitreous').or ? 'ใช่' : 'ไม่',
+                        getFinding('vitreous').ol ? 'ใช่' : 'ไม่',
+                        getFinding('fibrous').or ? 'ใช่' : 'ไม่',
+                        getFinding('fibrous').ol ? 'ใช่' : 'ไม่',
                         record.referralNeeded ? 'ใช่' : 'ไม่'
                     ];
                 });
@@ -795,6 +876,7 @@
             if (!db) return;
             
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`; 
+            // Query for partial match - Note: requires Firestore indices
             const q = query(
                 collection(db, collectionPath),
                 where("patientId", ">=", searchId),
@@ -807,6 +889,7 @@
                     const data = doc.data();
                     // Use patientId as key and keep the latest record based on timestamp
                     const timestampToUse = new Date(data.timestamp || data.updatedTimestamp || 0).getTime();
+                    // If no existing map entry, or current record is newer, update map
                     if (!patientMap.has(data.patientId) || timestampToUse > new Date(patientMap.get(data.patientId).timestamp || patientMap.get(data.patientId).updatedTimestamp || 0).getTime()) {
                          patientMap.set(data.patientId, { docId: doc.id, ...data });
                     }
@@ -917,6 +1000,8 @@
                 const workbook = XLSX.read(data);
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
+                // Use header: 1 to get array of arrays, then explicitly map by index if Thai headers are used,
+                // or keep as 'json' but ensure headers match exactly. Stick to json and exact matching.
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                 if (jsonData.length === 0) {
                     throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
@@ -1023,6 +1108,7 @@
             searchButton.textContent = 'กำลังค้นหา...';
             searchStatus.textContent = 'กำลังค้นหาข้อมูลในฐานข้อมูล...';
             document.getElementById('search-results-table').classList.add('hidden');
+            document.getElementById('admin-edit-form-container').classList.add('hidden');
             resultsTableBody.innerHTML = '';
             
             try {
@@ -1133,18 +1219,18 @@
 
     <!-- Fatal Error Box -->
     <div id="fatal-error-box" class="hidden fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-lg text-center">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg text-center">
             <svg class="w-12 h-12 text-red-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <h2 id="error-title" class="text-2xl font-bold text-red-700 mb-2">ข้อผิดพลาดร้ายแรงในการเริ่มต้นระบบ</h2>
             <p id="error-message" class="text-gray-700 mb-4 text-sm">
-                ไม่สามารถเชื่อมต่อ Firebase ได้ กรุณาตรวจสอบ Firebase Config หรือการตั้งค่า Authentication (Email/Password) ใน Console
+                ไม่สามารถเชื่อมต่อ Firebase ได้ กรุณาตรวจสอบ Firebase Config หรือการตั้งค่า Authentication ใน Console
             </p>
             <p class="text-xs text-gray-500">กรุณาดู Console Log สำหรับรายละเอียดเพิ่มเติม</p>
         </div>
     </div>
 
     <!-- Login Modal (Role Selection) -->
-    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-40">
         <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm">
             <h2 class="text-2xl font-bold text-blue-800 mb-2 text-center">เลือกบทบาทเจ้าหน้าที่</h2>
             <p class="text-gray-600 mb-6 text-center text-sm">
@@ -1167,6 +1253,23 @@
             <p id="login-status" class="text-center text-sm text-red-500 mt-4"></p>
         </div>
     </div>
+    
+    <!-- Custom Confirmation Modal (For Delete Operations) -->
+    <div id="custom-confirm-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-40">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm text-center">
+            <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.3 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <h2 id="custom-confirm-title" class="text-xl font-bold text-gray-800 mb-2"></h2>
+            <p id="custom-confirm-message" class="text-gray-600 mb-6 text-sm"></p>
+            <div class="flex justify-center space-x-4">
+                <button id="cancel-action-button" class="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400 transition duration-300">
+                    ยกเลิก
+                </button>
+                <button id="confirm-action-button" class="px-6 py-2 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-300">
+                    ยืนยันการลบ
+                </button>
+            </div>
+        </div>
+    </div>
 
 
     <!-- Main Container -->
@@ -1181,22 +1284,22 @@
         <!-- ส่วนแสดงสถานะและปุ่ม Logout -->
         <div class="flex justify-between items-center mb-4 border-b pb-3">
              <div id="staff-name-display" class="text-base font-bold text-gray-800 flex-grow">
-                กำลังโหลด...
+                 กำลังโหลด...
             </div>
-            <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden">
+            <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden shadow-sm">
                 ออกจากระบบ (เปลี่ยนบทบาท)
             </button>
         </div>
         
         <!-- Navigation Bar (Tabs) -->
-        <div class="flex justify-start space-x-2 mb-6 overflow-x-auto">
-            <button id="nav-pcu_form" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150">
+        <div class="flex justify-start space-x-2 mb-6 overflow-x-auto custom-scroll">
+            <button id="nav-pcu_form" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 shadow-md">
                 1. บันทึกข้อมูล (PCU)
             </button>
-            <button id="nav-daily_queue" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150">
+            <button id="nav-daily_queue" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 shadow-md">
                 2. คิวผู้ป่วยวันนี้
             </button>
-            <button id="nav-admin_view" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 hidden">
+            <button id="nav-admin_view" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 hidden shadow-md">
                 3. ข้อมูลทั้งหมด (Admin)
             </button>
         </div>
@@ -1208,7 +1311,7 @@
             <!-- VIEW 1: บันทึกข้อมูล (PCU Form) -->
             <div id="pcu_form_view">
                 <!-- Section 1: Patient Info (from PCU) -->
-                <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
+                <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200 shadow-lg">
                     <h2 class="text-xl font-bold text-blue-700 mb-4">ส่วนที่ 1: ข้อมูลผู้ป่วย (จาก รพ.สต./PCU)</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div class="relative"> 
@@ -1217,7 +1320,7 @@
                                 <input type="text" id="patient-id" class="block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
                             </div>
                             <!-- Autocomplete results for PCU view -->
-                            <div id="autocomplete-results" class="absolute top-full left-0 right-0 w-full bg-white border border-gray-300 rounded-b-lg shadow-lg z-20 hidden overflow-y-auto max-h-48">
+                            <div id="autocomplete-results" class="absolute top-full left-0 right-0 w-full bg-white border border-gray-300 rounded-b-lg shadow-xl z-20 hidden overflow-y-auto max-h-48 custom-scroll">
                             </div>
                         </div>
                         <div>
@@ -1311,7 +1414,7 @@
                         </svg>
                         คิวผู้ป่วยที่ลงทะเบียนวันนี้ (<span id="queue-date"></span>)
                     </h2>
-                    <ul id="queue-list" class="divide-y divide-gray-100 bg-gray-50 rounded-xl shadow-inner">
+                    <ul id="queue-list" class="divide-y divide-gray-100 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
                         <li class="p-4 text-center text-gray-500">กรุณาเลือกบทบาทเจ้าหน้าที่เพื่อโหลดคิว</li>
                     </ul>
                 </div>
@@ -1321,10 +1424,10 @@
             <div id="admin_view_view" class="hidden">
                 
                 <!-- Import Section -->
-                <div class="mt-10 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
+                <div class="mt-4 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
                     <h2 class="text-2xl font-bold text-yellow-800 mb-4 flex items-center">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
                         นำเข้าข้อมูลจาก Excel (.xlsx)
                     </h2>
@@ -1333,9 +1436,9 @@
                     </p>
                     <div class="flex flex-col sm:flex-row gap-4 mb-4">
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-grow block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer">
-                        <button id="import-button" class="flex-shrink-0 px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300">
+                        <button id="import-button" class="flex-shrink-0 px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300 flex items-center justify-center">
                             <span id="import-button-text">เริ่มนำเข้า</span>
-                            <svg id="import-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <svg id="import-spinner" class="animate-spin ml-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
@@ -1346,7 +1449,7 @@
                         <summary class="cursor-pointer text-sm font-medium text-yellow-700 hover:text-yellow-900">
                             คลิกเพื่อดูรูปแบบคอลัมน์ที่จำเป็น (แถวแรกใน Excel)
                         </summary>
-                        <pre class="text-xs bg-white p-3 rounded-md mt-2 overflow-x-auto border border-yellow-300">
+                        <pre class="text-xs bg-white p-3 rounded-md mt-2 overflow-x-auto border border-yellow-300 shadow-sm">
     คอลัมน์ที่จำเป็น (ต้องตรงกันทุกตัวอักษร):
     - เลขบัตรประชาชน, ชื่อ-สกุล, ป่วยเบาหวานปี, HbA1C, ความดัน, น้ำหนัก, ส่วนสูง, VA (OD), VA (OS), นั่งรถเข็น, เคยตรวจ, จำนวนครั้ง
                         </pre>
@@ -1355,7 +1458,7 @@
 
                 <!-- Export Section -->
                 <div class="mt-10 p-6 bg-pink-50 rounded-xl shadow-inner border border-pink-200">
-                     <h2 class="text-2xl font-bold text-pink-800 mb-4 flex items-center">
+                    <h2 class="text-2xl font-bold text-pink-800 mb-4 flex items-center">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
@@ -1391,7 +1494,7 @@
                         <p id="search-status" class="text-gray-600">กรุณาป้อนเลข 13 หลักเพื่อค้นหาประวัติ</p>
                         
                         <!-- Admin Edit Form -->
-                        <div id="admin-edit-form-container" class="mt-8 p-6 bg-white rounded-xl shadow-2xl border border-blue-400">
+                        <div id="admin-edit-form-container" class="mt-8 p-6 bg-white rounded-xl shadow-2xl border border-blue-400 hidden">
                             <h3 class="text-xl font-bold text-blue-700 mb-4 border-b pb-2">แบบฟอร์มแก้ไขข้อมูลผู้ป่วยฉบับเต็ม</h3>
                             
                             <!-- Section 1: Patient Info (Admin Edit - Note: IDs prefixed with admin-) -->
@@ -1439,7 +1542,7 @@
                                     </div>
                                     <div>
                                         <label for="admin-va-os" class="block text-sm font-medium text-gray-700">VA (ตาซ้าย - OS)</label>
-                                        <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                                         <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                                             <option value="">-- เลือกค่าสายตา --</option>
                                             <option value="20/20">20/20</option><option value="20/25">20/25</option><option value="20/30">20/30</option><option value="20/40">20/40</option><option value="20/50">20/50</option><option value="20/60">20/60</option><option value="20/70">20/70</option><option value="20/80">20/80</option><option value="20/100">20/100</option><option value="20/200">20/200</option><option value="20/400">20/400</option><option value="CF 1ft">CF 1ft</option><option value="CF 2ft">CF 2ft</option><option value="CF 3ft">CF 3ft</option><option value="HM">HM (Hand Motion)</option><option value="LP">LP (Light Perception)</option><option value="NLP">NLP (No Light Perception)</option><option value="N/A">N/A (ตรวจไม่ได้)</option>
                                         </select>
@@ -1549,10 +1652,10 @@
                                     </div>
                                 </div>
                                 <div class="mt-6 border-t border-green-200 pt-4">
-                                     <div class="flex items-center">
-                                        <input id="admin-referral-needed" type="checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
-                                        <label for="admin-referral-needed" class="ml-2 block text-sm font-medium text-red-700">ส่งต่อ (Referral Needed)</label>
-                                    </div>
+                                       <div class="flex items-center">
+                                            <input id="admin-referral-needed" type="checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                                            <label for="admin-referral-needed" class="ml-2 block text-sm font-medium text-red-700">ส่งต่อ (Referral Needed)</label>
+                                        </div>
                                 </div>
                             </div>
 
@@ -1574,7 +1677,7 @@
                         <!-- Search Results Table -->
                         <div id="search-results-table" class="hidden mt-6">
                             <h3 class="text-lg font-semibold text-gray-700 mb-3">รายการที่พบทั้งหมด (คลิกเพื่อแก้ไข):</h3>
-                            <div class="overflow-x-auto rounded-lg border border-gray-300 shadow-lg">
+                            <div class="overflow-x-auto rounded-xl border border-gray-300 shadow-lg">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-gray-200">
                                         <tr>
