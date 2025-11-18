@@ -94,8 +94,6 @@
                             isFirebaseReady = true;
                             currentUserId = user.uid;
                             
-                            // Immediately remove loading effect once Firebase is ready
-                            document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
                             document.getElementById('fatal-error-box').classList.add('hidden');
                             
                             // Check if a role is already selected. If not, show modal.
@@ -108,6 +106,8 @@
                                 renderView(currentView);
                                 validateSaveButton(); 
                                 document.getElementById('login-modal').classList.add('hidden');
+                                // Ensure content is enabled if returning from modal logic
+                                document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
                             }
 
                         } else {
@@ -117,17 +117,16 @@
                             currentRoleId = null;
                             displayUserId('logged out'); 
                             document.getElementById('login-modal').classList.remove('hidden');
+                            // Content should be blocked if user logs out
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
                         }
                     });
 
                 } else {
-                    // This block should theoretically not be hit anymore, but remains as safety net.
                     displayFatalError("Firebase Config Error", "Firebase configuration is missing or empty.");
                 }
             } catch (error) {
                 console.error("Firebase Initialization failed:", error);
-                // If initialization fails (e.g., dummy key is invalid), show error, but allow user to interact if Firebase wasn't strictly necessary yet.
                 displayFatalError("Firebase Init Error", `เชื่อมต่อล้มเหลว: ${error.message}`);
             }
         }
@@ -159,12 +158,14 @@
                 // 2. Hide Modal IMMEDIATELY (Crucial Fix for "Stuck" feeling)
                 document.getElementById('login-modal').classList.add('hidden');
 
+                // ** CRUCIAL FIX: Explicitly enable content here after role selection **
+                document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
+
                 // 3. Update UI and Load Data
                 displayUserId(); 
                 renderView(currentView);
                 validateSaveButton();
                 
-                // Update status (this text won't be seen by user, but good for internal logic flow confirmation)
                 loginStatus.textContent = `เข้าสู่ระบบในฐานะ: ${currentStaffName} (สำเร็จ)`;
                 
             } catch (error) {
