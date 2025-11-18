@@ -10,98 +10,53 @@
     <!-- Load SheetJS (xlsx.js) for Excel Reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <style>
-        .font-['Inter'] {
-            font-family: 'Inter', sans-serif;
-        }
-        /* Custom scrollbar for better visibility */
-        .custom-scroll::-webkit-scrollbar {
-            width: 8px;
-        }
-        .custom-scroll::-webkit-scrollbar-thumb {
-            background-color: #9ca3af;
-            border-radius: 10px;
-        }
-    </style>
-
     <script type="module">
-        // --- Firebase SDK Imports ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously,     
-            signInWithCustomToken, 
-            onAuthStateChanged,
-            signOut 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, 
-            doc,
-            addDoc,
-            setDoc,
-            deleteDoc,  
-            setLogLevel, 
-            query,      
-            where,      
-            getDocs,
-            getDoc,
-            collection,
-            onSnapshot 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- START: Configuration (Using Canvas Globals) ---
-        const globalAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-
-        // !!! IMPORTANT: Replace this ENTIRE BLOCK with your ACTUAL Firebase Config when running outside Canvas.
-        const MANUAL_FIREBASE_CONFIG = { 
-            apiKey: "YOUR_API_KEY", // <-- เปลี่ยนเป็น API Key จริงของคุณ
-            authDomain: "YOUR_AUTH_DOMAIN", // <-- เปลี่ยนเป็น Auth Domain จริงของคุณ
-            projectId: "YOUR_PROJECT_ID", // <-- เปลี่ยนเป็น Project ID จริงของคุณ
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
+        // --- START: Configuration (Manual Config for GitHub/External Hosting) ---
+        // ** IMPORTANT: Replace these values with your actual Firebase Project Configuration **
+        const MANUAL_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
+            authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
+            projectId: "eyedm-3ebc8-7c029",
+            storageBucket: "eyedm-3ebc8-7c029.firebasestorage.app",
+            messagingSenderId: "327117771686",
+            appId: "1:327117771686:web:e66c7683e4613d5b8db567",
+            measurementId: "G-N48NPP7K9J"
         };
-        // !!! END IMPORTANT BLOCK
 
-        // Fallback Config to use MANUAL_FIREBASE_CONFIG if Canvas globals are not available
+        // Use Project ID as the Global App ID for stable, cross-environment data path
+        const globalAppId = MANUAL_FIREBASE_CONFIG.projectId; 
+        
+        // Determine Firebase Config: Use Canvas global if available and valid, otherwise use Manual Config
         const firebaseConfig = typeof __firebase_config !== 'undefined' && Object.keys(JSON.parse(__firebase_config)).length > 0
             ? JSON.parse(__firebase_config)
-            : MANUAL_FIREBASE_CONFIG; // <-- ใช้ config ที่คุณป้อนเมื่ออยู่นอก Canvas
+            : MANUAL_FIREBASE_CONFIG;
         
-        // **Hardcoded Staff Name Mapping (Updated based on user image)**
+        // **Hardcoded Staff Name Mapping (Updated)**
         const STAFF_MAPPING = {
-            // รพ.สต. และ ศูนย์สุขภาพชุมชน
-            "03277": "รพ.สต.ตำบลดูนฮูด",
-            "03278": "รพ.สต.ตำบลบ้านแหง",
-            "03279": "รพ.สต.ตำบลกุจิง",
-            "03280": "รพ.สต.ตำบลตะค่อม",
-            "03281": "รพ.สต.บ้านหนองครก",
+            "03277": "รพ.สต.ตำบลกู่ยอ",
+            "03278": "รพ.สต.ตำบลบ้านแก้ง",
+            "03279": "รพ.สต.ตำบลโคกยาง",
+            "03280": "รพ.สต.ตำบลตะดอม",
+            "03281": "รพ.สต.บ้านหนองครกใต้",
             "03282": "รพ.สต.บ้านกุดโง้ง",
             "03283": "รพ.สต.ตำบลบ้านกลาง",
             "03284": "รพ.สต.ตำบลบ้านหนองแวง",
             "03285": "รพ.สต.ตำบลบ้านสร้างเรื่อง",
             "03286": "รพ.สต.ตำบลบ้านโนนแกด",
-            "03287": "รพ.สต.ตำบลบ้านหนองฮู",
-            "03288": "รพ.สต.ตำบลบ้านหนองแก้ว",
-            "12019": "รพ.สต.บ้านหนองแก้ว (ID 12019)", 
-            "03289": "รพ.สต.ตำบลบ้านน้ำคำ",
-            "03290": "รพ.สต.ตำบลบ้านหนองโน",
-            "123456": "รพ.สต.บ้านหนองโน (ID 123456)",
-            "03291": "รพ.สต.ตำบลบ้านโพธิ์",
-            "03292": "รพ.สต.ตำบลบ้านค้อเหลือง",
+            "03287": "รพ.สต.บ้านหนองไฮ",
+            "03288": "รพ.สต.ตำบลบ้านหนองแก้ว", // ID 12019 is the alias for 03288 in the image, using the original
+            "03289": "รพ.สต.ตำบลน้ำคำ",
+            "03290": "รพ.สต.ตำบลบ้านหนองโช", // ID 123456 is likely a placeholder/test ID
+            "03291": "รพ.สต.ตำบลโพธิ์",
+            "03292": "รพ.สต.ตำบลบ้านกำแพง",
             "03293": "รพ.สต.ตำบลบ้านหนองไผ่",
+            "10700": "โรงพยาบาลศรีสะเกษ", // Admin Role
             "14422": "ศูนย์บริการสาธารณสุข 2",
             "15204": "ศูนย์บริการสาธารณสุข 3",
             "21986": "ศูนย์บริการสาธารณสุข 4",
             "23954": "ศูนย์บริการสาธารณสุข 5",
-            
-            // ADMIN / โรงพยาบาล
-            "10700": "โรงพยาบาลศรีสะเกษ (Admin)", // โรงพยาบาลศรีสะเกษ
-            "77475": "ศูนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ (Admin)",
-            "99999": "ฝ่ายไอทีโรงพยาบาล",
+            "77475": "ศูนย์สุขภาพชุมชนเขตเมือง โรงพยาบาลศรีสะเกษ",
         };
-
-        const ADMIN_IDS = ["10700", "77475", "99999"]; // กำหนด ID ที่ถือเป็น Admin
 
         let app, db, auth;
         let isFirebaseReady = false; 
@@ -111,30 +66,28 @@
         let currentView = 'pcu_form'; 
         let currentRecordDocId = null; 
         let isAdmin = false; 
-        let queueUnsubscribe = null; // Holds the unsubscribe function for the queue listener
+        let queueUnsubscribe = null; // Listener for real-time queue updates
+        let confirmModalResolve = null; // To handle modal confirmation
 
         // --- END: Configuration ---
-        
         
         // --- Firebase Initialization ---
         setLogLevel('Debug');
 
         async function initializeFirebase(config) {
-            // Determine if using a real config
-            const isRealConfig = config.apiKey && config.apiKey !== "YOUR_API_KEY" && config.apiKey !== "FAKE_API_KEY";
-
             try {
-                if (isRealConfig) {
+                // Ensure config has actual API Key (not FAKE_API_KEY from initial Canvas template)
+                if (config && config.apiKey && config.apiKey !== "FAKE_API_KEY") {
                     app = initializeApp(config);
                     db = getFirestore(app);
                     auth = getAuth(app);
                     
+                    // Attempt authentication with custom token (Canvas environment) or anonymously (External environment/Fallback)
                     const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                     try {
-                        if (token) {
+                        if (token && auth) {
                             await signInWithCustomToken(auth, token);
-                        } else {
-                            // Non-Canvas environments might rely on other auth methods or anonymous auth
+                        } else if (auth) {
                             await signInAnonymously(auth);
                         }
                     } catch (e) {
@@ -146,32 +99,31 @@
                             isFirebaseReady = true;
                             currentUserId = user.uid;
                             
-                            // Only show modal if no role has been selected yet
                             if (!currentStaffName) { 
                                 document.getElementById('login-modal').classList.remove('hidden');
                                 document.getElementById('staff-name-display').textContent = 'กรุณาเลือกบทบาทเจ้าหน้าที่';
-                            } 
+                            } else {
+                                // If already logged in (e.g., page refresh), trigger view and display
+                                displayUserId(user);
+                                renderView(currentView);
+                            }
 
                         } else {
                             isFirebaseReady = false;
                             currentUserId = null;
                             currentStaffName = null;
-                            cleanupListeners(); // Cleanup on sign out
                             displayUserId(null); 
                             document.getElementById('login-modal').classList.remove('hidden');
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
                         }
                     });
                 } else {
-                    // Handle case where no actual config is provided (Fake API Key used)
+                    // Handle FAKE_API_KEY case for smooth UI startup (no real DB connection)
                     isFirebaseReady = true; 
-                    db = null; // Ensure db is null if fake config is used
-                    auth = null; // Ensure auth is null if fake config is used
                     document.getElementById('login-modal').classList.remove('hidden');
-                    console.warn("WARNING: Running with placeholder Firebase configuration. Database operations will be disabled.");
+                    document.getElementById('staff-name-display').textContent = 'กรุณาเลือกบทบาทเจ้าหน้าที่';
                 }
                 
-                // Ensure content is clickable when ready, even if role not selected yet
                 document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
                 document.getElementById('fatal-error-box').classList.add('hidden');
             } catch (error) {
@@ -179,18 +131,10 @@
                 displayFatalError("Firebase Init Error", `เชื่อมต่อล้มเหลว: ${error.message}`);
             }
         }
-
-        // Function to clean up all active listeners
-        function cleanupListeners() {
-            if (queueUnsubscribe) {
-                queueUnsubscribe();
-                queueUnsubscribe = null;
-            }
-        }
         
         // Login Function (Role Selection)
         function handleLogin() { 
-            const userIdInput = document.getElementById('login-user-id').value.trim();
+            const userIdInput = getElementValue('login-user-id');
             const loginStatus = document.getElementById('login-status');
             const loginButton = document.getElementById('login-button');
 
@@ -204,16 +148,13 @@
 
             try {
                 currentStaffId = userIdInput;
-                // Use mapping name or fallback
                 currentStaffName = STAFF_MAPPING[currentStaffId] || `Admin/รพ. (ID: ${currentStaffId})`; 
                 
                 // Determine access rights and initial view
-                isAdmin = ADMIN_IDS.includes(currentStaffId); // Use new Admin check
+                isAdmin = currentStaffId === "10700"; // Explicitly set 10700 as the sole Admin
                 currentView = isAdmin ? 'daily_queue' : 'pcu_form';
                 
-                // FIX: Check if auth object exists before accessing currentUser
                 displayUserId(auth ? auth.currentUser : null); 
-
                 renderView(currentView);
                 validateSaveButton();
                 
@@ -226,7 +167,9 @@
 
             } catch (error) {
                 console.error("Role Selection Error:", error);
-                loginStatus.textContent = `เกิดข้อผิดพลาดในการกำหนดบทบาท: ${error.message}`;
+                // Check if auth is defined before accessing currentUser
+                const authStatus = (typeof auth !== 'undefined' && auth) ? auth.currentUser : null;
+                loginStatus.textContent = `เกิดข้อผิดพลาดในการกำหนดบทบาท: ${error.message} (Auth ready: ${!!authStatus})`;
             } finally {
                 // Ensure button is always re-enabled
                 loginButton.disabled = false;
@@ -236,12 +179,12 @@
         // Logout Function (Role reset)
         async function handleLogout() {
              try {
-                cleanupListeners(); // Ensure listeners are cleaned up
                 currentStaffName = null; 
                 currentStaffId = null;
                 isAdmin = false;
                 document.getElementById('login-user-id').value = "";
                 document.getElementById('login-password').value = ""; 
+                cleanupListeners();
                 
                 document.getElementById('login-modal').classList.remove('hidden');
                 document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
@@ -251,12 +194,21 @@
                  displayMessage(`ออกจากระบบล้มเหลว: ${error.message}`, 'error');
              }
         }
+
+        // Cleanup Firestore Realtime Listeners
+        function cleanupListeners() {
+             if (queueUnsubscribe) {
+                 queueUnsubscribe();
+                 queueUnsubscribe = null;
+             }
+        }
         
         // View Rendering
         function renderView(viewName) {
-            cleanupListeners(); // Always cleanup when changing views
             currentView = viewName;
             
+            cleanupListeners(); // Stop listening before changing view
+
             // Hide all views
             ['pcu_form_view', 'daily_queue_view', 'admin_view_view'].forEach(id => 
                 document.getElementById(id).classList.add('hidden')
@@ -271,7 +223,7 @@
             document.getElementById('nav-' + viewName).classList.add('bg-blue-600', 'text-white');
             
             if (viewName === 'daily_queue') {
-                fetchAndRenderQueue(); // This now sets up the real-time listener
+                fetchAndRenderQueue(); // Start real-time listener for the queue
             }
 
             // Show/Hide Admin button based on role
@@ -313,28 +265,18 @@
                 // Populate Findings Checkboxes
                 const findingKeys = ['normal', 'microaneurysm', 'hardexudate', 'flame', 'venous', 'irma', 'newvessel', 'preretinal', 'vitreous', 'fibrous'];
                 const findings = data.findings || {};
+                
                 findingKeys.forEach(key => {
-                    // Check for key case sensitivity in existing data and use defaults
-                    const findingsKeyMap = {
-                        'microaneurysm': findings.microaneurysm, 
-                        'hardexudate': findings.hardExudate, 
-                        'flame': findings.flameHemorrhage, 
-                        'venous': findings.venousBeading,
-                        'irma': findings.irma,
-                        'newvessel': findings.newVessel,
-                        'preretinal': findings.preretinalHemorrhage,
-                        'vitreous': findings.vitreousHemorrhage,
-                        'fibrous': findings.fibrousProliferation,
-                        'normal': findings.normal,
-                    };
-                    const currentFinding = findingsKeyMap[key] || {};
-
+                    // Normalize key names for data retrieval if necessary (e.g., hardexudate vs hardExudate in data)
+                    const dataKey = key.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().replace('flame', 'flameHemorrhage').replace('venous', 'venousBeading').replace('preretinal', 'preretinalHemorrhage').replace('vitreous', 'vitreousHemorrhage').replace('fibrous', 'fibrousProliferation').replace('hardexudate', 'hardExudate').replace('microaneurysm', 'microaneurysm');
+                    
                     const orEl = document.getElementById(`admin-finding-${key}-or`);
                     const olEl = document.getElementById(`admin-finding-${key}-ol`);
-                    if (orEl) orEl.checked = currentFinding.or || false;
-                    if (olEl) olEl.checked = currentFinding.ol || false;
+                    
+                    if (orEl) orEl.checked = findings[dataKey]?.or || false;
+                    if (olEl) olEl.checked = findings[dataKey]?.ol || false;
                 });
-
+                
                 document.getElementById('admin-referral-needed').checked = data.referralNeeded || false;
             }
 
@@ -372,7 +314,7 @@
             if (prefix === '') { // Only for PCU form
                 document.getElementById('autocomplete-results')?.classList.add('hidden');
             } else if (prefix === 'admin-') {
-                 document.getElementById('admin-edit-form-container')?.classList.remove('hidden'); // Show form but clear data
+                 document.getElementById('admin-edit-form-container')?.classList.add('hidden'); // Hide form
                  document.getElementById('search-status').textContent = 'กรุณาป้อนเลข 13 หลักเพื่อค้นหาประวัติ';
             }
             validateSaveButton();
@@ -400,16 +342,10 @@
         
         // --- PCU Save/Update Record Function ---
         async function savePatientData() {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady || !currentStaffId) { 
-                displayMessage('กรุณาเลือกบทบาทเจ้าหน้าที่และล็อกอินก่อนบันทึกข้อมูล', 'error');
+            if (!isFirebaseReady || !currentStaffId || !db) {
+                displayMessage('กรุณาเลือกบทบาทเจ้าหน้าที่และล็อกอินก่อนบันทึกข้อมูล (หรือ Firebase ไม่พร้อม)', 'error');
                 return;
             }
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
             const uploaderInfo = `${currentStaffId}_${currentUserId || 'anonymous'}`; 
             
             const patientId = getElementValue('patient-id');
@@ -446,7 +382,7 @@
                     isWheelchair: getElementChecked('is-wheelchair'),
                     hasPreviousExam: getElementChecked('has-previous-exam'),
                     previousExamCount: getElementChecked('has-previous-exam') ? getElementNumber('previous-exam-count') : null,
-                    // Sections 2 & 3 Defaults 
+                    // Sections 2 & 3 Defaults (PCU only updates these if they are false)
                     hasCataract: false, hearingClear: false, canSitChair: false, needsEyelidLift: false, findings: {}, referralNeeded: false,
                     // Metadata
                     updatedTimestamp: new Date().toISOString(), 
@@ -461,23 +397,20 @@
                     const existingData = existingDoc.exists() ? existingDoc.data() : {};
                     
                     const updateData = {
-                        ...existingData, 
-                        ...recordData,
-                        // Ensure original metadata is preserved unless explicitly updating
-                        uploaderId: existingData.uploaderId, 
-                        queueNumber: existingData.queueNumber,
-                        // Only update the PCU-editable fields 
-                        diabetesYears: recordData.diabetesYears,
-                        hba1c: recordData.hba1c,
-                        bloodPressure: recordData.bloodPressure,
-                        weight: recordData.weight,
-                        height: recordData.height,
-                        vaOD: recordData.vaOD,
-                        vaOS: recordData.vaOS,
-                        isWheelchair: recordData.isWheelchair,
-                        hasPreviousExam: recordData.hasPreviousExam,
-                        previousExamCount: recordData.previousExamCount,
-                        updatedTimestamp: recordData.updatedTimestamp,
+                         ...existingData, 
+                         ...recordData,
+                         // Only explicitly update PCU-editable fields
+                         diabetesYears: recordData.diabetesYears,
+                         hba1c: recordData.hba1c,
+                         bloodPressure: recordData.bloodPressure,
+                         weight: recordData.weight,
+                         height: recordData.height,
+                         vaOD: recordData.vaOD,
+                         vaOS: recordData.vaOS,
+                         isWheelchair: recordData.isWheelchair,
+                         hasPreviousExam: recordData.hasPreviousExam,
+                         previousExamCount: recordData.previousExamCount,
+                         updatedTimestamp: recordData.updatedTimestamp,
                     };
 
                     await setDoc(docRef, updateData);
@@ -487,7 +420,6 @@
                     // --- Add New Record ---
                     
                     // 2. Calculate Daily Queue Number
-                    // IMPORTANT: We use getDocs here to calculate the queue number before saving the new document
                     const allRecordsSnapshot = await getDocs(query(collection(db, collectionPath)));
                     const todayDateISO = new Date().toISOString().substring(0, 10);
                     let todayRecords = allRecordsSnapshot.docs.map(doc => doc.data()).filter(data => (data.timestamp || data.updatedTimestamp || '').startsWith(todayDateISO));
@@ -504,13 +436,11 @@
                     successMessage = `บันทึกข้อมูลผู้ป่วยสำเร็จ! คิววันนี้คือ: #${newQueueNumber} (${patientName})`;
                 }
                 
-                // 3. Display Message
+                // 3. Display Message and switch view to Queue
                 displayMessage(successMessage, 'success');
                 clearForm(''); 
+                renderView('daily_queue'); // Go to queue view after saving
                 
-                // NEW: Switch to the queue view to show the result and activate the listener
-                renderView('daily_queue'); 
-
             } catch (error) {
                 console.error("Error saving patient data:", error);
                 displayMessage(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`, 'error');
@@ -525,16 +455,10 @@
 
         // --- Admin Update Existing Record Function ---
         async function adminUpdateData() {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady || !currentRecordDocId) {
-                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต', 'error');
+            if (!isFirebaseReady || !currentRecordDocId || !db) {
+                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
             const updateButton = document.getElementById('admin-update-button');
             const buttonText = document.getElementById('admin-update-button-text');
             const spinner = document.getElementById('admin-update-spinner');
@@ -578,7 +502,7 @@
                     updatedTimestamp: new Date().toISOString(), 
                 };
                 
-                // Get existing record to preserve uneditable metadata like original timestamp/uploader
+                // Get existing record to preserve uneditable metadata like original timestamp/uploader/queueNumber
                 const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
                 const docRef = doc(db, collectionPath, currentRecordDocId);
                 const existingDoc = await getDoc(docRef);
@@ -608,99 +532,83 @@
             }
         }
 
-        // --- Custom Confirmation Modal Logic ---
-        function showConfirmModal(title, message, onConfirm) {
-            document.getElementById('custom-confirm-title').textContent = title;
-            document.getElementById('custom-confirm-message').textContent = message;
-
-            const modal = document.getElementById('custom-confirm-modal');
+        // --- Custom Confirmation Modal ---
+        function showConfirmModal(title, message, callback) {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('confirm-modal-title').textContent = title;
+            document.getElementById('confirm-modal-message').textContent = message;
+            
             modal.classList.remove('hidden');
 
-            const confirmBtn = document.getElementById('confirm-action-button');
-            const cancelBtn = document.getElementById('cancel-action-button');
-
-            // Clear previous listeners (important)
-            confirmBtn.onclick = null;
-            cancelBtn.onclick = null;
-
-            // Set new listeners
-            confirmBtn.onclick = () => {
-                modal.classList.add('hidden');
-                onConfirm();
-            };
-
-            cancelBtn.onclick = () => {
-                modal.classList.add('hidden');
-            };
+            return new Promise((resolve) => {
+                confirmModalResolve = resolve;
+            });
         }
+
+        function closeModal(confirmed) {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            if (confirmModalResolve) {
+                confirmModalResolve(confirmed);
+                confirmModalResolve = null;
+            }
+        }
+        window.closeModal = closeModal; // Make accessible from inline HTML
 
         // --- Delete Record Function (Admin Only) ---
         async function handleDeleteQueueItem(docId, patientName) {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isAdmin) {
+            if (!isAdmin || !db) {
                 displayMessage('ไม่มีสิทธิ์ลบข้อมูล', 'error');
                 return;
             }
-             if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
             
-            // Use custom modal instead of window.confirm()
-            showConfirmModal(
+            const confirmed = await showConfirmModal(
                 'ยืนยันการลบข้อมูล',
-                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของผู้ป่วย: ${patientName} ออกจากคิว? การดำเนินการนี้ไม่สามารถยกเลิกได้`,
-                async () => {
-                    try {
-                        const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
-                        const docRef = doc(db, collection(db, collectionPath).path, docId);
-                        await deleteDoc(docRef);
-                        displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
-                        // No need to manually refresh, onSnapshot handles it
-                    } catch (error) {
-                        console.error("Error deleting document:", error);
-                        displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
-                    }
-                }
+                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว? การลบนี้ไม่สามารถย้อนกลับได้`,
+                () => {} 
             );
+
+            if (confirmed) {
+                try {
+                    const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+                    const docRef = doc(db, collection(db, collectionPath).path, docId);
+                    await deleteDoc(docRef);
+                    displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
+                    // onSnapshot will handle the queue refresh automatically
+                } catch (error) {
+                    console.error("Error deleting document:", error);
+                    displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
+                }
+            }
         }
         window.handleDeleteQueueItem = handleDeleteQueueItem; // Make function accessible from inline HTML
 
         // --- Edit Record Function (All Roles) ---
         async function handleEditQueueItem(docId, role) {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady) return;
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
+            if (!isFirebaseReady || !db) return;
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             
             try {
-                 const docRef = doc(db, collection(db, collectionPath).path, docId);
-                 const record = await getDoc(docRef);
-                 
-                 if (record.exists()) {
-                     const data = { docId: record.id, ...record.data() };
-                     
-                     if (role === 'admin') {
-                         renderView('admin_view');
-                         populateForm(data, 'admin-');
-                         document.getElementById('admin-edit-form-container').classList.remove('hidden');
-                         document.getElementById('search-status').textContent = `กำลังแก้ไขข้อมูล Record ID: ${data.docId}`;
-                         document.getElementById('admin-update-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Ensure update button is ready
-                     } else { // PCU Role
-                         // Check if PCU is the original uploader (optional extra security, currently not implemented)
-                         renderView('pcu_form');
-                         populateForm(data, '');
-                         document.getElementById('save-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Change button text to indicate update
-                         displayMessage(`กำลังแก้ไขข้อมูลผู้ป่วย ${data.patientName} (เฉพาะส่วนที่ 1). กด "อัปเดต" เพื่อบันทึก`, 'info');
-                     }
-                 } else {
-                     displayMessage('ไม่พบ Record ID ที่ต้องการโหลด', 'error');
-                 }
+                const docRef = doc(db, collection(db, collectionPath).path, docId);
+                const record = await getDoc(docRef);
+                
+                if (record.exists()) {
+                    const data = { docId: record.id, ...record.data() };
+                    
+                    if (role === 'admin') {
+                        renderView('admin_view');
+                        populateForm(data, 'admin-');
+                        document.getElementById('admin-edit-form-container').classList.remove('hidden');
+                        document.getElementById('search-status').textContent = `กำลังแก้ไขข้อมูล Record ID: ${data.docId}`;
+                        document.getElementById('admin-update-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Ensure update button is ready
+                    } else { // PCU Role
+                        renderView('pcu_form');
+                        populateForm(data, '');
+                        document.getElementById('save-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Change button text to indicate update
+                        displayMessage(`กำลังแก้ไขข้อมูลผู้ป่วย ${data.patientName} (เฉพาะส่วนที่ 1). กด "อัปเดต" เพื่อบันทึก`, 'info');
+                    }
+                } else {
+                    displayMessage('ไม่พบ Record ID ที่ต้องการโหลด', 'error');
+                }
             } catch (error) {
                 console.error("Error loading specific record for edit:", error);
                 displayMessage(`ข้อผิดพลาดในการโหลด: ${error.message}`, 'error');
@@ -708,41 +616,38 @@
         }
         window.handleEditQueueItem = handleEditQueueItem; // Make function accessible from inline HTML
 
-        // Fetch and Render Queue (Now Real-time using onSnapshot)
+        // Fetch and Render Queue (using onSnapshot for real-time updates)
         function fetchAndRenderQueue() {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady || !currentStaffId) return;
-            if (!db) {
-                 document.getElementById('queue-list').innerHTML = '<li class="p-4 text-center text-red-500">ไม่สามารถเชื่อมต่อฐานข้อมูลได้</li>';
-                 return;
+            if (!isFirebaseReady || !currentStaffId || !db) {
+                document.getElementById('queue-list').innerHTML = '<li class="p-4 text-center text-gray-500">ฐานข้อมูลไม่พร้อม กรุณาล็อกอินหรือตรวจสอบการเชื่อมต่อ Firebase</li>';
+                return;
             }
-            
             const queueList = document.getElementById('queue-list');
-            queueList.innerHTML = '<li class="p-4 text-center text-gray-500">กำลังโหลดคิว...</li>';
-            
-            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
-            const q = query(collection(db, collectionPath));
-            
-            const today = new Date();
-            const todayDateISO = today.toISOString().substring(0, 10);
-            
-            // Set the date display once
-            document.getElementById('queue-date').textContent = new Date().toLocaleDateString('th-TH', { 
-                year: 'numeric', month: 'long', day: 'numeric' 
-            });
+            queueList.innerHTML = '<li class="p-4 text-center text-gray-500">กำลังโหลดคิวแบบเรียลไทม์...</li>';
 
-            // Start real-time listener and store the unsubscribe function
+            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+            const q = collection(db, collectionPath);
+
+            // Cleanup any existing listener before starting a new one
+            cleanupListeners(); 
+
+            // Start new real-time listener
             queueUnsubscribe = onSnapshot(q, (snapshot) => {
+                const today = new Date();
+                const todayDateISO = today.toISOString().substring(0, 10);
+                document.getElementById('queue-date').textContent = new Date().toLocaleDateString('th-TH', { 
+                    year: 'numeric', month: 'long', day: 'numeric' 
+                });
+                
                 let todayRecords = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     if ((data.timestamp || data.updatedTimestamp || '').startsWith(todayDateISO)) {
-                         todayRecords.push({ docId: doc.id, ...data });
+                        todayRecords.push({ docId: doc.id, ...data });
                     }
                 });
 
-                // Sort in memory by queueNumber
-                todayRecords.sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+                todayRecords.sort((a, b) => a.queueNumber - b.queueNumber);
                 
                 queueList.innerHTML = '';
                 if (todayRecords.length === 0) {
@@ -757,12 +662,12 @@
                         const actionsHtml = `
                             <div class="flex space-x-2 mt-2 sm:mt-0">
                                 <button onclick="handleEditQueueItem('${record.docId}', '${isAdmin ? 'admin' : 'pcu'}')" 
-                                    class="px-3 py-1 text-xs font-semibold bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-150 shadow-md">
+                                    class="px-3 py-1 text-xs font-semibold bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition duration-150">
                                     แก้ไข
                                 </button>
                                 ${isAdmin ? `
                                 <button onclick="handleDeleteQueueItem('${record.docId}', '${record.patientName}')" 
-                                    class="px-3 py-1 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150 shadow-md">
+                                    class="px-3 py-1 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150">
                                     ลบ
                                 </button>
                                 ` : ''}
@@ -785,22 +690,17 @@
                     });
                 }
             }, (error) => {
-                console.error("Error fetching real-time queue:", error);
-                queueList.innerHTML = `<li class="p-4 text-center text-red-500">ข้อผิดพลาดในการโหลดคิว: ${error.message}</li>`;
+                console.error("Error fetching queue (onSnapshot):", error);
+                queueList.innerHTML = `<li class="p-4 text-center text-red-500">ข้อผิดพลาดในการโหลดคิวแบบเรียลไทม์: ${error.message}</li>`;
             });
         }
+        
         // --- Export to Excel Function (Admin View) ---
         async function exportDailyDataToExcel() {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady || !isAdmin) {
-                displayMessage('ไม่มีสิทธิ์ส่งออกข้อมูล', 'error');
+            if (!isFirebaseReady || !isAdmin || !db) {
+                displayMessage('ไม่มีสิทธิ์ส่งออกข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
             const exportDate = getElementValue('export-date');
             const exportButton = document.getElementById('export-button');
             const exportStatus = document.getElementById('export-status');
@@ -852,24 +752,6 @@
                     const staffIdMatch = staffUploaderId.match(/^(\d+)_/);
                     const staffId = staffIdMatch ? staffIdMatch[1] : 'N/A';
                     const staffName = STAFF_MAPPING[staffId] || staffId;
-                    
-                    // Handle findings mapping with case safety
-                    const findings = record.findings || {};
-                    const getFinding = (key) => {
-                        const keyMap = {
-                            'microaneurysm': findings.microaneurysm, 
-                            'hardexudate': findings.hardExudate, 
-                            'flame': findings.flameHemorrhage, 
-                            'venous': findings.venousBeading,
-                            'irma': findings.irma,
-                            'newvessel': findings.newVessel,
-                            'preretinal': findings.preretinalHemorrhage,
-                            'vitreous': findings.vitreousHemorrhage,
-                            'fibrous': findings.fibrousProliferation,
-                            'normal': findings.normal,
-                        };
-                        return keyMap[key] || {};
-                    };
 
                     return [
                         record.queueNumber || '',
@@ -891,26 +773,26 @@
                         record.hearingClear ? 'ใช่' : 'ไม่',
                         record.canSitChair ? 'ใช่' : 'ไม่',
                         record.needsEyelidLift ? 'ใช่' : 'ไม่',
-                        getFinding('normal').or ? 'ใช่' : 'ไม่',
-                        getFinding('normal').ol ? 'ใช่' : 'ไม่',
-                        getFinding('microaneurysm').or ? 'ใช่' : 'ไม่',
-                        getFinding('microaneurysm').ol ? 'ใช่' : 'ไม่',
-                        getFinding('hardexudate').or ? 'ใช่' : 'ไม่',
-                        getFinding('hardexudate').ol ? 'ใช่' : 'ไม่',
-                        getFinding('flame').or ? 'ใช่' : 'ไม่',
-                        getFinding('flame').ol ? 'ใช่' : 'ไม่',
-                        getFinding('venous').or ? 'ใช่' : 'ไม่',
-                        getFinding('venous').ol ? 'ใช่' : 'ไม่',
-                        getFinding('irma').or ? 'ใช่' : 'ไม่',
-                        getFinding('irma').ol ? 'ใช่' : 'ไม่',
-                        getFinding('newvessel').or ? 'ใช่' : 'ไม่',
-                        getFinding('newvessel').ol ? 'ใช่' : 'ไม่',
-                        getFinding('preretinal').or ? 'ใช่' : 'ไม่',
-                        getFinding('preretinal').ol ? 'ใช่' : 'ไม่',
-                        getFinding('vitreous').or ? 'ใช่' : 'ไม่',
-                        getFinding('vitreous').ol ? 'ใช่' : 'ไม่',
-                        getFinding('fibrous').or ? 'ใช่' : 'ไม่',
-                        getFinding('fibrous').ol ? 'ใช่' : 'ไม่',
+                        record.findings?.normal?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.normal?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.microaneurysm?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.microaneurysm?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.hardExudate?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.hardExudate?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.flameHemorrhage?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.flameHemorrhage?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.venousBeading?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.venousBeading?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.irma?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.irma?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.newVessel?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.newVessel?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.preretinalHemorrhage?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.preretinalHemorrhage?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.vitreousHemorrhage?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.vitreousHemorrhage?.ol ? 'ใช่' : 'ไม่',
+                        record.findings?.fibrousProliferation?.or ? 'ใช่' : 'ไม่',
+                        record.findings?.fibrousProliferation?.ol ? 'ใช่' : 'ไม่',
                         record.referralNeeded ? 'ใช่' : 'ไม่'
                     ];
                 });
@@ -935,7 +817,7 @@
             }
         }
         
-        // --- General Helpers (kept from original) ---
+        // --- General Helpers ---
         function displayFatalError(title, message) { 
             const errorBox = document.getElementById('fatal-error-box');
             if (errorBox) {
@@ -971,20 +853,19 @@
             };
         }
         const debouncedSearchPatient = debounce(async () => {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady) return; 
-            if (!db) return;
-            
+            if (!isFirebaseReady || !db) return; 
             validateSaveButton(); 
             const searchId = getElementValue('patient-id');
             const resultsContainer = document.getElementById('autocomplete-results');
+            
             if (searchId.length < 5) {
                 resultsContainer?.classList.add('hidden');
                 return;
             }
             
+            // Note: Cannot use partial match queries in Firestore without indices, but we limit the search 
+            // to fields starting with the searchId (which is acceptable if IDs are numeric/sequenced)
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`; 
-            // Query for partial match - Note: requires Firestore indices
             const q = query(
                 collection(db, collectionPath),
                 where("patientId", ">=", searchId),
@@ -997,7 +878,6 @@
                     const data = doc.data();
                     // Use patientId as key and keep the latest record based on timestamp
                     const timestampToUse = new Date(data.timestamp || data.updatedTimestamp || 0).getTime();
-                    // If no existing map entry, or current record is newer, update map
                     if (!patientMap.has(data.patientId) || timestampToUse > new Date(patientMap.get(data.patientId).timestamp || patientMap.get(data.patientId).updatedTimestamp || 0).getTime()) {
                          patientMap.set(data.patientId, { docId: doc.id, ...data });
                     }
@@ -1026,7 +906,7 @@
                 resultsContainer.classList.remove('hidden');
             } catch (error) {
                 console.error("Error during partial search:", error);
-                resultsContainer.innerHTML = '<div class="p-2 text-red-500 text-sm">เกิดข้อผิดพลาด</div>';
+                resultsContainer.innerHTML = '<div class="p-2 text-red-500 text-sm">เกิดข้อผิดพลาดในการค้นหา</div>';
                 resultsContainer.classList.remove('hidden');
             }
         }, 300);
@@ -1039,8 +919,7 @@
             const isValid = patientId.length === 13 && /^\d+$/.test(patientId) && patientName.trim() !== '';
             const isAnythingToClear = patientId.trim() !== '' || patientName.trim() !== '';
             
-            // Disable save button if Firebase is not ready OR staff ID is missing OR db is null (important fix)
-            saveButton.disabled = !isValid || !isFirebaseReady || !currentStaffId || !db; 
+            saveButton.disabled = !isValid || !isFirebaseReady || !currentStaffId; 
             clearButton.disabled = !isAnythingToClear; 
             
             // Update button text
@@ -1077,16 +956,11 @@
         }
 
         async function importFromExcel() { 
-             // CRITICAL FIX: Check if db is initialized
-             if (!isFirebaseReady || !isAdmin || !currentStaffId) {
-                displayMessage('ไม่มีสิทธิ์นำเข้าข้อมูล', 'error');
-                return;
-            }
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
+             if (!isFirebaseReady || !isAdmin || !currentStaffId || !db) {
+                 document.getElementById('import-status').textContent = 'ฐานข้อมูลไม่พร้อม หรือไม่มีสิทธิ์นำเข้าข้อมูล';
+                 document.getElementById('import-status').className = 'text-red-600 text-sm';
                  return;
-            }
-
+             }
             const uploaderInfo = `${currentStaffId}_${currentUserId || 'anonymous'}`; 
             
             const fileInput = document.getElementById('excel-file-input');
@@ -1111,8 +985,6 @@
                 const workbook = XLSX.read(data);
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                // Use header: 1 to get array of arrays, then explicitly map by index if Thai headers are used,
-                // or keep as 'json' but ensure headers match exactly. Stick to json and exact matching.
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                 if (jsonData.length === 0) {
                     throw new Error("ไฟล์ Excel ว่างเปล่า หรือไม่มีข้อมูลใน Sheet แรก");
@@ -1122,7 +994,7 @@
                 statusEl.textContent = `นำเข้าสำเร็จ ${result.successCount} รายการ, เกิดข้อผิดพลาด ${result.errorCount} รายการ`;
                 statusEl.className = (result.errorCount > 0) ? 'text-yellow-700 text-sm font-semibold' : 'text-green-700 text-sm font-semibold';
                 if (result.errorCount > 0) {
-                     statusEl.textContent += ' (กรุณาตรวจสอบ Console log สำหรับข้อมูลที่ผิดพลาด)';
+                    statusEl.textContent += ' (กรุณาตรวจสอบ Console log สำหรับข้อมูลที่ผิดพลาด)';
                 }
                 fileInput.value = '';
             } catch (error) {
@@ -1133,12 +1005,11 @@
                 importButton.disabled = false;
                 buttonText.textContent = 'เริ่มนำเข้า';
                 spinner.classList.add('hidden');
-                // No need to manually refresh/fetch, onSnapshot will trigger if active
+                // Since we are using onSnapshot in daily_queue, it will update automatically if visible
             }
         }
         
         async function processImport(jsonData, uploaderInfo) {
-            // CRITICAL FIX: Check if db is initialized
             if (!db) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน");
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             let successCount = 0;
@@ -1201,16 +1072,10 @@
 
         // --- Search Function for Admin View ---
         async function searchPatientRecords() {
-            // CRITICAL FIX: Check if db is initialized
-            if (!isFirebaseReady || !isAdmin) {
-                displayMessage('ไม่มีสิทธิ์ค้นหาข้อมูล', 'error');
+            if (!isFirebaseReady || !isAdmin || !db) {
+                displayMessage('ไม่มีสิทธิ์ค้นหาข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
-            if (!db) {
-                 displayMessage('Firebase ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการตั้งค่า.', 'error');
-                 return;
-            }
-
             const searchId = getElementValue('search-id');
             const searchStatus = document.getElementById('search-status');
             const resultsTableBody = document.getElementById('results-table-body');
@@ -1219,6 +1084,7 @@
             if (searchId.length !== 13 || !/^\d+$/.test(searchId)) {
                 searchStatus.textContent = 'กรุณาป้อนเลขบัตรประชาชน 13 หลักให้ถูกต้อง';
                 document.getElementById('search-results-table').classList.add('hidden');
+                document.getElementById('admin-edit-form-container').classList.add('hidden'); // Hide edit form
                 return;
             }
 
@@ -1226,7 +1092,7 @@
             searchButton.textContent = 'กำลังค้นหา...';
             searchStatus.textContent = 'กำลังค้นหาข้อมูลในฐานข้อมูล...';
             document.getElementById('search-results-table').classList.add('hidden');
-            document.getElementById('admin-edit-form-container').classList.add('hidden');
+            document.getElementById('admin-edit-form-container').classList.add('hidden'); // Hide edit form
             resultsTableBody.innerHTML = '';
             
             try {
@@ -1243,7 +1109,6 @@
 
                 if (records.length === 0) {
                     searchStatus.textContent = `ไม่พบประวัติการตรวจสำหรับเลขบัตรประชาชน ${searchId}`;
-                    // Clear the edit form if no records found
                     clearForm('admin-');
                 } else {
                     records.sort((a, b) => new Date(b.timestamp || b.updatedTimestamp) - new Date(a.timestamp || a.updatedTimestamp));
@@ -1265,7 +1130,8 @@
                         const staffId = staffIdMatch ? staffIdMatch[1] : 'N/A';
                         const staffName = STAFF_MAPPING[staffId] || staffId;
                         
-                        let findingsSummary = record.findings && Object.keys(record.findings).some(key => key !== 'normal' && (record.findings[key]?.or || record.findings[key]?.ol)) ? 'พบความผิดปกติ' : 'Normal';
+                        // Check if any finding except 'normal' is checked
+                        let findingsSummary = record.findings && Object.keys(record.findings).some(key => key !== 'normal' && (record.findings[key]?.or || record.findings[key]?.ol)) ? '<span class="text-red-500">พบความผิดปกติ</span>' : 'Normal';
                         
                         const row = `
                             <tr class="hover:bg-blue-50 transition duration-150 cursor-pointer" onclick="handleEditQueueItem('${record.docId}', 'admin')">
@@ -1337,18 +1203,34 @@
 
     <!-- Fatal Error Box -->
     <div id="fatal-error-box" class="hidden fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg text-center">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-lg text-center">
             <svg class="w-12 h-12 text-red-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <h2 id="error-title" class="text-2xl font-bold text-red-700 mb-2">ข้อผิดพลาดร้ายแรงในการเริ่มต้นระบบ</h2>
             <p id="error-message" class="text-gray-700 mb-4 text-sm">
-                ไม่สามารถเชื่อมต่อ Firebase ได้ กรุณาตรวจสอบ Firebase Config หรือการตั้งค่า Authentication ใน Console
+                ไม่สามารถเชื่อมต่อ Firebase ได้ กรุณาตรวจสอบ Firebase Config หรือการตั้งค่า Authentication (Email/Password) ใน Console
             </p>
             <p class="text-xs text-gray-500">กรุณาดู Console Log สำหรับรายละเอียดเพิ่มเติม</p>
         </div>
     </div>
 
+    <!-- Custom Confirmation Modal (Replaces window.confirm) -->
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
+            <h2 id="confirm-modal-title" class="text-xl font-bold text-red-700 mb-3"></h2>
+            <p id="confirm-modal-message" class="text-gray-700 mb-6 text-sm"></p>
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeModal(false)" class="px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition duration-150">
+                    ยกเลิก
+                </button>
+                <button onclick="closeModal(true)" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150">
+                    ยืนยันการลบ
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Modal (Role Selection) -->
-    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-40">
+    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm">
             <h2 class="text-2xl font-bold text-blue-800 mb-2 text-center">เลือกบทบาทเจ้าหน้าที่</h2>
             <p class="text-gray-600 mb-6 text-center text-sm">
@@ -1358,7 +1240,7 @@
                 <div>
                     <label for="login-user-id" class="block text-sm font-medium text-gray-700">ชื่อผู้ใช้ (ID รพ.สต./รพ.)</label>
                     <input type="text" id="login-user-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 03280" value="03280">
-                    <p class="text-xs text-gray-400 mt-1">ตัวอย่าง ID Admin: 10700. ID รพ.สต.: 03280</p>
+                    <p class="text-xs text-gray-400 mt-1">ตัวอย่าง PCU ID: 03280. ID: 10700 คือ Admin (รพ.ศรีสะเกษ)</p>
                 </div>
                 <div>
                     <label for="login-password" class="block text-sm font-medium text-gray-700">รหัสผ่าน (ใช้สำหรับ UI เท่านั้น)</label>
@@ -1369,23 +1251,6 @@
                 ยืนยันบทบาท
             </button>
             <p id="login-status" class="text-center text-sm text-red-500 mt-4"></p>
-        </div>
-    </div>
-    
-    <!-- Custom Confirmation Modal (For Delete Operations) -->
-    <div id="custom-confirm-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-40">
-        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm text-center">
-            <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.3 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <h2 id="custom-confirm-title" class="text-xl font-bold text-gray-800 mb-2"></h2>
-            <p id="custom-confirm-message" class="text-gray-600 mb-6 text-sm"></p>
-            <div class="flex justify-center space-x-4">
-                <button id="cancel-action-button" class="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400 transition duration-300">
-                    ยกเลิก
-                </button>
-                <button id="confirm-action-button" class="px-6 py-2 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-300">
-                    ยืนยันการลบ
-                </button>
-            </div>
         </div>
     </div>
 
@@ -1404,20 +1269,20 @@
              <div id="staff-name-display" class="text-base font-bold text-gray-800 flex-grow">
                  กำลังโหลด...
             </div>
-            <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden shadow-sm">
+            <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden">
                 ออกจากระบบ (เปลี่ยนบทบาท)
             </button>
         </div>
         
         <!-- Navigation Bar (Tabs) -->
-        <div class="flex justify-start space-x-2 mb-6 overflow-x-auto custom-scroll">
-            <button id="nav-pcu_form" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 shadow-md">
+        <div class="flex justify-start space-x-2 mb-6 overflow-x-auto">
+            <button id="nav-pcu_form" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150">
                 1. บันทึกข้อมูล (PCU)
             </button>
-            <button id="nav-daily_queue" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 shadow-md">
+            <button id="nav-daily_queue" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150">
                 2. คิวผู้ป่วยวันนี้
             </button>
-            <button id="nav-admin_view" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 hidden shadow-md">
+            <button id="nav-admin_view" class="flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-700 hover:bg-blue-100 transition duration-150 hidden">
                 3. ข้อมูลทั้งหมด (Admin)
             </button>
         </div>
@@ -1429,7 +1294,7 @@
             <!-- VIEW 1: บันทึกข้อมูล (PCU Form) -->
             <div id="pcu_form_view">
                 <!-- Section 1: Patient Info (from PCU) -->
-                <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200 shadow-lg">
+                <div class="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
                     <h2 class="text-xl font-bold text-blue-700 mb-4">ส่วนที่ 1: ข้อมูลผู้ป่วย (จาก รพ.สต./PCU)</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div class="relative"> 
@@ -1438,7 +1303,7 @@
                                 <input type="text" id="patient-id" class="block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="ตัวอย่าง: XXXXXXXXXXXXX" maxlength="13" autocomplete="off">
                             </div>
                             <!-- Autocomplete results for PCU view -->
-                            <div id="autocomplete-results" class="absolute top-full left-0 right-0 w-full bg-white border border-gray-300 rounded-b-lg shadow-xl z-20 hidden overflow-y-auto max-h-48 custom-scroll">
+                            <div id="autocomplete-results" class="absolute top-full left-0 right-0 w-full bg-white border border-gray-300 rounded-b-lg shadow-lg z-20 hidden overflow-y-auto max-h-48">
                             </div>
                         </div>
                         <div>
@@ -1456,7 +1321,7 @@
                             <label for="hba1c" class="block text-sm font-medium text-gray-700">HbA1C (ล่าสุด)</label>
                             <input type="text" id="hba1c" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 7.5">
                         </div>
-                         <div>
+                          <div>
                             <label for="blood-pressure" class="block text-sm font-medium text-gray-700">ค่าความดัน (BP)</label>
                             <input type="text" id="blood-pressure" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 130/80">
                         </div>
@@ -1532,7 +1397,7 @@
                         </svg>
                         คิวผู้ป่วยที่ลงทะเบียนวันนี้ (<span id="queue-date"></span>)
                     </h2>
-                    <ul id="queue-list" class="divide-y divide-gray-100 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
+                    <ul id="queue-list" class="divide-y divide-gray-100 bg-gray-50 rounded-xl shadow-inner">
                         <li class="p-4 text-center text-gray-500">กรุณาเลือกบทบาทเจ้าหน้าที่เพื่อโหลดคิว</li>
                     </ul>
                 </div>
@@ -1542,10 +1407,10 @@
             <div id="admin_view_view" class="hidden">
                 
                 <!-- Import Section -->
-                <div class="mt-4 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
+                <div class="mt-10 p-6 bg-yellow-50 rounded-xl shadow-inner border border-yellow-200">
                     <h2 class="text-2xl font-bold text-yellow-800 mb-4 flex items-center">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
                         นำเข้าข้อมูลจาก Excel (.xlsx)
                     </h2>
@@ -1554,9 +1419,9 @@
                     </p>
                     <div class="flex flex-col sm:flex-row gap-4 mb-4">
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-grow block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer">
-                        <button id="import-button" class="flex-shrink-0 px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300 flex items-center justify-center">
+                        <button id="import-button" class="flex-shrink-0 px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300">
                             <span id="import-button-text">เริ่มนำเข้า</span>
-                            <svg id="import-spinner" class="animate-spin ml-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <svg id="import-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
@@ -1567,18 +1432,18 @@
                         <summary class="cursor-pointer text-sm font-medium text-yellow-700 hover:text-yellow-900">
                             คลิกเพื่อดูรูปแบบคอลัมน์ที่จำเป็น (แถวแรกใน Excel)
                         </summary>
-                        <pre class="text-xs bg-white p-3 rounded-md mt-2 overflow-x-auto border border-yellow-300 shadow-sm">
-    คอลัมน์ที่จำเป็น (ต้องตรงกันทุกตัวอักษร):
-    - เลขบัตรประชาชน, ชื่อ-สกุล, ป่วยเบาหวานปี, HbA1C, ความดัน, น้ำหนัก, ส่วนสูง, VA (OD), VA (OS), นั่งรถเข็น, เคยตรวจ, จำนวนครั้ง
+                        <pre class="text-xs bg-white p-3 rounded-md mt-2 overflow-x-auto border border-yellow-300">
+คอลัมน์ที่จำเป็น (ต้องตรงกันทุกตัวอักษร):
+- เลขบัตรประชาชน, ชื่อ-สกุล, ป่วยเบาหวานปี, HbA1C, ความดัน, น้ำหนัก, ส่วนสูง, VA (OD), VA (OS), นั่งรถเข็น, เคยตรวจ, จำนวนครั้ง
                         </pre>
                     </details>
                 </div>
 
                 <!-- Export Section -->
                 <div class="mt-10 p-6 bg-pink-50 rounded-xl shadow-inner border border-pink-200">
-                    <h2 class="text-2xl font-bold text-pink-800 mb-4 flex items-center">
+                     <h2 class="text-2xl font-bold text-pink-800 mb-4 flex items-center">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         ส่งออกข้อมูลเป็น Excel (.xlsx)
                     </h2>
@@ -1660,7 +1525,7 @@
                                     </div>
                                     <div>
                                         <label for="admin-va-os" class="block text-sm font-medium text-gray-700">VA (ตาซ้าย - OS)</label>
-                                         <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                                        <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                                             <option value="">-- เลือกค่าสายตา --</option>
                                             <option value="20/20">20/20</option><option value="20/25">20/25</option><option value="20/30">20/30</option><option value="20/40">20/40</option><option value="20/50">20/50</option><option value="20/60">20/60</option><option value="20/70">20/70</option><option value="20/80">20/80</option><option value="20/100">20/100</option><option value="20/200">20/200</option><option value="20/400">20/400</option><option value="CF 1ft">CF 1ft</option><option value="CF 2ft">CF 2ft</option><option value="CF 3ft">CF 3ft</option><option value="HM">HM (Hand Motion)</option><option value="LP">LP (Light Perception)</option><option value="NLP">NLP (No Light Perception)</option><option value="N/A">N/A (ตรวจไม่ได้)</option>
                                         </select>
@@ -1795,7 +1660,7 @@
                         <!-- Search Results Table -->
                         <div id="search-results-table" class="hidden mt-6">
                             <h3 class="text-lg font-semibold text-gray-700 mb-3">รายการที่พบทั้งหมด (คลิกเพื่อแก้ไข):</h3>
-                            <div class="overflow-x-auto rounded-xl border border-gray-300 shadow-lg">
+                            <div class="overflow-x-auto rounded-lg border border-gray-300 shadow-lg">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-gray-200">
                                         <tr>
