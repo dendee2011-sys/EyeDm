@@ -117,7 +117,8 @@
                     });
                 } else {
                     // Handle FAKE_API_KEY case for smooth UI startup
-                    isFirebaseReady = true;
+                    // Set to true so UI loads, but db remains undefined
+                    isFirebaseReady = true; 
                     document.getElementById('login-modal').classList.remove('hidden');
                 }
                 
@@ -339,8 +340,9 @@
         
         // --- PCU Save/Update Record Function ---
         async function savePatientData() {
-            if (!isFirebaseReady || !currentStaffId) {
-                displayMessage('กรุณาเลือกบทบาทเจ้าหน้าที่และล็อกอินก่อนบันทึกข้อมูล', 'error');
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !currentStaffId || !db) { 
+                displayMessage('กรุณาเลือกบทบาทเจ้าหน้าที่และล็อกอินก่อนบันทึกข้อมูล (หรือ Firebase ไม่พร้อม)', 'error');
                 return;
             }
             const uploaderInfo = `${currentStaffId}_${currentUserId || 'anonymous'}`; 
@@ -454,7 +456,8 @@
 
         // --- Admin Update Existing Record Function ---
         async function adminUpdateData() {
-            if (!isFirebaseReady || !currentRecordDocId) {
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !currentRecordDocId || !db) {
                 displayMessage('ไม่พบ Record ID สำหรับการอัปเดต หรือ Firebase ยังไม่พร้อม', 'error');
                 return;
             }
@@ -559,8 +562,9 @@
 
         // --- Delete Record Function (Admin Only) ---
         async function handleDeleteQueueItem(docId, patientName) {
-            if (!isAdmin) {
-                displayMessage('ไม่มีสิทธิ์ลบข้อมูล', 'error');
+            // FIX: Check if db is initialized
+            if (!isAdmin || !db) {
+                displayMessage('ไม่มีสิทธิ์ลบข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
             
@@ -586,7 +590,8 @@
 
         // --- Edit Record Function (All Roles) ---
         async function handleEditQueueItem(docId, role) {
-            if (!isFirebaseReady) return;
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !db) return;
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             
             try {
@@ -620,7 +625,8 @@
 
         // Fetch and Render Queue
         async function fetchAndRenderQueue() {
-            if (!isFirebaseReady || !currentStaffId) return;
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !currentStaffId || !db) return;
             const queueList = document.getElementById('queue-list');
             queueList.innerHTML = '<li class="p-4 text-center text-gray-500">กำลังโหลดคิว...</li>';
 
@@ -693,8 +699,9 @@
         }
         // --- Export to Excel Function (Admin View) ---
         async function exportDailyDataToExcel() {
-            if (!isFirebaseReady || !isAdmin) {
-                displayMessage('ไม่มีสิทธิ์ส่งออกข้อมูล', 'error');
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !isAdmin || !db) {
+                displayMessage('ไม่มีสิทธิ์ส่งออกข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
             const exportDate = getElementValue('export-date');
@@ -867,7 +874,8 @@
             };
         }
         const debouncedSearchPatient = debounce(async () => {
-            if (!isFirebaseReady) return; 
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !db) return; 
             validateSaveButton(); 
             const searchId = getElementValue('patient-id');
             const resultsContainer = document.getElementById('autocomplete-results');
@@ -875,7 +883,6 @@
                 resultsContainer?.classList.add('hidden');
                 return;
             }
-            if (!db) return;
             
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`; 
             // Query for partial match - Note: requires Firestore indices
@@ -970,8 +977,9 @@
         }
 
         async function importFromExcel() { 
-             if (!isFirebaseReady || !isAdmin || !currentStaffId) {
-                displayMessage('ไม่มีสิทธิ์นำเข้าข้อมูล', 'error');
+             // FIX: Check if db is initialized
+             if (!isFirebaseReady || !isAdmin || !currentStaffId || !db) {
+                displayMessage('ไม่มีสิทธิ์นำเข้าข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
             const uploaderInfo = `${currentStaffId}_${currentUserId || 'anonymous'}`; 
@@ -987,11 +995,8 @@
                 statusEl.className = 'text-red-600 text-sm';
                 return;
             }
-            if (!db) {
-                statusEl.textContent = 'ฐานข้อมูลไม่พร้อมใช้งาน กรุณาตรวจสอบการเชื่อมต่อ';
-                statusEl.className = 'text-red-600 text-sm';
-                return;
-            }
+            // The existing !db check inside try/catch is removed since it's already checked above.
+            
             importButton.disabled = true;
             buttonText.textContent = 'กำลังนำเข้า...';
             spinner.classList.remove('hidden');
@@ -1029,6 +1034,7 @@
         }
         
         async function processImport(jsonData, uploaderInfo) {
+            // FIX: Check if db is initialized
             if (!db) throw new Error("ฐานข้อมูลไม่พร้อมใช้งาน");
             const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
             let successCount = 0;
@@ -1091,8 +1097,9 @@
 
         // --- Search Function for Admin View ---
         async function searchPatientRecords() {
-            if (!isFirebaseReady || !isAdmin) {
-                displayMessage('ไม่มีสิทธิ์ค้นหาข้อมูล', 'error');
+            // FIX: Check if db is initialized
+            if (!isFirebaseReady || !isAdmin || !db) {
+                displayMessage('ไม่มีสิทธิ์ค้นหาข้อมูล หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
             const searchId = getElementValue('search-id');
