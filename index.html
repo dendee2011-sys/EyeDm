@@ -51,10 +51,22 @@
         
         // --- START: Configuration (Using Canvas Globals) ---
         const globalAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-        // Fallback Config to prevent Firebase Config Error
+
+        // !!! IMPORTANT: Replace this ENTIRE BLOCK with your ACTUAL Firebase Config when running outside Canvas.
+        const MANUAL_FIREBASE_CONFIG = { 
+            apiKey: "YOUR_API_KEY", // <-- เปลี่ยนเป็น API Key จริงของคุณ
+            authDomain: "YOUR_AUTH_DOMAIN", // <-- เปลี่ยนเป็น Auth Domain จริงของคุณ
+            projectId: "YOUR_PROJECT_ID", // <-- เปลี่ยนเป็น Project ID จริงของคุณ
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        // !!! END IMPORTANT BLOCK
+
+        // Fallback Config to use MANUAL_FIREBASE_CONFIG if Canvas globals are not available
         const firebaseConfig = typeof __firebase_config !== 'undefined' && Object.keys(JSON.parse(__firebase_config)).length > 0
             ? JSON.parse(__firebase_config)
-            : { apiKey: "FAKE_API_KEY", authDomain: "fake.firebaseapp.com", projectId: "fake-project" };
+            : MANUAL_FIREBASE_CONFIG; // <-- ใช้ config ที่คุณป้อนเมื่ออยู่นอก Canvas
         
         // **Hardcoded Staff Name Mapping (Updated based on user image)**
         const STAFF_MAPPING = {
@@ -108,8 +120,11 @@
         setLogLevel('Debug');
 
         async function initializeFirebase(config) {
+            // Determine if using a real config
+            const isRealConfig = config.apiKey && config.apiKey !== "YOUR_API_KEY" && config.apiKey !== "FAKE_API_KEY";
+
             try {
-                if (config && config.apiKey && config.apiKey !== "FAKE_API_KEY") {
+                if (isRealConfig) {
                     app = initializeApp(config);
                     db = getFirestore(app);
                     auth = getAuth(app);
@@ -119,6 +134,7 @@
                         if (token) {
                             await signInWithCustomToken(auth, token);
                         } else {
+                            // Non-Canvas environments might rely on other auth methods or anonymous auth
                             await signInAnonymously(auth);
                         }
                     } catch (e) {
@@ -147,10 +163,12 @@
                         }
                     });
                 } else {
-                    // Handle FAKE_API_KEY case for smooth UI startup
-                    // Set to true so UI loads, but db remains undefined
+                    // Handle case where no actual config is provided (Fake API Key used)
                     isFirebaseReady = true; 
+                    db = null; // Ensure db is null if fake config is used
+                    auth = null; // Ensure auth is null if fake config is used
                     document.getElementById('login-modal').classList.remove('hidden');
+                    console.warn("WARNING: Running with placeholder Firebase configuration. Database operations will be disabled.");
                 }
                 
                 // Ensure content is clickable when ready, even if role not selected yet
@@ -509,7 +527,7 @@
         async function adminUpdateData() {
             // CRITICAL FIX: Check if db is initialized
             if (!isFirebaseReady || !currentRecordDocId) {
-                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต หรือ Firebase ไม่พร้อม', 'error');
+                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต', 'error');
                 return;
             }
             if (!db) {
