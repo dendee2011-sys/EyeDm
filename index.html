@@ -152,7 +152,9 @@
                 isAdmin = currentStaffId !== "03280";
                 currentView = isAdmin ? 'daily_queue' : 'pcu_form';
                 
-                displayUserId(auth.currentUser); 
+                // FIX: Check if auth object exists before accessing currentUser
+                displayUserId(auth ? auth.currentUser : null); 
+
                 renderView(currentView);
                 validateSaveButton();
                 
