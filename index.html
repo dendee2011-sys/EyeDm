@@ -45,7 +45,8 @@
             where,      
             getDocs,
             getDoc,
-            collection 
+            collection,
+            onSnapshot // IMPORTED FOR REAL-TIME LISTENING
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- START: Configuration (Using Canvas Globals) ---
@@ -70,6 +71,7 @@
         let currentView = 'pcu_form'; 
         let currentRecordDocId = null; 
         let isAdmin = false; 
+        let queueUnsubscribe = null; // NEW: Holds the unsubscribe function for the queue listener
 
         // --- END: Configuration ---
         
@@ -110,6 +112,7 @@
                             isFirebaseReady = false;
                             currentUserId = null;
                             currentStaffName = null;
+                            cleanupListeners(); // Cleanup on sign out
                             displayUserId(null); 
                             document.getElementById('login-modal').classList.remove('hidden');
                             document.getElementById('main-app-content').classList.add('opacity-20', 'pointer-events-none');
@@ -129,6 +132,15 @@
                 console.error("Firebase Initialization failed:", error);
                 displayFatalError("Firebase Init Error", `เชื่อมต่อล้มเหลว: ${error.message}`);
             }
+        }
+
+        // NEW: Function to clean up all active listeners
+        function cleanupListeners() {
+            if (queueUnsubscribe) {
+                queueUnsubscribe();
+                queueUnsubscribe = null;
+            }
+            // Add other listeners cleanup here if needed later
         }
         
         // Login Function (Role Selection)
@@ -178,6 +190,7 @@
         // Logout Function (Role reset)
         async function handleLogout() {
              try {
+                cleanupListeners(); // Ensure listeners are cleaned up
                 currentStaffName = null; 
                 currentStaffId = null;
                 isAdmin = false;
@@ -195,6 +208,7 @@
         
         // View Rendering
         function renderView(viewName) {
+            cleanupListeners(); // Always cleanup when changing views
             currentView = viewName;
             
             // Hide all views
@@ -211,7 +225,7 @@
             document.getElementById('nav-' + viewName).classList.add('bg-blue-600', 'text-white');
             
             if (viewName === 'daily_queue') {
-                fetchAndRenderQueue();
+                fetchAndRenderQueue(); // This now sets up the real-time listener
             }
 
             // Show/Hide Admin button based on role
@@ -422,6 +436,7 @@
                     // --- Add New Record ---
                     
                     // 2. Calculate Daily Queue Number
+                    // IMPORTANT: We use getDocs here to calculate the queue number before saving the new document
                     const allRecordsSnapshot = await getDocs(query(collection(db, collectionPath)));
                     const todayDateISO = new Date().toISOString().substring(0, 10);
                     let todayRecords = allRecordsSnapshot.docs.map(doc => doc.data()).filter(data => (data.timestamp || data.updatedTimestamp || '').startsWith(todayDateISO));
@@ -458,7 +473,7 @@
         async function adminUpdateData() {
             // FIX: Check if db is initialized
             if (!isFirebaseReady || !currentRecordDocId || !db) {
-                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต หรือ Firebase ยังไม่พร้อม', 'error');
+                displayMessage('ไม่พบ Record ID สำหรับการอัปเดต หรือ Firebase ไม่พร้อม', 'error');
                 return;
             }
             const updateButton = document.getElementById('admin-update-button');
@@ -578,7 +593,7 @@
                         const docRef = doc(db, collection(db, collectionPath).path, docId);
                         await deleteDoc(docRef);
                         displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
-                        fetchAndRenderQueue(); // Refresh queue
+                        // No need to manually refresh, onSnapshot handles it
                     } catch (error) {
                         console.error("Error deleting document:", error);
                         displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
@@ -623,26 +638,28 @@
         }
         window.handleEditQueueItem = handleEditQueueItem; // Make function accessible from inline HTML
 
-        // Fetch and Render Queue
-        async function fetchAndRenderQueue() {
+        // Fetch and Render Queue (Now Real-time using onSnapshot)
+        function fetchAndRenderQueue() {
             // FIX: Check if db is initialized
             if (!isFirebaseReady || !currentStaffId || !db) return;
             const queueList = document.getElementById('queue-list');
             queueList.innerHTML = '<li class="p-4 text-center text-gray-500">กำลังโหลดคิว...</li>';
+            
+            const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+            const q = query(collection(db, collectionPath));
+            
+            const today = new Date();
+            const todayDateISO = today.toISOString().substring(0, 10);
+            
+            // Set the date display once
+            document.getElementById('queue-date').textContent = new Date().toLocaleDateString('th-TH', { 
+                year: 'numeric', month: 'long', day: 'numeric' 
+            });
 
-            try {
-                const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
-                // Note: Query without orderBy for better performance and compliance with instruction
-                const allRecordsSnapshot = await getDocs(query(collection(db, collectionPath)));
-                
-                const today = new Date();
-                const todayDateISO = today.toISOString().substring(0, 10);
-                document.getElementById('queue-date').textContent = new Date().toLocaleDateString('th-TH', { 
-                    year: 'numeric', month: 'long', day: 'numeric' 
-                });
-                
+            // Start real-time listener and store the unsubscribe function
+            queueUnsubscribe = onSnapshot(q, (snapshot) => {
                 let todayRecords = [];
-                allRecordsSnapshot.forEach(doc => {
+                snapshot.forEach(doc => {
                     const data = doc.data();
                     if ((data.timestamp || data.updatedTimestamp || '').startsWith(todayDateISO)) {
                          todayRecords.push({ docId: doc.id, ...data });
@@ -692,10 +709,10 @@
                         `;
                     });
                 }
-            } catch (error) {
-                console.error("Error fetching queue:", error);
+            }, (error) => {
+                console.error("Error fetching real-time queue:", error);
                 queueList.innerHTML = `<li class="p-4 text-center text-red-500">ข้อผิดพลาดในการโหลดคิว: ${error.message}</li>`;
-            }
+            });
         }
         // --- Export to Excel Function (Admin View) ---
         async function exportDailyDataToExcel() {
@@ -995,7 +1012,6 @@
                 statusEl.className = 'text-red-600 text-sm';
                 return;
             }
-            // The existing !db check inside try/catch is removed since it's already checked above.
             
             importButton.disabled = true;
             buttonText.textContent = 'กำลังนำเข้า...';
@@ -1029,7 +1045,7 @@
                 importButton.disabled = false;
                 buttonText.textContent = 'เริ่มนำเข้า';
                 spinner.classList.add('hidden');
-                fetchAndRenderQueue(); 
+                // No need to manually refresh/fetch, onSnapshot will trigger if active
             }
         }
         
