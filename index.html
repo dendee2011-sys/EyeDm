@@ -46,7 +46,7 @@
             getDocs,
             getDoc,
             collection,
-            onSnapshot // IMPORTED FOR REAL-TIME LISTENING
+            onSnapshot 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- START: Configuration (Using Canvas Globals) ---
@@ -58,10 +58,38 @@
         
         // **Hardcoded Staff Name Mapping**
         const STAFF_MAPPING = {
-            "03280": "รพ.สต.หนองครก",
+            // รพ.สต. และ ศูนย์สุขภาพชุมชน
+            "03277": "รพ.สต.ตำบลดูนฮูด",
+            "03278": "รพ.สต.ตำบลบ้านแหง",
+            "03279": "รพ.สต.ตำบลกุจิง",
+            "03280": "รพ.สต.ตำบลตะค่อม",
+            "03281": "รพ.สต.บ้านหนองครก",
+            "03282": "รพ.สต.บ้านกุดโง้ง",
+            "03283": "รพ.สต.ตำบลบ้านกลาง",
+            "03284": "รพ.สต.ตำบลบ้านหนองแวง",
+            "03285": "รพ.สต.ตำบลบ้านสร้างเรื่อง",
+            "03286": "รพ.สต.ตำบลบ้านโนนแกด",
+            "03287": "รพ.สต.ตำบลบ้านหนองฮู",
+            "03288": "รพ.สต.ตำบลบ้านหนองแก้ว", // 12019 ในภาพคือ ID เก่า
+            "12019": "รพ.สต.บ้านหนองแก้ว", // ใช้ ID ใหม่ (12019) หากมี
+            "03289": "รพ.สต.ตำบลบ้านน้ำคำ",
+            "03290": "รพ.สต.ตำบลบ้านหนองโน", // 123456 ในภาพคือ ID เก่า
+            "123456": "รพ.สต.บ้านหนองโน", // ใช้ ID ใหม่ (123456) หากมี
+            "03291": "รพ.สต.ตำบลบ้านโพธิ์",
+            "03292": "รพ.สต.ตำบลบ้านค้อเหลือง",
+            "03293": "รพ.สต.ตำบลบ้านหนองไผ่",
+            "14422": "ศูนย์บริการสาธารณสุข 2",
+            "15204": "ศูนย์บริการสาธารณสุข 3",
+            "21986": "ศูนย์บริการสาธารณสุข 4",
+            "23954": "ศูนย์บริการสาธารณสุข 5",
+            
+            // ADMIN / โรงพยาบาล
+            "10700": "โรงพยาบาลศรีสะเกษ (Admin)", // โรงพยาบาลศรีสะเกษ
+            "77475": "ศูนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ (Admin)",
             "99999": "ฝ่ายไอทีโรงพยาบาล",
-            // เพิ่ม ID อื่นๆ ที่นี่: "ID": "ชื่อ รพ.สต.",
         };
+
+        const ADMIN_IDS = ["10700", "77475", "99999"]; // กำหนด ID ที่ถือเป็น Admin
 
         let app, db, auth;
         let isFirebaseReady = false; 
@@ -71,7 +99,7 @@
         let currentView = 'pcu_form'; 
         let currentRecordDocId = null; 
         let isAdmin = false; 
-        let queueUnsubscribe = null; // NEW: Holds the unsubscribe function for the queue listener
+        let queueUnsubscribe = null; // Holds the unsubscribe function for the queue listener
 
         // --- END: Configuration ---
         
@@ -159,10 +187,11 @@
 
             try {
                 currentStaffId = userIdInput;
+                // Use mapping name or fallback
                 currentStaffName = STAFF_MAPPING[currentStaffId] || `Admin/รพ. (ID: ${currentStaffId})`; 
                 
                 // Determine access rights and initial view
-                isAdmin = currentStaffId !== "03280";
+                isAdmin = ADMIN_IDS.includes(currentStaffId); // Use new Admin check
                 currentView = isAdmin ? 'daily_queue' : 'pcu_form';
                 
                 // FIX: Check if auth object exists before accessing currentUser
@@ -623,6 +652,7 @@
                          document.getElementById('search-status').textContent = `กำลังแก้ไขข้อมูล Record ID: ${data.docId}`;
                          document.getElementById('admin-update-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Ensure update button is ready
                      } else { // PCU Role
+                         // Check if PCU is the original uploader (optional extra security, currently not implemented)
                          renderView('pcu_form');
                          populateForm(data, '');
                          document.getElementById('save-button-text').textContent = 'อัปเดตข้อมูลผู้ป่วย'; // Change button text to indicate update
@@ -1264,8 +1294,8 @@
             <div class="space-y-4">
                 <div>
                     <label for="login-user-id" class="block text-sm font-medium text-gray-700">ชื่อผู้ใช้ (ID รพ.สต./รพ.)</label>
-                    <input type="text" id="login-user-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 03280" value="03280">
-                    <p class="text-xs text-gray-400 mt-1">ตัวอย่าง PCU ID: 03280. ID อื่นๆ ถือเป็น Admin</p>
+                    <input type="text" id="login-user-id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 border focus:border-blue-500 focus:ring-blue-500" placeholder="เช่น 03280" value="10700">
+                    <p class="text-xs text-gray-400 mt-1">ตัวอย่าง ID Admin: 10700. ID รพ.สต.: 03280</p>
                 </div>
                 <div>
                     <label for="login-password" class="block text-sm font-medium text-gray-700">รหัสผ่าน (ใช้สำหรับ UI เท่านั้น)</label>
