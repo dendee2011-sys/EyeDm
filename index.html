@@ -3,73 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM - ระบบฐานข้อมูล (Fixed)</title>
+    <title>EyeDM - ระบบทะเบียน (v11 Diagnostic)</title>
     
-    <!-- 1. CSS -->
+    <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- 2. React Core (Switch to cdnjs for better stability) -->
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    
-    <!-- 3. Firebase -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    
-    <!-- 4. Utils -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
-        /* Fallback Loading Screen */
-        #loading-screen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: white; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 9999;
-        }
-        .spinner {
-            width: 40px; height: 40px; border: 4px solid #f3f3f3;
-            border-top: 4px solid #3b82f6; border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #dc2626; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        /* Error Box */
-        #error-console {
-            display: none; margin: 20px; padding: 20px; background: #fee2e2;
-            border: 1px solid #ef4444; color: #b91c1c; border-radius: 8px;
-            font-family: monospace; white-space: pre-wrap;
-        }
     </style>
 </head>
 <body>
-
-    <!-- 1. Loading Screen (Shows until React loads) -->
-    <div id="loading-screen">
-        <div class="spinner"></div>
-        <h2 style="margin-top: 15px; color: #475569;">กำลังโหลดระบบ EyeDM...</h2>
-        <p style="color: #94a3b8; font-size: 14px;">หากรอนานเกิน 10 วินาที ให้รีเฟรชหน้าจอ</p>
-    </div>
-
-    <!-- 2. Error Console (Shows if crash) -->
-    <div id="error-console"></div>
-
-    <!-- 3. React Root -->
     <div id="root"></div>
-
-    <!-- 4. Error Trap Script -->
-    <script>
-        window.onerror = function(message, source, lineno, colno, error) {
-            document.getElementById('loading-screen').style.display = 'none';
-            const errBox = document.getElementById('error-console');
-            errBox.style.display = 'block';
-            errBox.innerHTML = `<strong>⚠️ เกิดข้อผิดพลาด (System Error):</strong>\n${message}\n\nที่บรรทัด: ${lineno}`;
-        };
-    </script>
 
     <script type="text/babel">
         // --- CONFIG ---
@@ -83,24 +38,23 @@
             measurementId: "G-N48NPP7K9J"
         };
         
-        try {
-            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        } catch(e) { console.error("Firebase Init Error", e); }
-
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
-        const APP_ID = "sisaket_prod_v10_persistent"; 
+        
+        // ใช้ชื่อเดิมเพื่อให้ชัวร์ (หรือเปลี่ยนเป็นชื่อที่คุณตั้งใน Rules)
+        // เพื่อความปลอดภัย ผมจะใช้ชื่อกลางๆ
+        const APP_ID = "sisaket_prod_v11_diagnostic"; 
         const COL_QUEUE = "dr_queue";   
         const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
-        // --- UTILS ---
         const Icon = ({ name, size = 18, className = "" }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
         };
 
-        // --- AUTH SCREEN ---
+        // --- AUTH ---
         const AuthScreen = () => {
             const [pin, setPin] = React.useState('');
             const [password, setPassword] = React.useState('');
@@ -120,8 +74,8 @@
                 <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 font-sans">
                     <div className="bg-white p-8 rounded-2xl w-full max-w-md text-center shadow-2xl">
                         <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4"><Icon name="database" size={32}/></div>
-                        <h1 className="text-2xl font-bold text-gray-800 mb-1">EyeDM Database</h1>
-                        <p className="text-sm text-gray-500 mb-6">ระบบฐานข้อมูลผู้ป่วยถาวร</p>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-1">EyeDM System</h1>
+                        <p className="text-sm text-gray-500 mb-6">v11 Diagnostic Mode</p>
                         <form onSubmit={handleAuth} className="space-y-4 text-left">
                             <div><label className="text-xs font-bold text-gray-500">รหัสเจ้าหน้าที่</label><input className="w-full p-3 border rounded-lg text-center text-lg font-mono tracking-widest" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,5))} required autoFocus /></div>
                             <div><label className="text-xs font-bold text-gray-500">รหัสผ่าน</label><input className="w-full p-3 border rounded-lg text-center" type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
@@ -139,54 +93,59 @@
             const [view, setView] = React.useState('dashboard');
             const [queue, setQueue] = React.useState([]);
             const [editingPatient, setEditingPatient] = React.useState(null);
-            const [limitCount, setLimitCount] = React.useState(50);
+            const [dbStatus, setDbStatus] = React.useState('checking');
 
-            React.useEffect(() => {
-                const unsub = auth.onAuthStateChanged(u => {
-                    setUser(u);
-                    // Hide loading screen when auth is checked
-                    document.getElementById('loading-screen').style.display = 'none';
-                });
-                return () => unsub();
-            }, []);
+            React.useEffect(() => auth.onAuthStateChanged(setUser), []);
             
+            // Test Connection & Load Data
             React.useEffect(() => {
                 if (!user) return;
                 const unsubscribe = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
                     .orderBy('createdAt', 'desc')
-                    .limit(limitCount)
+                    .limit(50) // Limit to prevent freeze
                     .onSnapshot(snapshot => {
+                        setDbStatus('online');
                         setQueue(snapshot.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() || new Date() })));
                         setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
+                    }, error => {
+                        console.error(error);
+                        setDbStatus(error.code === 'permission-denied' ? 'permission-error' : 'offline');
                     });
                 return () => unsubscribe();
-            }, [user, limitCount]);
+            }, [user]);
 
             const handleSend = async (id, name) => {
-                if(confirm(`ส่งตัวผู้ป่วย: ${name}?`)) {
-                    await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).update({
-                        status: 'Waiting', sentAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                if(confirm(`ส่งตัว: ${name}?`)) {
+                    try {
+                        await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).update({
+                            status: 'Waiting', sentAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch(e) { alert("ส่งไม่สำเร็จ: " + e.message); }
                 }
             };
 
             const handleDelete = async (id) => { 
-                if(confirm("ลบออกจากรายการคิว? (ประวัติถาวรจะไม่ถูกลบ)")) {
-                    await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); 
+                if(confirm("ลบรายการ?")) {
+                    try { await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); }
+                    catch(e) { alert("ลบไม่ได้: " + e.message); }
                 }
             };
             
-            if (!user) return <AuthScreen />;
-
-            const userPin = user.email.split('@')[0];
+            const userPin = user?.email ? user.email.split('@')[0] : '';
             const isAdmin = userPin === ADMIN_CODE;
+
+            if (!user) return <AuthScreen />;
 
             return (
                 <div className="min-h-screen flex flex-col font-sans bg-slate-50">
                     <nav className="bg-white shadow border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
                         <div className="flex gap-3 items-center">
                             <div className={`p-2 rounded-lg text-white shadow ${role==='PCU'?'bg-green-600':'bg-blue-600'}`}><Icon name={role==='PCU'?'home':'hospital'}/></div>
-                            <div><h1 className="font-bold text-lg text-gray-800">EyeDM <span className="text-gray-400 font-normal text-sm">| Master DB</span></h1><p className="text-xs text-gray-500">User: {userPin}</p></div>
+                            <div>
+                                <h1 className="font-bold text-lg text-gray-800">EyeDM <span className="text-gray-400 font-normal text-sm">| v11</span></h1>
+                                {dbStatus === 'permission-error' && <span className="text-xs text-white bg-red-600 px-2 py-1 rounded animate-pulse">⚠️ ติดสิทธิ์ (Permission Denied)</span>}
+                                {dbStatus === 'online' && <span className="text-xs text-green-600 flex items-center gap-1">● Online</span>}
+                            </div>
                         </div>
                         <div className="flex gap-2 items-center">
                             {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold gap-1"><Icon name="upload-cloud"/> Import</button>}
@@ -197,7 +156,7 @@
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
                         <div className="md:hidden flex bg-white p-1 rounded-lg shadow-sm mb-4 text-sm"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='PCU'?'bg-green-50 text-green-700 font-bold':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='HOSPITAL'?'bg-blue-50 text-blue-700 font-bold':'text-gray-500'}`}>Hospital</button></div>
 
-                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditingPatient(null);setView('pcu_form')}} onEdit={p=>{setEditingPatient(p);setView(role==='PCU'?'pcu_form':'hospital_form')}} onDelete={handleDelete} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} />}
+                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditingPatient(null);setView('pcu_form')}} onEdit={p=>{setEditingPatient(p);setView(role==='PCU'?'pcu_form':'hospital_form')}} onDelete={handleDelete} onSend={handleSend} />}
                         {view === 'pcu_form' && <PCUForm db={db} user={user} appId={APP_ID} initialData={editingPatient} onBack={()=>setView('dashboard')} />}
                         {view === 'hospital_form' && editingPatient && <HospitalForm db={db} user={user} appId={APP_ID} patient={editingPatient} onBack={()=>{setView('dashboard');setEditingPatient(null)}} />}
                         {view === 'import' && isAdmin && <ImportView db={db} user={user} appId={APP_ID} onBack={()=>setView('dashboard')} />}
@@ -207,7 +166,7 @@
         }
 
         // --- DASHBOARD ---
-        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend, onLoadMore }) => {
+        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend }) => {
             const [search, setSearch] = React.useState('');
             const [tab, setTab] = React.useState('registry'); 
             
@@ -250,19 +209,16 @@
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="4" className="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
-                        </div>
-                        <div className="p-3 text-center border-t bg-gray-50">
-                            <button onClick={onLoadMore} className="text-blue-600 text-xs hover:underline">โหลดข้อมูลเก่าเพิ่ม...</button>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // --- PCU FORM (With Master DB Search) ---
+        // --- PCU FORM (Robust Save) ---
         const PCUForm = ({ db, user, appId, initialData, onBack }) => {
             const [form, setForm] = React.useState({ idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
             const [loadingMaster, setLoadingMaster] = React.useState(false);
@@ -272,19 +228,14 @@
 
             React.useEffect(()=>{if(initialData)setForm(initialData.part1)},[initialData]);
 
-            // KEY FEATURE: Search in Master DB
             const handleIdBlur = async () => {
                 if(form.idCard.length === 13 && !isEdit) {
                     setLoadingMaster(true);
                     try {
                         const doc = await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(form.idCard).get();
-                        if (doc.exists) {
-                            setForm(prev => ({ ...prev, ...doc.data() })); 
-                            setMasterFound(true);
-                        } else {
-                            setMasterFound(false);
-                        }
-                    } catch(e) { console.error(e); }
+                        if (doc.exists) { setForm(prev => ({ ...prev, ...doc.data() })); setMasterFound(true); } 
+                        else { setMasterFound(false); }
+                    } catch(e) { console.error("Master Fetch Error:", e); } // Silent error is fine here
                     setLoadingMaster(false);
                 }
             };
@@ -292,25 +243,37 @@
             const save = async () => {
                 if(!form.idCard || form.idCard.length!==13) return alert("เลขบัตรไม่ถูกต้อง");
                 setSaving(true);
-                
-                // 1. Save to Master
-                await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(form.idCard).set(form, { merge: true });
 
-                // 2. Check Dup
-                const todayStr = new Date().toDateString();
-                const qRef = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE);
-                if (!isEdit) {
-                    const snap = await qRef.where('part1.idCard', '==', form.idCard).get();
-                    const isDup = snap.docs.some(d => (d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date(d.data().createdAt)).toDateString() === todayStr);
-                    if (isDup) { alert("ผู้ป่วยรายนี้มีคิวในวันนี้แล้ว"); setSaving(false); return; }
+                // SAFE WRITE WITH TIMEOUT
+                const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out (5s). Check Internet/Rules.")), 5000));
+
+                try {
+                    const savePromise = (async () => {
+                        // 1. Save to Master (Persistent)
+                        await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(form.idCard).set(form, { merge: true });
+
+                        // 2. Check Dup
+                        const todayStr = new Date().toDateString();
+                        const qRef = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE);
+                        if (!isEdit) {
+                            const snap = await qRef.where('part1.idCard', '==', form.idCard).get();
+                            const isDup = snap.docs.some(d => (d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date(d.data().createdAt)).toDateString() === todayStr);
+                            if (isDup) throw new Error("ผู้ป่วยรายนี้มีคิวในวันนี้แล้ว (Duplicate)");
+                        }
+
+                        // 3. Save to Queue
+                        const payload = { part1: form, pcuId: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+                        if(isEdit) await qRef.doc(initialData.id).update(payload);
+                        else { payload.status = 'Registered'; payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await qRef.add(payload); }
+                    })();
+
+                    await Promise.race([savePromise, timeout]);
+                    onBack(); 
+                } catch(e) {
+                    alert("บันทึกไม่สำเร็จ: " + e.message + "\n\n*คำแนะนำ: ตรวจสอบว่าปลดล็อก Rules ใน Firestore Console แล้วหรือยัง");
+                } finally {
+                    setSaving(false);
                 }
-
-                // 3. Save to Queue
-                const payload = { part1: form, pcuId: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-                if(isEdit) await qRef.doc(initialData.id).update(payload);
-                else { payload.status = 'Registered'; payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await qRef.add(payload); }
-                
-                onBack(); setSaving(false);
             };
 
             return (
@@ -327,14 +290,13 @@
                             {masterFound && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><Icon name="check-circle" size={12}/> พบประวัติเดิม (ดึงข้อมูลแล้ว)</p>}
                             {!masterFound && form.idCard.length===13 && !loadingMaster && !isEdit && <p className="text-xs text-gray-500 mt-1">ไม่พบประวัติ (ผู้ป่วยใหม่)</p>}
                         </div>
-
                         <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500">ชื่อ-สกุล</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="w-full p-2 border rounded-lg"/></div><div><label className="text-xs text-gray-500">HbA1C</label><input value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})} className="w-full p-2 border rounded-lg"/></div></div>
                         <div className="grid grid-cols-3 gap-4"><div><label className="text-xs text-gray-500">BP</label><input value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})} className="w-full p-2 border rounded-lg"/></div><div><label className="text-xs text-gray-500">Wt</label><input value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="w-full p-2 border rounded-lg"/></div><div><label className="text-xs text-gray-500">Ht</label><input value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="w-full p-2 border rounded-lg"/></div></div>
                         
                         <div className="flex gap-3 mt-6">
                             <button onClick={onBack} className="flex-1 border py-3 rounded-lg text-gray-600">ยกเลิก</button>
-                            <button onClick={save} disabled={saving} className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-bold shadow hover:bg-teal-700 transition flex justify-center gap-2">
-                                {saving ? 'Saving...' : isEdit ? 'บันทึกการแก้ไข' : 'บันทึกเข้าคิว & อัปเดตประวัติ'}
+                            <button onClick={save} disabled={saving} className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-bold shadow hover:bg-teal-700 transition flex justify-center gap-2 items-center disabled:opacity-50 disabled:cursor-not-allowed">
+                                {saving ? <><div className="loader" style={{width:16,height:16,borderWidth:2}}></div> กำลังบันทึก...</> : 'บันทึก (Save)'}
                             </button>
                         </div>
                     </div>
