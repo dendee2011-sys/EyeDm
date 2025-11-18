@@ -3,28 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM - ระบบฐานข้อมูลผู้ป่วยถาวร (v.18.27)</title>
+    <title>EyeDM - ระบบฐานข้อมูล (Fixed)</title>
     
-    <!-- Libraries -->
+    <!-- 1. CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- 2. React Core (Switch to cdnjs for better stability) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <!-- 3. Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <!-- 4. Utils -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
+        /* Fallback Loading Screen */
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 9999;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Error Box */
+        #error-console {
+            display: none; margin: 20px; padding: 20px; background: #fee2e2;
+            border: 1px solid #ef4444; color: #b91c1c; border-radius: 8px;
+            font-family: monospace; white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
+
+    <!-- 1. Loading Screen (Shows until React loads) -->
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <h2 style="margin-top: 15px; color: #475569;">กำลังโหลดระบบ EyeDM...</h2>
+        <p style="color: #94a3b8; font-size: 14px;">หากรอนานเกิน 10 วินาที ให้รีเฟรชหน้าจอ</p>
+    </div>
+
+    <!-- 2. Error Console (Shows if crash) -->
+    <div id="error-console"></div>
+
+    <!-- 3. React Root -->
     <div id="root"></div>
+
+    <!-- 4. Error Trap Script -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            document.getElementById('loading-screen').style.display = 'none';
+            const errBox = document.getElementById('error-console');
+            errBox.style.display = 'block';
+            errBox.innerHTML = `<strong>⚠️ เกิดข้อผิดพลาด (System Error):</strong>\n${message}\n\nที่บรรทัด: ${lineno}`;
+        };
+    </script>
 
     <script type="text/babel">
         // --- CONFIG ---
@@ -38,21 +83,24 @@
             measurementId: "G-N48NPP7K9J"
         };
         
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        try {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        } catch(e) { console.error("Firebase Init Error", e); }
+
         const auth = firebase.auth();
         const db = firebase.firestore();
-        // แยก Collection ชัดเจน
         const APP_ID = "sisaket_prod_v10_persistent"; 
-        const COL_QUEUE = "dr_queue";   // ลบได้
-        const COL_MASTER = "dr_master"; // ห้ามลบ (เก็บถาวร)
+        const COL_QUEUE = "dr_queue";   
+        const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
+        // --- UTILS ---
         const Icon = ({ name, size = 18, className = "" }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
         };
 
-        // --- AUTH (Pin Code) ---
+        // --- AUTH SCREEN ---
         const AuthScreen = () => {
             const [pin, setPin] = React.useState('');
             const [password, setPassword] = React.useState('');
@@ -91,20 +139,28 @@
             const [view, setView] = React.useState('dashboard');
             const [queue, setQueue] = React.useState([]);
             const [editingPatient, setEditingPatient] = React.useState(null);
+            const [limitCount, setLimitCount] = React.useState(50);
 
-            React.useEffect(() => auth.onAuthStateChanged(setUser), []);
+            React.useEffect(() => {
+                const unsub = auth.onAuthStateChanged(u => {
+                    setUser(u);
+                    // Hide loading screen when auth is checked
+                    document.getElementById('loading-screen').style.display = 'none';
+                });
+                return () => unsub();
+            }, []);
             
-            // Listen to QUEUE only (Master is accessed via search)
             React.useEffect(() => {
                 if (!user) return;
                 const unsubscribe = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
                     .orderBy('createdAt', 'desc')
+                    .limit(limitCount)
                     .onSnapshot(snapshot => {
                         setQueue(snapshot.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() || new Date() })));
                         setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
                     });
                 return () => unsubscribe();
-            }, [user]);
+            }, [user, limitCount]);
 
             const handleSend = async (id, name) => {
                 if(confirm(`ส่งตัวผู้ป่วย: ${name}?`)) {
@@ -114,17 +170,16 @@
                 }
             };
 
-            // Delete ONLY from Queue (Master remains)
             const handleDelete = async (id) => { 
                 if(confirm("ลบออกจากรายการคิว? (ประวัติถาวรจะไม่ถูกลบ)")) {
                     await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); 
                 }
             };
             
-            const userPin = user?.email ? user.email.split('@')[0] : '';
-            const isAdmin = userPin === ADMIN_CODE;
-
             if (!user) return <AuthScreen />;
+
+            const userPin = user.email.split('@')[0];
+            const isAdmin = userPin === ADMIN_CODE;
 
             return (
                 <div className="min-h-screen flex flex-col font-sans bg-slate-50">
@@ -140,10 +195,9 @@
                         </div>
                     </nav>
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-                        {/* Mobile Switcher */}
                         <div className="md:hidden flex bg-white p-1 rounded-lg shadow-sm mb-4 text-sm"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='PCU'?'bg-green-50 text-green-700 font-bold':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='HOSPITAL'?'bg-blue-50 text-blue-700 font-bold':'text-gray-500'}`}>Hospital</button></div>
 
-                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditingPatient(null);setView('pcu_form')}} onEdit={p=>{setEditingPatient(p);setView(role==='PCU'?'pcu_form':'hospital_form')}} onDelete={handleDelete} onSend={handleSend} />}
+                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditingPatient(null);setView('pcu_form')}} onEdit={p=>{setEditingPatient(p);setView(role==='PCU'?'pcu_form':'hospital_form')}} onDelete={handleDelete} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} />}
                         {view === 'pcu_form' && <PCUForm db={db} user={user} appId={APP_ID} initialData={editingPatient} onBack={()=>setView('dashboard')} />}
                         {view === 'hospital_form' && editingPatient && <HospitalForm db={db} user={user} appId={APP_ID} patient={editingPatient} onBack={()=>{setView('dashboard');setEditingPatient(null)}} />}
                         {view === 'import' && isAdmin && <ImportView db={db} user={user} appId={APP_ID} onBack={()=>setView('dashboard')} />}
@@ -153,29 +207,31 @@
         }
 
         // --- DASHBOARD ---
-        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend }) => {
+        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend, onLoadMore }) => {
             const [search, setSearch] = React.useState('');
             const [tab, setTab] = React.useState('registry'); 
             
-            const filtered = queue.filter(p => {
-                const term = search.toLowerCase();
-                const match = (p.part1?.idCard||'').includes(term) || (p.part1?.name||'').includes(term);
-                if (!match) return false;
-                if (role === 'PCU') return tab === 'registry' ? p.status === 'Registered' : (p.status === 'Waiting' || p.status === 'Completed');
-                return p.status === 'Waiting' || p.status === 'Completed';
-            });
+            const filtered = React.useMemo(() => {
+                return queue.filter(p => {
+                    const term = search.toLowerCase();
+                    const match = (p.part1?.idCard||'').includes(term) || (p.part1?.name||'').includes(term);
+                    if (!match) return false;
+                    if (role === 'PCU') return tab === 'registry' ? p.status === 'Registered' : (p.status === 'Waiting' || p.status === 'Completed');
+                    return p.status === 'Waiting' || p.status === 'Completed';
+                });
+            }, [queue, search, tab, role]);
 
             return (
                 <div className="space-y-6 animate-in fade-in">
                     {role === 'PCU' && (
                         <div className="flex space-x-1 bg-slate-200 p-1 rounded-xl max-w-md">
-                            <button onClick={()=>setTab('registry')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 transition ${tab==='registry'?'bg-white shadow text-slate-800':'text-slate-500'}`}><Icon name="folder"/> รายชื่อในคิว ({queue.filter(p=>p.status==='Registered').length})</button>
+                            <button onClick={()=>setTab('registry')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 transition ${tab==='registry'?'bg-white shadow text-slate-800':'text-slate-500'}`}><Icon name="folder"/> ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
                             <button onClick={()=>setTab('sent')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 transition ${tab==='sent'?'bg-white shadow text-blue-600':'text-slate-500'}`}><Icon name="send"/> ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
                         </div>
                     )}
                     <div className="flex flex-col md:flex-row justify-between items-end gap-4">
                         <div className="relative flex-1 w-full max-w-md"><Icon name="search" className="absolute left-3 top-3 text-gray-400"/><input className="w-full pl-10 pr-4 py-2.5 rounded-xl border shadow-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="ค้นหาในคิววันนี้..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                        {role === 'PCU' && tab === 'registry' && <button onClick={onNew} className="bg-green-600 text-white px-6 py-2.5 rounded-xl shadow font-bold w-full md:w-auto flex justify-center items-center gap-2 hover:bg-green-700 transition"><Icon name="user-plus"/> ลงทะเบียนรายใหม่ / ดึงประวัติ</button>}
+                        {role === 'PCU' && tab === 'registry' && <button onClick={onNew} className="bg-green-600 text-white px-6 py-2.5 rounded-xl shadow font-bold w-full md:w-auto flex justify-center items-center gap-2 hover:bg-green-700 transition"><Icon name="user-plus"/> ลงทะเบียนใหม่ / ดึงประวัติ</button>}
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                         <div className="overflow-x-auto">
@@ -194,9 +250,12 @@
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">ไม่มีรายการในคิว (กดลงทะเบียนเพื่อเพิ่ม)</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="4" className="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
+                        </div>
+                        <div className="p-3 text-center border-t bg-gray-50">
+                            <button onClick={onLoadMore} className="text-blue-600 text-xs hover:underline">โหลดข้อมูลเก่าเพิ่ม...</button>
                         </div>
                     </div>
                 </div>
@@ -205,7 +264,7 @@
 
         // --- PCU FORM (With Master DB Search) ---
         const PCUForm = ({ db, user, appId, initialData, onBack }) => {
-            const [form, setForm] = React.useState({ idCard:'', name:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
+            const [form, setForm] = React.useState({ idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
             const [loadingMaster, setLoadingMaster] = React.useState(false);
             const [masterFound, setMasterFound] = React.useState(false);
             const [saving, setSaving] = React.useState(false);
@@ -218,10 +277,9 @@
                 if(form.idCard.length === 13 && !isEdit) {
                     setLoadingMaster(true);
                     try {
-                        // Search in Master Collection (by Document ID = ID Card)
                         const doc = await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(form.idCard).get();
                         if (doc.exists) {
-                            setForm(prev => ({ ...prev, ...doc.data() })); // Autofill from Master
+                            setForm(prev => ({ ...prev, ...doc.data() })); 
                             setMasterFound(true);
                         } else {
                             setMasterFound(false);
@@ -235,34 +293,22 @@
                 if(!form.idCard || form.idCard.length!==13) return alert("เลขบัตรไม่ถูกต้อง");
                 setSaving(true);
                 
-                // 1. Save to Master DB (Always update/create master record)
-                // Using ID Card as Document ID ensures uniqueness in Master
+                // 1. Save to Master
                 await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(form.idCard).set(form, { merge: true });
 
-                // 2. Check Duplicate in Queue Today
+                // 2. Check Dup
                 const todayStr = new Date().toDateString();
                 const qRef = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE);
-                
                 if (!isEdit) {
-                    // Only check duplicate for new entries
                     const snap = await qRef.where('part1.idCard', '==', form.idCard).get();
                     const isDup = snap.docs.some(d => (d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date(d.data().createdAt)).toDateString() === todayStr);
-                    
-                    if (isDup) {
-                        alert("ผู้ป่วยรายนี้มีคิวในวันนี้แล้ว");
-                        setSaving(false); return;
-                    }
+                    if (isDup) { alert("ผู้ป่วยรายนี้มีคิวในวันนี้แล้ว"); setSaving(false); return; }
                 }
 
                 // 3. Save to Queue
                 const payload = { part1: form, pcuId: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-                if(isEdit) {
-                    await qRef.doc(initialData.id).update(payload);
-                } else {
-                    payload.status = 'Registered'; 
-                    payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); 
-                    await qRef.add(payload); 
-                }
+                if(isEdit) await qRef.doc(initialData.id).update(payload);
+                else { payload.status = 'Registered'; payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await qRef.add(payload); }
                 
                 onBack(); setSaving(false);
             };
@@ -273,17 +319,9 @@
                     
                     <div className="space-y-5">
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 relative">
-                            <label className="text-xs font-bold text-blue-800 mb-1 block">เลขบัตรประชาชน (พิมพ์ครบ 13 หลักเพื่อค้นหาประวัติถาวร)</label>
+                            <label className="text-xs font-bold text-blue-800 mb-1 block">เลขบัตรประชาชน (13 หลัก)</label>
                             <div className="flex items-center gap-2">
-                                <input 
-                                    value={form.idCard} 
-                                    onChange={e=>setForm({...form, idCard:e.target.value})} 
-                                    onBlur={handleIdBlur}
-                                    className="w-full p-3 border rounded-lg text-lg font-mono tracking-wide focus:ring-2 focus:ring-teal-500 outline-none" 
-                                    placeholder="x-xxxx-xxxxx-xx-x" 
-                                    maxLength="13"
-                                    disabled={isEdit}
-                                />
+                                <input value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} onBlur={handleIdBlur} className="w-full p-3 border rounded-lg text-lg font-mono tracking-wide focus:ring-2 focus:ring-teal-500 outline-none" placeholder="x-xxxx-xxxxx-xx-x" maxLength="13" disabled={isEdit}/>
                                 {loadingMaster && <div className="loader"></div>}
                             </div>
                             {masterFound && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><Icon name="check-circle" size={12}/> พบประวัติเดิม (ดึงข้อมูลแล้ว)</p>}
@@ -304,44 +342,36 @@
             );
         };
 
-        // --- IMPORT VIEW (Save to Master & Queue) ---
+        // --- IMPORT VIEW ---
         const ImportView = ({ db, user, appId, onBack }) => {
             const [csvData, setCsvData] = React.useState([]);
             const [encoding, setEncoding] = React.useState('TIS-620');
             const [importing, setImporting] = React.useState(false);
             const handleFile = (e) => { Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: encoding, complete: (res) => setCsvData(res.data) }); };
-            
             const startImport = async () => {
                 if(csvData.length===0) return;
                 setImporting(true); let count=0;
-                
-                // Batch writes are better, but for simplicity in single file, we loop
                 for(let row of csvData) {
                     const id = (row['เลข 13 หลัก']||row['pid']||'').toString().replace(/[^0-9]/g,'');
                     if(id.length===13) {
                         const part1 = { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' };
-                        
                         try {
-                            // 1. Save to Master (Permanent)
-                            await db.collection('artifacts').doc(appId).collection(COL_MASTER).doc(id).set(part1, {merge: true});
-
-                            // 2. Add to Queue (Registered Status) - Check dup logic omitted for speed in mass import, or assume admin knows
-                            await db.collection('artifacts').doc(appId).collection(COL_QUEUE).add({
+                            await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(id).set(part1, {merge: true});
+                            await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).add({
                                 part1, status: 'Registered', pcuId: 'AdminImport', createdAt: firebase.firestore.FieldValue.serverTimestamp()
                             });
                             count++;
-                        } catch(e) { console.error(e); }
+                        } catch(e) {}
                     }
                 }
-                setImporting(false); alert(`นำเข้าสำเร็จ ${count} คน (บันทึกลงฐานข้อมูลถาวรและคิวรอส่ง)`);
+                setImporting(false); alert(`Imported ${count}`);
             };
-
             return (
-                <div className="max-w-4xl mx-auto animate-in fade-in bg-white p-6 rounded-xl shadow"><div className="flex justify-between mb-6"><h2 className="font-bold text-xl text-indigo-800 flex gap-2"><Icon name="file-spreadsheet"/> Import Excel</h2><button onClick={onBack} className="text-gray-500">Back</button></div><div className="p-4 bg-indigo-50 rounded-lg mb-4"><label className="block text-sm font-bold text-indigo-800 mb-2">ตั้งค่าไฟล์</label><select value={encoding} onChange={e=>setEncoding(e.target.value)} className="border p-2 rounded mb-2 bg-white text-sm mr-2"><option value="TIS-620">TIS-620 (Thai)</option><option value="UTF-8">UTF-8</option></select><input type="file" accept=".csv" onChange={handleFile} className="text-sm"/></div>{csvData.length>0 && <button onClick={startImport} disabled={importing} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold shadow w-full">{importing?'Importing...':'Confirm Import'}</button>}</div>
+                <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow"><h2 className="font-bold text-xl mb-4">Import Excel</h2><div className="mb-4"><select value={encoding} onChange={e=>setEncoding(e.target.value)} className="border p-2 mr-2"><option value="TIS-620">TIS-620</option><option value="UTF-8">UTF-8</option></select><input type="file" accept=".csv" onChange={handleFile}/></div>{csvData.length>0 && <button onClick={startImport} disabled={importing} className="bg-green-600 text-white px-6 py-2 rounded shadow">{importing?'Saving...':'Confirm Import'}</button>}</div>
             );
         };
 
-        // --- HOSPITAL FORM (Unchanged) ---
+        // --- HOSPITAL FORM ---
         const HospitalForm = ({ db, user, appId, patient, onBack }) => {
             const [p2, setP2] = React.useState(patient.part2 || { cataract:'No', retinaFound:'Yes', dilation:'No' });
             const [findings, setFindings] = React.useState(patient.findings || { Normal:{L:false,R:false} });
@@ -349,9 +379,7 @@
             const toggle = (k,s) => setFindings(f=>({...f,[k]:{...f[k],[s]:!f[k][s]}}));
             const save = async () => {
                 setSaving(true);
-                // Update Queue
-                await db.collection('artifacts').doc(appId).collection(COL_QUEUE).doc(patient.id).update({part2: p2, findings, status: 'Completed', doctorName: user.email});
-                // Ideally, update Master too with result, but Queue is enough for now
+                await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(patient.id).update({part2: p2, findings, status: 'Completed', doctorName: user.email});
                 onBack(); setSaving(false);
             };
             return (
@@ -359,8 +387,8 @@
                     <div className="w-full lg:w-1/3 bg-white p-6 rounded-xl shadow border"><h3 className="font-bold mb-4 border-b pb-2 text-gray-700">ข้อมูลผู้ป่วย</h3><p><b>ID:</b> {patient.part1.idCard}</p><p><b>Name:</b> {patient.part1.name}</p><button onClick={onBack} className="mt-6 text-gray-500 flex gap-1 items-center"><Icon name="arrow-left"/> กลับ</button></div>
                     <div className="w-full lg:w-2/3 bg-white p-6 rounded-xl shadow border border-blue-200">
                         <h3 className="font-bold text-blue-800 mb-4">ผลตรวจ (Hospital)</h3>
-                        <div className="flex gap-4 mb-6"><button onClick={()=>setP2({...p2,retinaFound:p2.retinaFound==='Yes'?'No':'Yes'})} className={`px-4 py-1 rounded border ${p2.retinaFound==='Yes'?'bg-blue-600 text-white':''}`}>เจอจอฯ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`px-4 py-1 rounded border ${p2.retinaFound==='No'?'bg-blue-600 text-white':''}`}>ไม่เจอ</button></div>
-                        <table className="w-full text-sm mb-6 border"><thead className="bg-gray-100"><tr><th className="p-2">Condition</th><th className="p-2 w-16 text-center">L</th><th className="p-2 w-16 text-center">R</th></tr></thead><tbody>{['Normal','MicroAneurysm','HardExudate'].map(k=>(<tr key={k}><td className="p-2 border-t">{k}</td><td className="p-2 border-t border-l text-center"><input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')} className="w-5 h-5 accent-blue-600"/></td><td className="p-2 border-t border-l text-center"><input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')} className="w-5 h-5 accent-blue-600"/></td></tr>))}</tbody></table>
+                        <div className="flex gap-4 mb-6"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`px-4 py-1 rounded border ${p2.retinaFound==='Yes'?'bg-blue-600 text-white':''}`}>เจอจอฯ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`px-4 py-1 rounded border ${p2.retinaFound==='No'?'bg-blue-600 text-white':''}`}>ไม่เจอ</button></div>
+                        <table className="w-full text-sm mb-6 border rounded overflow-hidden"><thead className="bg-gray-100"><tr><th className="p-2">Condition</th><th className="p-2 w-16 text-center">L</th><th className="p-2 w-16 text-center">R</th></tr></thead><tbody>{['Normal','MicroAneurysm','HardExudate'].map(k=>(<tr key={k}><td className="p-2 border-t">{k}</td><td className="p-2 border-t border-l text-center"><input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')} className="w-5 h-5 accent-blue-600"/></td><td className="p-2 border-t border-l text-center"><input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')} className="w-5 h-5 accent-blue-600"/></td></tr>))}</tbody></table>
                         <button onClick={save} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow">{saving?'Saving...':'บันทึกผล'}</button>
                     </div>
                 </div>
