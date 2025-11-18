@@ -11,6 +11,32 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <script type="module">
+        // --- Firebase SDK Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously,     
+            signInWithCustomToken, 
+            onAuthStateChanged,
+            signOut,
+            setPersistence,
+            inMemoryPersistence
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc,
+            addDoc,
+            setDoc,
+            deleteDoc,  
+            setLogLevel, 
+            query,     
+            where,     
+            getDocs,
+            getDoc,
+            collection,
+            onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
         // --- START: Configuration (Manual Config for GitHub/External Hosting) ---
         // ** IMPORTANT: Replace these values with your actual Firebase Project Configuration **
         const MANUAL_FIREBASE_CONFIG = {
@@ -44,9 +70,9 @@
             "03285": "รพ.สต.ตำบลบ้านสร้างเรื่อง",
             "03286": "รพ.สต.ตำบลบ้านโนนแกด",
             "03287": "รพ.สต.บ้านหนองไฮ",
-            "03288": "รพ.สต.ตำบลบ้านหนองแก้ว", // ID 12019 is the alias for 03288 in the image, using the original
+            "03288": "รพ.สต.บ้านหนองแก้ว", 
             "03289": "รพ.สต.ตำบลน้ำคำ",
-            "03290": "รพ.สต.ตำบลบ้านหนองโช", // ID 123456 is likely a placeholder/test ID
+            "03290": "รพ.สต.ตำบลบ้านหนองโช", 
             "03291": "รพ.สต.ตำบลโพธิ์",
             "03292": "รพ.สต.ตำบลบ้านกำแพง",
             "03293": "รพ.สต.ตำบลบ้านหนองไผ่",
@@ -66,8 +92,8 @@
         let currentView = 'pcu_form'; 
         let currentRecordDocId = null; 
         let isAdmin = false; 
-        let queueUnsubscribe = null; // Listener for real-time queue updates
-        let confirmModalResolve = null; // To handle modal confirmation
+        let queueUnsubscribe = null; 
+        let confirmModalResolve = null; 
 
         // --- END: Configuration ---
         
@@ -76,13 +102,15 @@
 
         async function initializeFirebase(config) {
             try {
-                // Ensure config has actual API Key (not FAKE_API_KEY from initial Canvas template)
                 if (config && config.apiKey && config.apiKey !== "FAKE_API_KEY") {
                     app = initializeApp(config);
                     db = getFirestore(app);
                     auth = getAuth(app);
                     
-                    // Attempt authentication with custom token (Canvas environment) or anonymously (External environment/Fallback)
+                    // Set persistence to in-memory for simpler, session-based authentication 
+                    // (prevents issues with state synchronization across different GitHub environments)
+                    await setPersistence(auth, inMemoryPersistence);
+
                     const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                     try {
                         if (token && auth) {
@@ -103,7 +131,6 @@
                                 document.getElementById('login-modal').classList.remove('hidden');
                                 document.getElementById('staff-name-display').textContent = 'กรุณาเลือกบทบาทเจ้าหน้าที่';
                             } else {
-                                // If already logged in (e.g., page refresh), trigger view and display
                                 displayUserId(user);
                                 renderView(currentView);
                             }
@@ -118,7 +145,6 @@
                         }
                     });
                 } else {
-                    // Handle FAKE_API_KEY case for smooth UI startup (no real DB connection)
                     isFirebaseReady = true; 
                     document.getElementById('login-modal').classList.remove('hidden');
                     document.getElementById('staff-name-display').textContent = 'กรุณาเลือกบทบาทเจ้าหน้าที่';
@@ -143,35 +169,39 @@
                 return;
             }
             
+            // Disable button immediately to prevent double-click
             loginButton.disabled = true;
             loginStatus.textContent = 'กำลังกำหนดบทบาท...'; 
 
             try {
+                if (!isFirebaseReady) {
+                     throw new Error("ระบบ Firebase ยังไม่พร้อมใช้งาน");
+                }
+
                 currentStaffId = userIdInput;
+                // Set Admin based on the Project ID owner's ID
+                isAdmin = currentStaffId === "10700"; 
                 currentStaffName = STAFF_MAPPING[currentStaffId] || `Admin/รพ. (ID: ${currentStaffId})`; 
-                
-                // Determine access rights and initial view
-                isAdmin = currentStaffId === "10700"; // Explicitly set 10700 as the sole Admin
                 currentView = isAdmin ? 'daily_queue' : 'pcu_form';
                 
-                displayUserId(auth ? auth.currentUser : null); 
+                // IMPORTANT: Pass null instead of accessing auth.currentUser directly to prevent errors 
+                // if the async auth state change hasn't fully completed. displayUserId relies on currentStaffName anyway.
+                displayUserId(null); 
                 renderView(currentView);
                 validateSaveButton();
                 
                 loginStatus.textContent = `เข้าสู่ระบบในฐานะ: ${currentStaffName} (สำเร็จ)`;
                 
-                // Hide modal immediately for better user experience
+                // Hide modal on successful login
                 document.getElementById('login-modal').classList.add('hidden');
                 document.getElementById('main-app-content').classList.remove('opacity-20', 'pointer-events-none');
 
 
             } catch (error) {
                 console.error("Role Selection Error:", error);
-                // Check if auth is defined before accessing currentUser
-                const authStatus = (typeof auth !== 'undefined' && auth) ? auth.currentUser : null;
-                loginStatus.textContent = `เกิดข้อผิดพลาดในการกำหนดบทบาท: ${error.message} (Auth ready: ${!!authStatus})`;
+                loginStatus.textContent = `เกิดข้อผิดพลาดในการกำหนดบทบาท: ${error.message}`;
             } finally {
-                // Ensure button is always re-enabled
+                // Ensure button is always re-enabled regardless of try/catch outcome
                 loginButton.disabled = false;
             }
         }
@@ -533,7 +563,7 @@
         }
 
         // --- Custom Confirmation Modal ---
-        function showConfirmModal(title, message, callback) {
+        function showConfirmModal(title, message) {
             const modal = document.getElementById('confirm-modal');
             document.getElementById('confirm-modal-title').textContent = title;
             document.getElementById('confirm-modal-message').textContent = message;
@@ -563,8 +593,7 @@
             
             const confirmed = await showConfirmModal(
                 'ยืนยันการลบข้อมูล',
-                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว? การลบนี้ไม่สามารถย้อนกลับได้`,
-                () => {} 
+                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว? การลบนี้ไม่สามารถย้อนกลับได้`
             );
 
             if (confirmed) {
