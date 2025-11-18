@@ -56,6 +56,10 @@
         let currentView = 'pcu_form'; 
         let currentRecordDocId = null; 
         let isAdmin = false; 
+        
+        // Global variable to hold the action to perform upon modal confirmation
+        let pendingConfirmationAction = null;
+
 
         // --- END: Configuration ---
         
@@ -237,10 +241,25 @@
                 const findingKeys = ['normal', 'microaneurysm', 'hardexudate', 'flame', 'venous', 'irma', 'newvessel', 'preretinal', 'vitreous', 'fibrous'];
                 const findings = data.findings || {};
                 findingKeys.forEach(key => {
+                    // Normalize keys from Firestore to match HTML IDs if necessary (using a convention)
+                    const firestoreKey = {
+                        'microaneurysm': 'microaneurysm',
+                        'hardexudate': 'hardExudate',
+                        'flame': 'flameHemorrhage',
+                        'venous': 'venousBeading',
+                        'irma': 'irma',
+                        'newvessel': 'newVessel',
+                        'preretinal': 'preretinalHemorrhage',
+                        'vitreous': 'vitreousHemorrhage',
+                        'fibrous': 'fibrousProliferation',
+                        'normal': 'normal' // Although 'normal' is only used in the HTML ID, we include it here.
+                    }[key] || key; 
+                    
                     const orEl = document.getElementById(`admin-finding-${key}-or`);
                     const olEl = document.getElementById(`admin-finding-${key}-ol`);
-                    if (orEl) orEl.checked = findings[key]?.or || false;
-                    if (olEl) olEl.checked = findings[key]?.ol || false;
+                    
+                    if (orEl) orEl.checked = findings[firestoreKey]?.or || false;
+                    if (olEl) olEl.checked = findings[firestoreKey]?.ol || false;
                 });
 
                 document.getElementById('admin-referral-needed').checked = data.referralNeeded || false;
@@ -501,23 +520,31 @@
         }
 
         // --- Delete Record Function (Admin Only) ---
+        async function deleteConfirmed(docId, patientName) {
+            try {
+                const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
+                const docRef = doc(db, collection(db, collectionPath).path, docId);
+                await deleteDoc(docRef);
+                displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
+                fetchAndRenderQueue(); // Refresh queue
+            } catch (error) {
+                console.error("Error deleting document:", error);
+                displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
+            }
+        }
+
         async function handleDeleteQueueItem(docId, patientName) {
             if (!isAdmin) {
                 displayMessage('ไม่มีสิทธิ์ลบข้อมูล', 'error');
                 return;
             }
-            if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว?`)) {
-                try {
-                    const collectionPath = `/artifacts/${globalAppId}/public/data/retina_records`;
-                    const docRef = doc(db, collection(db, collectionPath).path, docId);
-                    await deleteDoc(docRef);
-                    displayMessage(`ลบข้อมูลของ ${patientName} สำเร็จ`, 'success');
-                    fetchAndRenderQueue(); // Refresh queue
-                } catch (error) {
-                    console.error("Error deleting document:", error);
-                    displayMessage(`เกิดข้อผิดพลาดในการลบ: ${error.message}`, 'error');
-                }
-            }
+            
+            // Replaced window.confirm() with custom modal
+            showConfirmationModal(
+                'ยืนยันการลบข้อมูลผู้ป่วย',
+                `คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ ${patientName} ออกจากคิว? การดำเนินการนี้ไม่สามารถยกเลิกได้`,
+                () => deleteConfirmed(docId, patientName)
+            );
         }
         window.handleDeleteQueueItem = handleDeleteQueueItem; // Make function accessible from inline HTML
 
@@ -748,6 +775,31 @@
             }
         }
         
+        // --- Custom Confirmation Modal Logic ---
+        function showConfirmationModal(title, message, onConfirm) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+            pendingConfirmationAction = onConfirm;
+            document.getElementById('confirmation-modal').classList.remove('hidden');
+        }
+
+        function hideConfirmationModal() {
+            document.getElementById('confirmation-modal').classList.add('hidden');
+            pendingConfirmationAction = null;
+        }
+
+        function handleModalConfirm() {
+            if (typeof pendingConfirmationAction === 'function') {
+                pendingConfirmationAction();
+            }
+            hideConfirmationModal();
+        }
+
+        function handleModalCancel() {
+            hideConfirmationModal();
+        }
+
+
         // --- General Helpers (kept from original) ---
         function displayFatalError(title, message) { 
             const errorBox = document.getElementById('fatal-error-box');
@@ -1061,6 +1113,7 @@
                         const staffId = staffIdMatch ? staffIdMatch[1] : 'N/A';
                         const staffName = STAFF_MAPPING[staffId] || staffId;
                         
+                        // Check for any positive findings that are NOT 'normal'
                         let findingsSummary = record.findings && Object.keys(record.findings).some(key => key !== 'normal' && (record.findings[key]?.or || record.findings[key]?.ol)) ? 'พบความผิดปกติ' : 'Normal';
                         
                         const row = `
@@ -1094,6 +1147,17 @@
             document.getElementById('login-modal').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') handleLogin();
             });
+            
+            // Add listeners for the new confirmation modal
+            document.getElementById('modal-confirm-button').addEventListener('click', handleModalConfirm);
+            document.getElementById('modal-cancel-button').addEventListener('click', handleModalCancel);
+            document.getElementById('confirmation-modal').addEventListener('click', (e) => {
+                // Allows closing the modal by clicking outside the content box
+                if (e.target.id === 'confirmation-modal') {
+                    handleModalCancel();
+                }
+            });
+
 
             // PCU View Listeners
             document.getElementById('patient-id').addEventListener('input', debouncedSearchPatient);
@@ -1181,7 +1245,7 @@
         <!-- ส่วนแสดงสถานะและปุ่ม Logout -->
         <div class="flex justify-between items-center mb-4 border-b pb-3">
              <div id="staff-name-display" class="text-base font-bold text-gray-800 flex-grow">
-                กำลังโหลด...
+                 กำลังโหลด...
             </div>
             <button id="logout-button" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden">
                 ออกจากระบบ (เปลี่ยนบทบาท)
@@ -1439,7 +1503,7 @@
                                     </div>
                                     <div>
                                         <label for="admin-va-os" class="block text-sm font-medium text-gray-700">VA (ตาซ้าย - OS)</label>
-                                        <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                                         <select id="admin-va-os" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                                             <option value="">-- เลือกค่าสายตา --</option>
                                             <option value="20/20">20/20</option><option value="20/25">20/25</option><option value="20/30">20/30</option><option value="20/40">20/40</option><option value="20/50">20/50</option><option value="20/60">20/60</option><option value="20/70">20/70</option><option value="20/80">20/80</option><option value="20/100">20/100</option><option value="20/200">20/200</option><option value="20/400">20/400</option><option value="CF 1ft">CF 1ft</option><option value="CF 2ft">CF 2ft</option><option value="CF 3ft">CF 3ft</option><option value="HM">HM (Hand Motion)</option><option value="LP">LP (Light Perception)</option><option value="NLP">NLP (No Light Perception)</option><option value="N/A">N/A (ตรวจไม่ได้)</option>
                                         </select>
@@ -1550,9 +1614,9 @@
                                 </div>
                                 <div class="mt-6 border-t border-green-200 pt-4">
                                      <div class="flex items-center">
-                                        <input id="admin-referral-needed" type="checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
-                                        <label for="admin-referral-needed" class="ml-2 block text-sm font-medium text-red-700">ส่งต่อ (Referral Needed)</label>
-                                    </div>
+                                         <input id="admin-referral-needed" type="checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                                         <label for="admin-referral-needed" class="ml-2 block text-sm font-medium text-red-700">ส่งต่อ (Referral Needed)</label>
+                                     </div>
                                 </div>
                             </div>
 
@@ -1596,6 +1660,22 @@
                 </div>
             </div> <!-- End admin_view_view -->
         </div> <!-- จบ main-app-content -->
+    </div>
+    
+    <!-- Custom Confirmation Modal (Replaces window.confirm) -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm">
+            <h3 id="modal-title" class="text-xl font-bold text-red-700 mb-2">ยืนยันการลบข้อมูล</h3>
+            <p id="modal-message" class="text-gray-600 mb-6 text-sm">คุณแน่ใจหรือไม่ที่จะลบข้อมูลนี้อย่างถาวร?</p>
+            <div class="flex justify-end space-x-4">
+                <button id="modal-cancel-button" class="px-4 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition duration-150">
+                    ยกเลิก
+                </button>
+                <button id="modal-confirm-button" class="px-4 py-2 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-150">
+                    ยืนยันการลบ
+                </button>
+            </div>
+        </div>
     </div>
     
 </body>
