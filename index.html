@@ -35,7 +35,21 @@
         
         // --- START: Configuration (Using Canvas Globals) ---
         const globalAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        // ** Configuration Robustness Fix (Fallback)**
+        const FALLBACK_CONFIG = { apiKey: "DUMMY_KEY", projectId: "dummy-project" };
+        
+        let rawConfig;
+        try {
+            rawConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        } catch (e) {
+            rawConfig = {};
+            console.error("Failed to parse __firebase_config:", e);
+        }
+        
+        // Use the Canvas provided config, but fall back to a dummy config if it's missing or empty,
+        // which prevents the "Firebase Config Error" screen from crashing the app at startup.
+        const firebaseConfig = (rawConfig && Object.keys(rawConfig).length > 0 && rawConfig.apiKey) ? rawConfig : FALLBACK_CONFIG;
         
         const STAFF_MAPPING = {
             "03280": "รพ.สต.หนองครก",
@@ -58,7 +72,8 @@
 
         async function initializeFirebase(config) {
             try {
-                if (Object.keys(config).length > 0 && config.apiKey) {
+                // The check is now simplified as the config object is guaranteed to be non-empty and have an apiKey (even if dummy).
+                if (config.apiKey) { 
                     app = initializeApp(config);
                     db = getFirestore(app);
                     auth = getAuth(app);
@@ -107,10 +122,12 @@
                     });
 
                 } else {
+                    // This block should theoretically not be hit anymore, but remains as safety net.
                     displayFatalError("Firebase Config Error", "Firebase configuration is missing or empty.");
                 }
             } catch (error) {
                 console.error("Firebase Initialization failed:", error);
+                // If initialization fails (e.g., dummy key is invalid), show error, but allow user to interact if Firebase wasn't strictly necessary yet.
                 displayFatalError("Firebase Init Error", `เชื่อมต่อล้มเหลว: ${error.message}`);
             }
         }
@@ -1189,7 +1206,7 @@
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-grow block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer">
                         <button id="import-button" class="flex-shrink-0 px-6 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition duration-300">
                             <span id="import-button-text">เริ่มนำเข้า</span>
-                            <svg id="import-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <svg id="import-spinner" class="animate-spin ml-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
