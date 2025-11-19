@@ -1,387 +1,783 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM - ระบบส่งต่อผู้ป่วย</title>
-    
-    <!-- 1. Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- 3. Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- 4. Firebase SDK (Compat Version - Stable) -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInWithCustomToken, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signOut
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  serverTimestamp, 
+  Timestamp 
+} from 'firebase/firestore';
+import { 
+  Database, 
+  Activity, 
+  User, 
+  FileText, 
+  ArrowLeft, 
+  Eye, 
+  PlusCircle, 
+  Search, 
+  LogOut, 
+  Building2, 
+  Home,
+  CheckCircle2,
+  AlertCircle,
+  Glasses,
+  Trash2,
+  History // Added History icon
+} from 'lucide-react';
 
-    <!-- 5. Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+// --- FIREBASE INIT (System Standard) ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
-        .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        #error-display { display: none; padding: 20px; background: #fee2e2; color: #991b1b; border: 1px solid #f87171; margin: 20px; border-radius: 8px; font-family: monospace; }
-    </style>
-</head>
-<body>
-    <!-- Error Display Area -->
-    <div id="error-display"></div>
+// Collection Reference Helper (Strict Path Rule)
+const getPatientsCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'patients');
 
-    <!-- App Root -->
-    <div id="root">
-        <div class="flex items-center justify-center min-h-screen text-slate-500 flex-col gap-4">
-            <div class="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
-            <div>กำลังโหลดระบบ...</div>
+// --- CONSTANTS ---
+const VA_OPTIONS = [
+  "20/20 (ปกติ)", "20/25", "20/30", "20/40", "20/50", 
+  "20/70", "20/100", "20/200", "20/400", 
+  "CF (นับนิ้ว)", "HM (โบกมือ)", 
+  "PL (เห็นแสง)", "NPL (ไม่เห็นแสง)"
+];
+
+// --- COMPONENTS ---
+
+// 1. Mock Login / Role Selection Screen
+const AuthScreen = ({ onLogin }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSimulatedLogin = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    // Simulate network delay for realism
+    setTimeout(() => {
+      setLoading(false);
+      
+      // Update Logic: 10700 = Hospital, others = PCU
+      const inputId = email.trim();
+      let role = 'PCU';
+      
+      if (inputId === '10700' || inputId.toLowerCase().includes('hospital')) {
+        role = 'HOSPITAL';
+      }
+
+      onLogin(role);
+    }, 800);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-300">
+        <div className="text-center mb-8">
+          <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 shadow-inner">
+            <Database size={40} strokeWidth={1.5} />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-800 tracking-tight">EyeDM Connect</h1>
+          <p className="text-slate-500 mt-2">ระบบฐานข้อมูลและส่งต่อผู้ป่วยเบาหวานเข้าจอประสาทตา</p>
         </div>
+
+        <form onSubmit={handleSimulatedLogin} className="space-y-5">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">รหัสหน่วยงาน / Email</label>
+            <input 
+              type="text" 
+              placeholder="ระบุรหัสหน่วยงาน (เช่น 10700)" 
+              value={email} 
+              onChange={e=>setEmail(e.target.value)} 
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+              required 
+            />
+          </div>
+          <div>
+             <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Password</label>
+            <input 
+              type="password" 
+              placeholder="••••••••" 
+              value={password} 
+              onChange={e=>setPassword(e.target.value)} 
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+              required 
+            />
+          </div>
+          
+          <button 
+            disabled={loading} 
+            className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:translate-y-0"
+          >
+            {loading ? 'กำลังยืนยันตัวตน...' : (isRegister ? 'ลงทะเบียนหน่วยงาน' : 'เข้าสู่ระบบ')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button onClick={()=>setIsRegister(!isRegister)} className="text-sm text-blue-600 hover:underline font-medium">
+            {isRegister ? 'กลับไปหน้าเข้าสู่ระบบ' : 'ลงทะเบียนหน่วยงานใหม่'}
+          </button>
+        </div>
+        
+        <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-400">
+            Demo Mode: พิมพ์ <b>10700</b> เพื่อเข้าใช้งานในฐานะ <b>โรงพยาบาล</b>
+          </p>
+        </div>
+      </div>
     </div>
+  );
+};
 
-    <script>
-        window.onerror = function(message, source, lineno, colno, error) {
-            const display = document.getElementById('error-display');
-            display.style.display = 'block';
-            display.innerHTML = `<strong>System Error:</strong><br>${message}<br><small>${source}:${lineno}</small>`;
-            console.error(error);
-            document.getElementById('root').innerHTML = ''; 
-        };
-    </script>
+// 2. Dashboard Component
+const Dashboard = ({ role, patients, onNew, onSelect }) => {
+  const [term, setTerm] = useState('');
 
-    <script type="text/babel">
-        // --- 1. CONFIGURATION ---
-        const getFirebaseConfig = () => {
-            try {
-                if (typeof __firebase_config !== 'undefined') return JSON.parse(__firebase_config);
-                return null;
-            } catch (e) { return null; }
-        };
+  // Filter logic
+  const filtered = useMemo(() => {
+    return patients.filter(p => {
+      const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
+      return searchStr.toLowerCase().includes(term.toLowerCase());
+    });
+  }, [patients, term]);
 
-        const firebaseConfig = getFirebaseConfig();
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        let db = null, auth = null;
+  const stats = useMemo(() => {
+    return {
+      total: patients.length,
+      waiting: patients.filter(p => p.status === 'Waiting').length,
+      completed: patients.filter(p => p.status === 'Completed').length
+    };
+  }, [patients]);
 
-        if (firebaseConfig && window.firebase) {
-            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            auth = firebase.auth();
+  // Delete Handler
+  const handleDelete = async (id) => {
+    if(window.confirm("คุณต้องการลบข้อมูลผู้ป่วยรายนี้ใช่หรือไม่?\n(การลบจะไม่สามารถกู้คืนข้อมูลได้)")) {
+      try {
+        await deleteDoc(doc(getPatientsCollection(), id));
+      } catch (error) {
+        alert("เกิดข้อผิดพลาดในการลบ: " + error.message);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Stats Header */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div className="text-gray-500 text-xs font-semibold uppercase">ผู้ป่วยทั้งหมด</div>
+          <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100">
+          <div className="text-orange-600 text-xs font-semibold uppercase">รอตรวจตา</div>
+          <div className="text-2xl font-bold text-orange-700">{stats.waiting}</div>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100">
+          <div className="text-green-600 text-xs font-semibold uppercase">ตรวจแล้ว</div>
+          <div className="text-2xl font-bold text-green-700">{stats.completed}</div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            {role === 'PCU' ? <Home className="text-green-600"/> : <Building2 className="text-blue-600"/>}
+            {role === 'PCU' ? 'ทะเบียนผู้ป่วย (รพ.สต.)' : 'รายการส่งตัว (Hospital)'}
+          </h2>
+          <p className="text-sm text-slate-500">Real-time database connection active</p>
+        </div>
+        {role === 'PCU' && (
+          <button 
+            onClick={onNew} 
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 font-semibold"
+          >
+            <PlusCircle size={18}/> ลงทะเบียนผู้ป่วยใหม่
+          </button>
+        )}
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+        <Search className="text-gray-400 ml-2" size={20}/>
+        <input 
+          type="text" 
+          value={term} 
+          onChange={e=>setTerm(e.target.value)} 
+          placeholder="ค้นหาด้วยเลขบัตรประชาชน หรือ ชื่อ-สกุล..." 
+          className="flex-1 outline-none p-2 text-gray-700 placeholder-gray-400" 
+        />
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold">
+              <tr>
+                <th className="p-4 w-32">วันที่ส่งตัว</th>
+                <th className="p-4">ผู้ป่วย</th>
+                <th className="p-4">สถานะ</th>
+                <th className="p-4 text-right">ดำเนินการ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map(p => (
+                <tr key={p.id} className="hover:bg-blue-50/50 transition-colors group">
+                  <td className="p-4 text-gray-500 whitespace-nowrap align-top">
+                    <div className="font-medium text-gray-700">{p.createdAt?.toLocaleDateString('th-TH')}</div>
+                    <div className="text-xs text-gray-400">{p.createdAt?.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}</div>
+                  </td>
+                  <td className="p-4 align-top">
+                    <div className="font-mono font-bold text-blue-600 text-base tracking-wide">{p.part1.idCard}</div>
+                    <div className="text-gray-900 font-medium text-lg">{p.part1.name}</div>
+                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-2">
+                       <span className="bg-gray-100 px-1.5 rounded">HbA1C: {p.part1.hba1c || '-'}</span>
+                       {p.part1.vaRight && (
+                         <span className="bg-blue-50 text-blue-600 px-1.5 rounded border border-blue-100 flex items-center gap-1">
+                           <Glasses size={10}/> VA: {p.part1.vaRight}/{p.part1.vaLeft}
+                         </span>
+                       )}
+                    </div>
+                  </td>
+                  <td className="p-4 align-top">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
+                      p.status === 'Waiting' 
+                        ? 'bg-orange-50 text-orange-600 border-orange-200' 
+                        : 'bg-green-50 text-green-600 border-green-200'
+                    }`}>
+                      {p.status === 'Waiting' ? <AlertCircle size={12}/> : <CheckCircle2 size={12}/>}
+                      {p.status === 'Waiting' ? 'รอการตรวจ' : 'ตรวจแล้ว'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right align-top">
+                    <div className="flex items-center justify-end gap-2">
+                      {role === 'HOSPITAL' ? (
+                        <button 
+                          onClick={()=>onSelect(p)} 
+                          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm ${
+                            p.status === 'Waiting' 
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' 
+                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {p.status === 'Waiting' ? 'บันทึกผลตรวจ' : 'ดูผลการรักษา'}
+                        </button>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded">ส่งตัวเรียบร้อย</span>
+                      )}
+                      
+                      <button 
+                        onClick={() => handleDelete(p.id)}
+                        className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-100"
+                        title="ลบข้อมูล"
+                      >
+                        <Trash2 size={18}/>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="p-12 text-center">
+                    <div className="flex flex-col items-center text-gray-400">
+                      <Search size={48} className="mb-3 opacity-20"/>
+                      <p>ไม่พบข้อมูลผู้ป่วย</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 3. PCU Form (Add Patient)
+const PCUForm = ({ onBack, userId, existingPatients }) => {
+  const [form, setForm] = useState({ 
+    idCard:'', name:'', age: '', dmYears:'', 
+    hba1c:'', bp:'', weight:'', height:'',
+    vaRight: '', vaLeft: '' 
+  });
+  const [saving, setSaving] = useState(false);
+  const [foundOldHistory, setFoundOldHistory] = useState(false);
+
+  // Auto-fill Logic
+  useEffect(() => {
+    if (form.idCard && form.idCard.length === 13 && existingPatients) {
+      const found = existingPatients.find(p => p.part1?.idCard === form.idCard);
+      if (found) {
+        setFoundOldHistory(true);
+        setForm(prev => ({
+          ...prev,
+          name: found.part1.name || '',
+          age: found.part1.age || '',
+          dmYears: found.part1.dmYears || ''
+          // We do not overwrite vitals (HbA1C, BP, etc.) as they are for the current visit
+        }));
+      } else {
+        setFoundOldHistory(false);
+      }
+    }
+  }, [form.idCard, existingPatients]);
+
+  const save = async () => {
+    if(!form.idCard || !form.name) return alert("กรุณากรอกเลขบัตรฯ และ ชื่อ-สกุล");
+    setSaving(true);
+    try {
+      await addDoc(getPatientsCollection(), {
+        part1: form,
+        status: 'Waiting',
+        senderId: userId,
+        createdAt: serverTimestamp()
+      });
+      onBack();
+    } catch(e) { 
+      alert("บันทึกไม่ได้: " + e.message); 
+      console.error(e);
+    } finally { 
+      setSaving(false); 
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500">
+      <button onClick={onBack} className="text-gray-500 hover:text-gray-800 mb-6 flex items-center gap-2 font-medium transition-colors">
+        <ArrowLeft size={20}/> ย้อนกลับไปหน้าหลัก
+      </button>
+      
+      <div className="bg-white rounded-2xl shadow-xl border border-green-100 overflow-hidden">
+        <div className="bg-green-600 p-6 text-white flex items-center gap-3">
+          <div className="bg-white/20 p-2 rounded-lg"><FileText size={24}/></div>
+          <div>
+            <h2 className="font-bold text-lg">แบบฟอร์มส่งตัวผู้ป่วย (Referral Form)</h2>
+            <p className="text-green-100 text-sm">สำหรับเจ้าหน้าที่ รพ.สต. / PCU</p>
+          </div>
+        </div>
+        
+        <div className="p-8 space-y-6">
+          {/* Section 1: ID */}
+          <div className={`p-5 rounded-xl border transition-all duration-500 ${foundOldHistory ? 'bg-green-50 border-green-200' : 'bg-blue-50/50 border-blue-100'}`}>
+            <label className="block text-sm font-bold text-blue-900 mb-2">เลขบัตรประชาชน 13 หลัก (Official ID)</label>
+            <div className="relative">
+              <input 
+                type="text" 
+                value={form.idCard} 
+                onChange={e=>setForm({...form, idCard:e.target.value})} 
+                className="w-full p-3 border border-blue-200 rounded-lg text-lg font-mono tracking-wide focus:ring-2 focus:ring-blue-400 outline-none" 
+                placeholder="x-xxxx-xxxxx-xx-x" 
+                maxLength={13}
+              />
+              {foundOldHistory && (
+                <div className="absolute right-3 top-3 text-green-600 flex items-center gap-1 animate-in fade-in">
+                  <History size={20} />
+                  <span className="text-sm font-bold">พบประวัติเก่า</span>
+                </div>
+              )}
+            </div>
+            {foundOldHistory && <p className="text-xs text-green-600 mt-2">* ระบบดึงชื่อ-สกุล และอายุจากฐานข้อมูลอัตโนมัติ</p>}
+          </div>
+
+          {/* Section 2: Basic Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Input label="ชื่อ-นามสกุล" value={form.name} onChange={v=>setForm({...form, name:v})} placeholder="นาย รักดี มีสุข" />
+            <Input label="อายุ (ปี)" value={form.age} onChange={v=>setForm({...form, age:v})} placeholder="65" />
+          </div>
+
+          {/* Section 3: VA (New) */}
+          <div className="bg-green-50/50 p-5 rounded-xl border border-green-100">
+             <h3 className="text-sm font-bold text-green-800 mb-3 flex items-center gap-2"><Glasses size={16}/> ระดับการมองเห็น (Visual Acuity)</h3>
+             <div className="grid grid-cols-2 gap-6">
+               <Select 
+                 label="VA ตาขวา (Right)" 
+                 value={form.vaRight} 
+                 onChange={v=>setForm({...form, vaRight:v})} 
+                 options={VA_OPTIONS} 
+               />
+               <Select 
+                 label="VA ตาซ้าย (Left)" 
+                 value={form.vaLeft} 
+                 onChange={v=>setForm({...form, vaLeft:v})} 
+                 options={VA_OPTIONS} 
+               />
+             </div>
+          </div>
+
+          {/* Section 4: Vitals */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Input label="HbA1C (%)" value={form.hba1c} onChange={v=>setForm({...form, hba1c:v})} placeholder="7.5" />
+            <Input label="ความดัน (mmHg)" value={form.bp} onChange={v=>setForm({...form, bp:v})} placeholder="120/80" />
+            <Input label="น้ำหนัก (kg)" value={form.weight} onChange={v=>setForm({...form, weight:v})} placeholder="60" />
+            <Input label="ส่วนสูง (cm)" value={form.height} onChange={v=>setForm({...form, height:v})} placeholder="165" />
+          </div>
+
+          <div className="pt-4">
+            <button 
+              onClick={save} 
+              disabled={saving} 
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-green-200 transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+            >
+              {saving ? <><Activity className="animate-spin"/> กำลังส่งข้อมูล...</> : 'บันทึกและส่งตัวทันที'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 4. Hospital Form (Examine Patient)
+const HospitalForm = ({ patient, onBack, userId }) => {
+  const [p2, setP2] = useState(patient.part2 || { cataract:'No', retinaFound:'Yes', dilation:'No' });
+  const [findings, setFindings] = useState(patient.findings || { 
+    Normal: {L:false,R:false}, 
+    MicroAneurysm: {L:false,R:false}, 
+    Hemorrhage: {L:false,R:false},
+    HardExudate: {L:false,R:false},
+    CottonWool: {L:false,R:false}
+  });
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (k,s) => setFindings(f => ({...f, [k]:{...f[k], [s]:!f[k][s]}}));
+  
+  const save = async () => {
+    setSaving(true);
+    try {
+      const ref = doc(getPatientsCollection(), patient.id);
+      await updateDoc(ref, {
+        part2: p2, 
+        findings, 
+        status: 'Completed', 
+        examinerId: userId,
+        examinedAt: serverTimestamp()
+      });
+      onBack();
+    } catch(e) { 
+      alert(e.message); 
+    } finally { 
+      setSaving(false); 
+    }
+  };
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-6 animate-in slide-in-from-right-8 duration-500 h-[calc(100vh-100px)]">
+      {/* Left Panel: Patient Info */}
+      <div className="w-full lg:w-1/3 space-y-4 lg:h-full lg:overflow-y-auto no-scrollbar">
+        <button onClick={onBack} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 mb-2 font-medium">
+          <ArrowLeft size={18}/> กลับหน้ารายการ
+        </button>
+        
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+          <div className="flex items-center gap-3 mb-4 pb-4 border-b">
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+              <User size={24}/>
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-gray-800">{patient.part1.name}</h3>
+              <p className="font-mono text-blue-600 text-sm">{patient.part1.idCard}</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <Info label="อายุ" val={`${patient.part1.age || '-'} ปี`} />
+            <Info label="ค่าสายตา (VA)" val={`R: ${patient.part1.vaRight || '-'} | L: ${patient.part1.vaLeft || '-'}`} highlight />
+            <Info label="HbA1C" val={patient.part1.hba1c} />
+            <Info label="ความดันโลหิต" val={patient.part1.bp} />
+            <Info label="น้ำหนัก/ส่วนสูง" val={`${patient.part1.weight || '-'} kg / ${patient.part1.height || '-'} cm`} />
+            <Info label="วันที่ส่งตัว" val={patient.createdAt?.toLocaleDateString('th-TH')} />
+          </div>
+        </div>
+
+        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800 text-sm">
+          <p className="font-semibold mb-1">⚠️ หมายเหตุการส่งตัว:</p>
+          <p className="opacity-80">- ผู้ป่วยเบาหวานชนิดที่ 2</p>
+          <p className="opacity-80">- นัดตรวจจอประสาทตาประจำปี</p>
+        </div>
+      </div>
+
+      {/* Right Panel: Exam Form */}
+      <div className="w-full lg:w-2/3 bg-white rounded-2xl shadow-xl border border-blue-200 flex flex-col overflow-hidden">
+        <div className="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md z-10">
+           <div className="flex items-center gap-2">
+             <Eye className="text-blue-200"/>
+             <span className="font-bold text-lg">บันทึกผลการตรวจจอประสาทตา</span>
+           </div>
+           <span className="text-xs bg-blue-500 px-2 py-1 rounded">Hospital Mode</span>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1">
+          {/* Screening Questions */}
+          <div className="space-y-4 mb-8">
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-gray-700">ผู้ป่วยเป็นต้อกระจก? (Cataract)</span>
+              <div className="flex gap-2">
+                <BtnOpt val={p2.cataract} set={v=>setP2({...p2, cataract:v})} txt="ใช่ (Yes)" v="Yes" color="red"/>
+                <BtnOpt val={p2.cataract} set={v=>setP2({...p2, cataract:v})} txt="ไม่ใช่ (No)" v="No" color="green"/>
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-gray-700">เห็นจอประสาทตาชัดเจน?</span>
+              <div className="flex gap-2">
+                <BtnOpt val={p2.retinaFound} set={v=>setP2({...p2, retinaFound:v})} txt="ชัดเจน (Yes)" v="Yes" color="green"/>
+                <BtnOpt val={p2.retinaFound} set={v=>setP2({...p2, retinaFound:v})} txt="ไม่ชัด (No)" v="No" color="red"/>
+              </div>
+            </div>
+          </div>
+
+          {/* Findings Matrix */}
+          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <Activity size={18} className="text-blue-600"/> ผลการวินิจฉัย (Findings)
+          </h3>
+          
+          <div className="border rounded-xl overflow-hidden mb-8 shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 text-gray-600">
+                <tr>
+                  <th className="p-3 text-left">Condition / อาการที่พบ</th>
+                  <th className="p-3 w-24 text-center bg-blue-50 text-blue-700 border-l">Left (ซ้าย)</th>
+                  <th className="p-3 w-24 text-center bg-blue-50 text-blue-700 border-l">Right (ขวา)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {Object.keys(findings).map(k => (
+                  <tr key={k} className="hover:bg-gray-50">
+                    <td className="p-3 font-medium text-gray-700">{k}</td>
+                    <td className="p-3 text-center border-l bg-gray-50/30">
+                      <input 
+                        type="checkbox" 
+                        checked={findings[k].L} 
+                        onChange={()=>toggle(k,'L')} 
+                        className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer accent-blue-600"
+                      />
+                    </td>
+                    <td className="p-3 text-center border-l bg-gray-50/30">
+                      <input 
+                        type="checkbox" 
+                        checked={findings[k].R} 
+                        onChange={()=>toggle(k,'R')} 
+                        className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer accent-blue-600"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <button 
+            onClick={save} 
+            disabled={saving} 
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+          >
+            {saving ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันผลการตรวจ (Submit Findings)'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- HELPERS ---
+const Input = ({label, value, onChange, placeholder}) => (
+  <div>
+    <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">{label}</label>
+    <input 
+      type="text" 
+      value={value} 
+      onChange={e=>onChange(e.target.value)} 
+      className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-green-400 transition-all" 
+      placeholder={placeholder}
+    />
+  </div>
+);
+
+const Select = ({label, value, onChange, options}) => (
+  <div>
+    <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">{label}</label>
+    <div className="relative">
+      <select 
+        value={value} 
+        onChange={e=>onChange(e.target.value)} 
+        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-green-400 transition-all appearance-none cursor-pointer"
+      >
+        <option value="">-- เลือกค่า VA --</option>
+        {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+      <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+      </div>
+    </div>
+  </div>
+);
+
+const Info = ({label, val, highlight}) => (
+  <div className="flex justify-between text-sm border-b border-dashed border-gray-200 py-2 last:border-0">
+    <span className="text-gray-500">{label}</span>
+    <span className={`font-medium ${highlight ? 'text-blue-600 bg-blue-50 px-2 rounded' : 'text-gray-800'}`}>{val||'-'}</span>
+  </div>
+);
+
+const BtnOpt = ({val, set, txt, v, color}) => {
+  const isSelected = val === v;
+  let activeClass = '';
+  if (color === 'red') activeClass = 'bg-red-100 text-red-700 border-red-200 font-bold';
+  else if (color === 'green') activeClass = 'bg-green-100 text-green-700 border-green-200 font-bold';
+  else activeClass = 'bg-blue-600 text-white font-bold';
+
+  return (
+    <button 
+      onClick={()=>set(v)} 
+      className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${isSelected ? activeClass : 'text-gray-500 bg-white hover:bg-gray-50'}`}
+    >
+      {txt}
+    </button>
+  );
+};
+
+// --- MAIN APP ---
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [role, setRole] = useState(null); // 'PCU' or 'HOSPITAL'
+  const [view, setView] = useState('dashboard');
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [dbStatus, setDbStatus] = useState('connecting');
+
+  // 1. Auth Init
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
         } else {
-            console.warn("Running in offline/simulation mode.");
+          await signInAnonymously(auth);
         }
+      } catch (error) {
+        console.error("Auth Error:", error);
+        setDbStatus('error');
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    initAuth();
+    return onAuthStateChanged(auth, setUser);
+  }, []);
 
-        // --- 2. COMPONENTS ---
-        const Icon = ({ name, size = 18, className }) => {
-            React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-            return <i data-lucide={name} width={size} height={size} className={className}></i>;
-        };
+  // 2. Data Sync
+  useEffect(() => {
+    if (!user) return;
+    
+    const unsubscribe = onSnapshot(
+      getPatientsCollection(), 
+      (snapshot) => {
+        setDbStatus('online');
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date()
+        }));
+        
+        // Sort in memory (Rule 2 Compliant)
+        data.sort((a, b) => b.createdAt - a.createdAt);
+        setPatients(data);
+      }, 
+      (error) => {
+        console.error("Firestore Error:", error);
+        setDbStatus('offline');
+      }
+    );
 
-        const AuthScreen = ({ onLogin }) => {
-            const [pin, setPin] = React.useState('');
-            const [loading, setLoading] = React.useState(false);
-            
-            const handleAuth = async (e) => {
-                e.preventDefault();
-                setLoading(true);
-                try {
-                    if (auth && !auth.currentUser) await auth.signInAnonymously();
-                    else if (!auth) await new Promise(r => setTimeout(r, 500)); 
+    return () => unsubscribe();
+  }, [user]);
 
-                    if (pin.length >= 3) onLogin(pin);
-                    else alert("รหัสเจ้าหน้าที่ต้องมีอย่างน้อย 3 หลัก");
-                } catch (err) { alert("เข้าสู่ระบบล้มเหลว: " + err.message); } 
-                finally { setLoading(false); }
-            };
+  // Handlers
+  const handleLogin = (selectedRole) => {
+    setRole(selectedRole);
+    setView('dashboard');
+  };
 
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-lg text-center fade-in border border-slate-200">
-                        <div className="mx-auto w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 mb-4"><Icon name="activity" size={32}/></div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-2">EyeDM System</h1>
-                        <p className="text-slate-500 text-sm mb-6">v18.06 (Super Admin Enabled)</p>
-                        <form onSubmit={handleAuth} className="space-y-4">
-                            <input className="w-full p-3 border rounded-lg text-center text-lg tracking-widest" placeholder="รหัสเจ้าหน้าที่ (เช่น 10700)" value={pin} onChange={e=>setPin(e.target.value)} required autoFocus type="tel"/>
-                            <button disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 disabled:opacity-50 shadow-lg shadow-teal-600/20">
-                                {loading ? 'กำลังโหลด...' : 'เข้าสู่ระบบ'}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            );
-        };
+  const handleLogout = () => {
+    setRole(null);
+    setView('dashboard');
+  };
 
-        function App() {
-            const [user, setUser] = React.useState(null);
-            const [role, setRole] = React.useState('PCU');
-            const [view, setView] = React.useState('dashboard');
-            const [queue, setQueue] = React.useState([]);
-            const [editData, setEditData] = React.useState(null);
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center text-blue-600 font-bold">Connecting to Secure System...</div>;
+  
+  // If authenticated but no role selected (simulated Login screen)
+  if (!role) return <AuthScreen onLogin={handleLogin} />;
 
-            React.useEffect(() => {
-                if (!user || !db) return;
-                try {
-                    const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue')
-                        .onSnapshot(snapshot => {
-                            const items = snapshot.docs.map(d => {
-                                const data = d.data();
-                                return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date() };
-                            });
-                            items.sort((a, b) => b.createdAt - a.createdAt);
-                            setQueue(items);
-                            setTimeout(() => window.lucide?.createIcons(), 100);
-                        }, err => console.error(err));
-                    return () => unsubscribe();
-                } catch (e) { console.error(e); }
-            }, [user]);
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
+      {/* Navbar */}
+      <nav className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${role==='PCU'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>
+              {role === 'PCU' ? <Home size={20}/> : <Building2 size={20}/>}
+            </div>
+            <div>
+              <h1 className="font-bold text-lg leading-tight text-gray-800">EyeDM Connect</h1>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="font-medium text-gray-600">{role === 'PCU' ? 'หน่วยบริการปฐมภูมิ (รพ.สต.)' : 'โรงพยาบาลแม่ข่าย (Hospital)'}</span>
+                <span className="text-gray-300">|</span>
+                <span className={`flex items-center gap-1 ${dbStatus==='online'?'text-green-600':'text-red-500'}`}>
+                  <span className={`w-2 h-2 rounded-full ${dbStatus==='online'?'bg-green-500':'bg-red-500'}`}></span> 
+                  {dbStatus === 'online' ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+             <div className="hidden md:flex text-xs bg-gray-100 px-3 py-1 rounded-full text-gray-500">
+               User: {user?.uid.slice(0,6)}...
+             </div>
+             <button 
+              onClick={handleLogout} 
+              className="text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors"
+              title="ออกจากระบบ"
+            >
+              <LogOut size={18}/>
+            </button>
+          </div>
+        </div>
+      </nav>
 
-            const handleLogin = (pin) => {
-                setUser({ pin });
-                if (pin === '10700') setRole('ADMIN'); // 10700 is Admin
-                else if (pin.startsWith('2')) setRole('HOSPITAL');
-                else setRole('PCU');
-            };
-
-            const handleDelete = async (id) => {
-                if (!db) return alert("Offline mode");
-                if(confirm("ยืนยันการลบ?")) await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue').doc(id).delete();
-            };
-
-            if (!user) return <AuthScreen onLogin={handleLogin} />;
-
-            return (
-                <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-sans">
-                    <nav className="bg-white shadow-sm border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
-                        <div className="flex gap-3 items-center">
-                            <div className={`p-2 rounded-lg text-white shadow ${role==='HOSPITAL'?'bg-blue-600': role==='ADMIN'?'bg-indigo-600':'bg-teal-600'}`}>
-                                <Icon name={role==='HOSPITAL'?'hospital': role==='ADMIN'?'shield':'home'}/>
-                            </div>
-                            <div>
-                                <h1 className="font-bold text-lg text-slate-700">EyeDM</h1>
-                                <p className="text-xs text-slate-400">User: {user.pin} {role==='ADMIN' && '(Super)'}</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                             {role === 'ADMIN' && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded font-bold"><Icon name="upload" size={14}/> Import</button>}
-                             <button onClick={()=>setUser(null)} className="p-2 text-slate-400 hover:text-red-500 transition"><Icon name="log-out"/></button>
-                        </div>
-                    </nav>
-
-                    <main className="flex-1 p-4 max-w-5xl mx-auto w-full">
-                        {view === 'dashboard' && (
-                            <Dashboard 
-                                user={user}
-                                role={role} 
-                                queue={queue} 
-                                onNew={()=>{setEditData(null);setView('pcu_form')}} 
-                                onEdit={p=>{setEditData(p);setView('pcu_form')}}
-                                onDoctorEdit={p=>{setEditData(p);setView('hospital_form')}}
-                                onDelete={handleDelete} 
-                            />
-                        )}
-                        {view === 'pcu_form' && <PCUForm db={db} user={user} appId={appId} initialData={editData} onBack={()=>setView('dashboard')} />}
-                        {view === 'hospital_form' && <HospitalForm db={db} user={user} appId={appId} patient={editData} onBack={()=>setView('dashboard')} />}
-                        {view === 'import' && <ImportView db={db} appId={appId} onBack={()=>setView('dashboard')} />}
-                    </main>
-                </div>
-            );
-        }
-
-        // --- Sub-Components ---
-        const Dashboard = ({ user, role, queue, onNew, onEdit, onDoctorEdit, onDelete }) => {
-            const [search, setSearch] = React.useState('');
-            const filtered = queue.filter(p => (p.part1?.idCard||'').includes(search) || (p.part1?.name||'').includes(search));
-            
-            // 10700 can do everything
-            const isSuperUser = user.pin === '10700';
-            const canRegister = role !== 'HOSPITAL'; 
-
-            return (
-                <div className="space-y-4 fade-in">
-                    <div className="flex flex-col sm:flex-row justify-between gap-3 items-end">
-                        <div className="w-full relative">
-                            <Icon name="search" className="absolute left-3 top-3 text-slate-400" size={18}/>
-                            <input className="w-full pl-10 pr-4 py-2.5 border rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="ค้นหาชื่อ หรือ เลขบัตร..." value={search} onChange={e=>setSearch(e.target.value)}/>
-                        </div>
-                        {canRegister && (
-                            <button onClick={onNew} className="bg-teal-600 text-white px-5 py-2.5 rounded-xl shadow-md font-bold flex items-center gap-2 hover:bg-teal-700 w-full sm:w-auto justify-center whitespace-nowrap">
-                                <Icon name="user-plus" size={18}/> ลงทะเบียน
-                            </button>
-                        )}
-                    </div>
-                    
-                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 border-b text-slate-600">
-                                <tr>
-                                    <th className="p-4 font-semibold">ผู้ป่วย</th>
-                                    <th className="p-4 font-semibold">สถานะ</th>
-                                    <th className="p-4 font-semibold text-right">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filtered.map(p => (
-                                    <tr key={p.id} className="hover:bg-slate-50 transition">
-                                        <td className="p-4">
-                                            <div className="font-bold text-slate-700 text-base">{p.part1.name}</div>
-                                            <div className="text-xs text-slate-400 mt-1 flex gap-2">
-                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded">{p.part1.idCard}</span>
-                                                {p.part1.hba1c && <span className={parseFloat(p.part1.hba1c)>8 ? 'text-red-500 font-bold':'text-green-600'}>HbA1C: {p.part1.hba1c}%</span>}
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${p.status==='Waiting'?'bg-amber-50 text-amber-700 border-amber-200':'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${p.status==='Waiting'?'bg-amber-500 animate-pulse':'bg-emerald-500'}`}></div>
-                                                {p.status==='Waiting'?'รอตรวจ':'ตรวจแล้ว'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <div className="flex justify-end items-center gap-1">
-                                                {/* ปุ่มตรวจตา: แสดงเมื่อเป็น Hospital หรือ 10700 */}
-                                                {(role === 'HOSPITAL' || isSuperUser) && (
-                                                    <button onClick={()=>onDoctorEdit(p)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow hover:bg-blue-700 transition mr-2 flex items-center gap-1">
-                                                        <Icon name="eye" size={14}/> ตรวจ
-                                                    </button>
-                                                )}
-                                                
-                                                {/* ปุ่มแก้ไข/ลบ: แสดงเมื่อไม่ใช่ Hospital หรือเป็น 10700 */}
-                                                {(role !== 'HOSPITAL' || isSuperUser) && (
-                                                    <>
-                                                        <button onClick={()=>onEdit(p)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="แก้ไขข้อมูลส่วนที่ 1"><Icon name="pencil" size={18}/></button>
-                                                        <button onClick={()=>onDelete(p.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="ลบข้อมูล"><Icon name="trash-2" size={18}/></button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filtered.length===0 && <tr><td colSpan="3" className="p-12 text-center text-slate-400">ไม่พบข้อมูลผู้ป่วย</td></tr>}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        };
-
-        const PCUForm = ({ db, user, appId, initialData, onBack }) => {
-            const [form, setForm] = React.useState(initialData?.part1 || { idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
-            const [saving, setSaving] = React.useState(false);
-
-            const save = async () => {
-                if(!db) return alert("Offline Mode");
-                if(!form.idCard) return alert("ระบุเลขบัตร");
-                setSaving(true);
-                const colRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
-                const payload = { part1: form, pcuId: user.pin, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-                try {
-                    if(initialData) await colRef.doc(initialData.id).update(payload);
-                    else { payload.status = 'Waiting'; payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await colRef.add(payload); }
-                    onBack();
-                } catch(e) { alert(e.message); }
-                setSaving(false);
-            };
-
-            return (
-                <div className="bg-white p-6 rounded-xl shadow border border-slate-200 fade-in max-w-2xl mx-auto">
-                    <div className="flex justify-between items-center mb-6 border-b pb-4">
-                        <h2 className="font-bold text-lg text-slate-700">{initialData?'แก้ไขข้อมูล':'ลงทะเบียนใหม่'}</h2>
-                        <button onClick={onBack} className="text-slate-400 hover:text-slate-600"><Icon name="x"/></button>
-                    </div>
-                    <div className="space-y-4">
-                        <div><label className="block text-xs font-bold text-slate-500 mb-1">เลขบัตรประชาชน</label><input className="w-full p-3 border rounded-xl font-mono text-lg tracking-wider focus:ring-2 focus:ring-teal-500 outline-none" placeholder="xxxxxxxxxxxxx" value={form.idCard} onChange={e=>setForm({...form,idCard:e.target.value})} maxLength="13"/></div>
-                        <div><label className="block text-xs font-bold text-slate-500 mb-1">ชื่อ-สกุล</label><input className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="ชื่อ-สกุล" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><label className="block text-xs font-bold text-slate-500 mb-1">HbA1C</label><input className="w-full p-2.5 border rounded-lg" placeholder="%" value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})}/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 mb-1">ความดัน (BP)</label><input className="w-full p-2.5 border rounded-lg" placeholder="mmHg" value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})}/></div>
-                        </div>
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                             <label className="block text-sm font-bold text-slate-700 mb-3">ระดับการมองเห็น (Visual Acuity)</label>
-                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-xs text-slate-400 text-center mb-1">ตาซ้าย (L)</label><input className="w-full p-2 border rounded text-center" placeholder="20/xx" value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})}/></div>
-                                <div><label className="block text-xs text-slate-400 text-center mb-1">ตาขวา (R)</label><input className="w-full p-2 border rounded text-center" placeholder="20/xx" value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})}/></div>
-                             </div>
-                        </div>
-                    </div>
-                    <div className="flex gap-3 mt-8"><button onClick={onBack} className="flex-1 py-3 border border-slate-300 rounded-xl font-bold text-slate-500 hover:bg-slate-50">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-[2] py-3 bg-teal-600 text-white rounded-xl font-bold shadow-lg shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-70 flex justify-center items-center gap-2">{saving ? 'กำลังบันทึก...' : <><Icon name="save" size={18}/> บันทึกข้อมูล</>}</button></div>
-                </div>
-            );
-        };
-
-        const HospitalForm = ({ db, user, appId, patient, onBack }) => {
-            const [p2, setP2] = React.useState(patient?.part2 || { retinaFound:'Yes' });
-            const [findings, setFindings] = React.useState(patient?.findings || {});
-            const [saving, setSaving] = React.useState(false);
-
-            const toggle = (k,s) => setFindings(f=>({...f,[k]:{...f[k],[s]:!f?.[k]?.[s]}}));
-            
-            const save = async () => {
-                if(!db) return alert("Offline Mode");
-                setSaving(true);
-                await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue').doc(patient.id).update({
-                    part2: p2, findings, status: 'Completed', doctorCode: user.pin, examinedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                onBack();
-                setSaving(false);
-            };
-
-            return (
-                <div className="flex flex-col md:flex-row gap-6 fade-in">
-                    <div className="md:w-1/3 space-y-4">
-                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                            <h3 className="font-bold text-slate-400 text-xs uppercase mb-2">ข้อมูลผู้ป่วย</h3>
-                            <div className="text-xl font-bold text-slate-800">{patient.part1.name}</div>
-                            <div className="font-mono text-slate-500 text-sm mb-4">{patient.part1.idCard}</div>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between border-b border-dashed pb-2"><span>HbA1C</span> <span className="font-bold">{patient.part1.hba1c}</span></div>
-                                <div className="flex justify-between border-b border-dashed pb-2"><span>BP</span> <span className="font-bold">{patient.part1.bp}</span></div>
-                            </div>
-                        </div>
-                        <button onClick={onBack} className="w-full py-2 text-slate-400 hover:text-slate-600 text-sm">ยกเลิก / ย้อนกลับ</button>
-                    </div>
-                    <div className="md:w-2/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                        <h2 className="font-bold text-lg mb-6 text-blue-700 flex items-center gap-2"><Icon name="eye"/> บันทึกผลตรวจจอประสาทตา (Part 2)</h2>
-                        <div className="mb-6"><label className="block text-sm font-bold mb-2 text-slate-700">การมองเห็นจอประสาทตา</label><div className="flex gap-3">{['Yes','No'].map(o=>(<button key={o} onClick={()=>setP2({...p2,retinaFound:o})} className={`flex-1 py-3 rounded-xl border font-bold transition ${p2.retinaFound===o?'bg-blue-600 text-white border-blue-600 shadow-md':'text-slate-500 hover:bg-slate-50'}`}>{o==='Yes'?'มองเห็นชัดเจน':'มองไม่เห็น/มีสิ่งบดบัง'}</button>))}</div></div>
-                        <div className="space-y-1 mb-8 border rounded-xl overflow-hidden">
-                            <div className="flex bg-slate-100 p-3 font-bold text-slate-600 text-sm"><div className="flex-1">ความผิดปกติที่พบ</div><div className="w-16 text-center">L</div><div className="w-16 text-center">R</div></div>
-                            {['Normal','MicroAneurysm','Hemorrhage','Exudate','CottonWool'].map(k=>(<div key={k} className="flex items-center p-3 hover:bg-slate-50 border-t border-slate-100 transition"><span className="flex-1 text-sm text-slate-700">{k}</span><div className="w-16 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/></div><div className="w-16 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/></div></div>))}
-                        </div>
-                        <button onClick={save} disabled={saving} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-70 flex justify-center items-center gap-2 transition">{saving ? 'กำลังบันทึก...' : <><Icon name="check-circle"/> ยืนยันผลการตรวจ (โดย {user.pin})</>}</button>
-                    </div>
-                </div>
-            );
-        };
-
-        const ImportView = ({ db, appId, onBack }) => {
-            const [data, setData] = React.useState([]);
-            const handle = e => Papa.parse(e.target.files[0], {header:true, skipEmptyLines:true, complete: r=>setData(r.data)});
-            const save = async () => {
-                if(!db) return alert("Offline Mode");
-                const col = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
-                let count = 0;
-                for(let r of data) {
-                     const pid = r['pid'] || r['เลขบัตร'] || r['id'];
-                     if(pid) {
-                        await col.add({ part1: { idCard: pid, name: r['name']||r['ชื่อ']||'-', hba1c: r['hba1c']||'-', bp: r['bp']||'-' }, status: 'Waiting', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                        count++;
-                     }
-                }
-                alert(`นำเข้าสำเร็จ ${count} รายการ`); onBack();
-            };
-            return (
-                <div className="bg-white p-8 rounded-2xl shadow border border-slate-200 max-w-lg mx-auto text-center fade-in">
-                    <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="upload-cloud" size={32}/></div>
-                    <h2 className="font-bold text-xl mb-2">Import CSV</h2>
-                    <label className="block w-full p-4 border-2 border-dashed rounded-xl hover:bg-slate-50 cursor-pointer mb-4"><input type="file" onChange={handle} accept=".csv" className="hidden"/><span className="text-slate-500">{data.length > 0 ? `เลือกแล้ว ${data.length} รายการ` : 'คลิกเพื่อเลือกไฟล์'}</span></label>
-                    <div className="flex gap-3"><button onClick={onBack} className="flex-1 py-2 text-slate-400">ยกเลิก</button>{data.length>0 && <button onClick={save} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold shadow">ยืนยัน</button>}</div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+      <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full">
+        {view === 'dashboard' && (
+          <Dashboard 
+            role={role} 
+            patients={patients} 
+            onNew={() => setView('pcu_form')}
+            onSelect={(p) => { setSelectedPatient(p); setView('hospital_form'); }}
+          />
+        )}
+        {view === 'pcu_form' && <PCUForm userId={user?.uid} existingPatients={patients} onBack={() => setView('dashboard')} />}
+        {view === 'hospital_form' && selectedPatient && (
+          <HospitalForm 
+            userId={user?.uid}
+            patient={selectedPatient} 
+            onBack={() => { setView('dashboard'); setSelectedPatient(null); }} 
+          />
+        )}
+      </main>
+    </div>
+  );
+}
