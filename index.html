@@ -3,65 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM v37 - Emergency Fix</title>
+    <title>EyeDM - ระบบส่งต่อผู้ป่วย (v18.06 Restored)</title>
     
-    <!-- 1. Assets -->
+    <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- 2. React Core -->
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    
-    <!-- 3. Firebase -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    
-    <!-- 4. Utils -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Sarabun', 'sans-serif'] },
-                    colors: {
-                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
-                        teal: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488' }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        body { background-color: #f8fafc; color: #1e293b; }
-        .loader { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: currentColor; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- UTILITY: The Safest Data Extractor ---
-        // ฟังก์ชันนี้คือฮีโร่ที่จะช่วยกันไม่ให้จอขาว
-        const safeData = (doc) => {
-            try {
-                if (!doc) return null;
-                // กรณีเป็น Snapshot ปกติ
-                if (typeof doc.data === 'function') return { id: doc.id, ...doc.data() };
-                // กรณีข้อมูลเพี้ยน หรือเป็น Object อยู่แล้ว
-                return { id: doc.id || 'unknown', ...doc };
-            } catch (e) {
-                console.error("Data corrupted:", e);
-                return null; // คืนค่าว่างแทนการทำให้แอปพัง
-            }
-        };
-
-        // --- CONFIG ---
+        // --- CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
             authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
@@ -72,69 +38,45 @@
             measurementId: "G-N48NPP7K9J"
         };
         
-        try { if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e){}
+        try { if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e) { console.error(e); }
         const auth = firebase.auth();
         const db = firebase.firestore();
-        const APP_ID = "sisaket_prod_v1855_stable"; 
+        
+        // ใช้ ID เดิมของช่วงเวลานั้น
+        const APP_ID = "sisaket_prod_v7_master"; 
         const COL_QUEUE = "dr_queue";   
-        const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
-        const Icon = ({name, size=20, className}) => {
+        const Icon = React.memo(({name, size=18, className}) => {
             React.useEffect(()=>{if(window.lucide)window.lucide.createIcons()},[name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
-        };
-
-        // --- ERROR BOUNDARY (กันน็อค) ---
-        class ErrorBoundary extends React.Component {
-            constructor(props) { super(props); this.state = { hasError: false, errorInfo: "" }; }
-            static getDerivedStateFromError(error) { return { hasError: true, errorInfo: error.toString() }; }
-            render() {
-                if (this.state.hasError) return (
-                    <div className="h-screen flex flex-col items-center justify-center bg-red-50 p-4 text-center">
-                        <div className="bg-white p-6 rounded-xl shadow-xl border border-red-200 max-w-md">
-                            <Icon name="alert-triangle" size={48} className="text-red-500 mx-auto mb-4"/>
-                            <h2 className="text-xl font-bold text-red-700 mb-2">ระบบพบปัญหาฉุกเฉิน</h2>
-                            <p className="text-gray-600 text-sm mb-4">ไม่ต้องตกใจ ข้อมูลของคุณปลอดภัย กดปุ่มด้านล่างเพื่อรีเซ็ตการแสดงผล</p>
-                            <div className="bg-gray-100 p-2 rounded text-xs font-mono text-left mb-4 overflow-auto max-h-20">{this.state.errorInfo}</div>
-                            <button onClick={()=>{ localStorage.clear(); window.location.reload(); }} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">ล้างแคชและโหลดใหม่ (Hard Reset)</button>
-                        </div>
-                    </div>
-                );
-                return this.props.children;
-            }
-        }
+        });
 
         // --- AUTH SCREEN ---
         const AuthScreen = () => {
             const [pin, setPin] = React.useState('');
             const [password, setPassword] = React.useState('');
             const [loading, setLoading] = React.useState(false);
-
+            
             const handleAuth = async (e) => {
                 e.preventDefault(); setLoading(true);
-                try { await auth.signInWithEmailAndPassword(pin+"@sisaket-clinic.org", password); }
-                catch(e) { 
-                    if(e.code==='auth/user-not-found') {
-                        try{await auth.createUserWithEmailAndPassword(pin+"@sisaket-clinic.org",password);}catch(e2){alert("Register Failed: "+e2.message);}
-                    } else alert("Login Failed: "+e.message);
+                const email = pin + "@sisaket-clinic.org";
+                try { await auth.signInWithEmailAndPassword(email, password); } 
+                catch (err) { 
+                    if(err.code==='auth/user-not-found') {
+                        try{await auth.createUserWithEmailAndPassword(email, password);}catch(e2){alert(e2.message);}
+                    } else alert("รหัสไม่ถูกต้อง");
                 } finally { setLoading(false); }
             };
-            
-            // Emergency Reset
-            const clearCache = () => { if(confirm("ยืนยันล้างแคชแก้ปัญหา?")) { localStorage.clear(); window.location.reload(); } };
-
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
-                    <div className="bg-white p-10 rounded-3xl w-full max-w-md shadow-xl border border-slate-100 text-center relative">
-                        <button onClick={clearCache} className="absolute top-4 right-4 text-slate-300 hover:text-red-500" title="แก้ปัญหาจอขาว"><Icon name="refresh-cw" size={16}/></button>
-                        <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-600"><Icon name="activity" size={36}/></div>
-                        <h1 className="text-3xl font-bold text-slate-800 mb-1">EyeDM <span className="text-brand-600">v37</span></h1>
-                        <p className="text-slate-400 mb-8 text-sm">Emergency Fix Edition</p>
+                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-lg text-center">
+                        <div className="mx-auto w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 mb-4"><Icon name="database" size={32}/></div>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-6">EyeDM System (18.06)</h1>
                         <form onSubmit={handleAuth} className="space-y-4">
-                            <input className="w-full p-3 border border-slate-200 rounded-xl text-center text-lg tracking-widest focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition" placeholder="รหัสเจ้าหน้าที่" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus/>
-                            <input className="w-full p-3 border border-slate-200 rounded-xl text-center focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition" type="password" placeholder="รหัสผ่าน" value={password} onChange={e=>setPassword(e.target.value)} required/>
-                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition disabled:opacity-70 mt-2">{loading?'Connecting...':'เข้าสู่ระบบ'}</button>
+                            <input className="w-full p-3 border rounded-lg text-center tracking-widest" placeholder="รหัสเจ้าหน้าที่" value={pin} onChange={e=>setPin(e.target.value)} required autoFocus/>
+                            <input className="w-full p-3 border rounded-lg text-center" type="password" placeholder="รหัสผ่าน" value={password} onChange={e=>setPassword(e.target.value)} required/>
+                            <button disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 disabled:opacity-50">{loading?'Loading...':'เข้าสู่ระบบ'}</button>
                         </form>
                     </div>
                 </div>
@@ -148,237 +90,205 @@
             const [view, setView] = React.useState('dashboard');
             const [queue, setQueue] = React.useState([]);
             const [editData, setEditData] = React.useState(null);
-            const [limitCount, setLimitCount] = React.useState(50);
 
             React.useEffect(() => auth.onAuthStateChanged(setUser), []);
             
             React.useEffect(() => {
-                if(!user) return;
-                // SAFE SNAPSHOT LISTENER
-                try {
-                    const unsub = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
-                        .orderBy('createdAt', 'desc').limit(limitCount)
-                        .onSnapshot(s => {
-                            const safeQueue = [];
-                            s.docs.forEach(doc => {
-                                const data = safeData(doc); // Use safe extractor
-                                if (data) {
-                                    // Ensure createdAt exists
-                                    data.createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-                                    safeQueue.push(data);
-                                }
-                            });
-                            setQueue(safeQueue);
-                            setTimeout(()=>window.lucide?.createIcons(), 100);
-                        }, err => console.error("Firestore Error:", err));
-                    return () => unsub();
-                } catch(e) { console.error("Setup Error:", e); }
-            }, [user, limitCount]);
+                if (!user) return;
+                // Load Queue (No pagination in original 18.06, but adding limit 100 for safety)
+                const unsubscribe = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
+                    .orderBy('createdAt', 'desc').limit(100)
+                    .onSnapshot(snapshot => {
+                        setQueue(snapshot.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() || new Date() })));
+                        setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
+                    });
+                return () => unsubscribe();
+            }, [user]);
 
-            const handleSend = async (id, name) => { if(confirm(`ส่งตัว: ${name}?`)) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).update({status:'Waiting', sentAt:firebase.firestore.FieldValue.serverTimestamp()}); };
-            const handleDel = async (id) => { if(confirm('ลบรายการ?')) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); };
+            const handleDelete = async (id) => { if(confirm("ลบข้อมูล?")) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); };
+            
+            const userPin = user?.email ? user.email.split('@')[0] : '';
+            const isAdmin = userPin === ADMIN_CODE;
 
-            if(!user) return <AuthScreen/>;
-            const isAdmin = user.email.startsWith(ADMIN_CODE);
-            const Theme = role==='PCU' ? 'teal' : 'brand';
+            if (!user) return <AuthScreen />;
 
             return (
-                <div className="min-h-screen flex flex-col font-sans text-slate-800 bg-slate-50">
-                    <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between h-16 items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg text-white bg-${Theme}-600 shadow-md`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
-                                    <div><h1 className="font-bold text-lg">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400">{user.email.split('@')[0]}</p></div>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold hover:bg-slate-200 transition"><Icon name="file-spreadsheet" size={14}/> Import</button>}
-                                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                                        <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='PCU'?'bg-white shadow-sm text-teal-600':'text-slate-500'}`}>PCU</button>
-                                        <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='HOSPITAL'?'bg-white shadow-sm text-brand-600':'text-slate-500'}`}>Hospital</button>
-                                    </div>
-                                    <button onClick={()=>auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><Icon name="log-out" size={18}/></button>
-                                </div>
-                            </div>
+                <div className="min-h-screen flex flex-col font-sans bg-slate-50">
+                    <nav className="bg-white shadow border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
+                        <div className="flex gap-3 items-center">
+                            <div className={`p-2 rounded-lg text-white shadow ${role==='PCU'?'bg-teal-600':'bg-blue-600'}`}><Icon name={role==='PCU'?'home':'hospital'}/></div>
+                            <div><h1 className="font-bold text-lg text-gray-800">EyeDM <span className="text-gray-400 text-sm">| v18.06</span></h1><p className="text-xs text-gray-500">User: {userPin}</p></div>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                            {isAdmin && <button onClick={()=>setView('import')} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold gap-1 flex items-center"><Icon name="upload-cloud"/> Import</button>}
+                            <div className="hidden md:flex bg-gray-100 p-1 rounded-lg"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1.5 rounded-md text-sm ${role==='PCU'?'bg-white shadow font-bold text-teal-700':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1.5 rounded-md text-sm ${role==='HOSPITAL'?'bg-white shadow font-bold text-blue-700':'text-gray-500'}`}>Hospital</button></div>
+                            <button onClick={()=>auth.signOut()} className="p-2 text-red-500 hover:bg-red-50 rounded-full"><Icon name="log-out"/></button>
                         </div>
                     </nav>
-
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-                        {view==='dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('form')}} onEdit={p=>{setEditData(p);setView('form')}} onDelete={handleDel} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} Theme={Theme}/>}
-                        {view==='form' && <UnifiedForm db={db} user={user} data={editData} role={role} onBack={()=>setView('dashboard')} Theme={Theme}/>}
-                        {view==='import' && isAdmin && <ImportView db={db} onBack={()=>setView('dashboard')}/>}
+                        <div className="md:hidden flex bg-white p-1 rounded-lg shadow-sm mb-4 text-sm"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='PCU'?'bg-teal-50 text-teal-700 font-bold':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='HOSPITAL'?'bg-blue-50 text-blue-700 font-bold':'text-gray-500'}`}>Hospital</button></div>
+
+                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('pcu_form')}} onEdit={p=>{setEditData(p);setView('pcu_form')}} onDelete={handleDelete} />}
+                        {view === 'pcu_form' && <PCUForm db={db} user={user} appId={APP_ID} initialData={editData} onBack={()=>setView('dashboard')} />}
+                        {view === 'hospital_form' && <HospitalForm db={db} user={user} appId={APP_ID} patient={editData} onBack={()=>setView('dashboard')} />} 
+                        {/* Note: In 18.06, Edit button usually routed to PCU form for both roles or specific forms based on logic. Here simplified to PCU form for edit based on request context, but Hospital can edit in Hospital Form if selected */}
+                        {view === 'import' && isAdmin && <ImportView db={db} user={user} appId={APP_ID} onBack={()=>setView('dashboard')} />}
                     </main>
                 </div>
             );
         }
 
         // --- DASHBOARD ---
-        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend, onLoadMore, Theme }) => {
+        const Dashboard = ({ role, queue, onNew, onEdit, onDelete }) => {
             const [search, setSearch] = React.useState('');
-            const [tab, setTab] = React.useState('registry');
-            
-            const filtered = React.useMemo(() => queue.filter(p => {
-                const txt = search.toLowerCase();
-                // Safe Access
-                const id = p.part1?.idCard || '';
-                const name = p.part1?.name || '';
-                const match = id.includes(txt) || name.includes(txt);
-                if(!match) return false;
-                if(role==='PCU') return tab==='registry' ? p.status==='Registered' : (p.status!=='Registered');
-                return p.status!=='Registered';
-            }), [queue, search, tab, role]);
-
-            const StatCard = ({title, val, icon, color}) => (
-                <div className="bg-white p-4 rounded-xl shadow-soft border border-slate-200 flex items-center justify-between">
-                    <div><p className="text-slate-500 text-xs font-bold uppercase mb-1">{title}</p><h3 className="text-2xl font-bold text-slate-800">{val}</h3></div>
-                    <div className={`p-3 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon} size={20}/></div>
-                </div>
-            );
+            const filtered = queue.filter(p => (p.part1?.idCard||'').includes(search) || (p.part1?.name||'').includes(search));
 
             return (
-                <div className="space-y-6 animate__animated animate__fadeIn">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <StatCard title="ทั้งหมด" val={queue.length} icon="database" color="slate"/>
-                        <StatCard title="รอส่ง" val={queue.filter(p=>p.status==='Registered').length} icon="clock" color="gray"/>
-                        <StatCard title="รอตรวจ" val={queue.filter(p=>p.status==='Waiting').length} icon="eye" color="brand"/>
-                        <StatCard title="เสร็จสิ้น" val={queue.filter(p=>p.status==='Completed').length} icon="check-circle" color="teal"/>
+                <div className="space-y-6 animate-in fade-in">
+                    <div className="flex justify-between items-end gap-4">
+                        <div className="relative flex-1 w-full max-w-md"><Icon name="search" className="absolute left-3 top-3 text-gray-400"/><input className="w-full pl-10 pr-4 py-2.5 rounded-xl border shadow-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                        {role === 'PCU' && <button onClick={onNew} className="bg-teal-600 text-white px-6 py-2.5 rounded-xl shadow font-bold flex items-center gap-2 hover:bg-teal-700 transition"><Icon name="user-plus"/> ลงทะเบียนใหม่</button>}
                     </div>
-
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-soft border border-slate-200">
-                        {role==='PCU' ? (
-                            <div className="flex bg-slate-100 p-1 rounded-lg w-full md:w-auto border border-slate-200">
-                                <button onClick={()=>setTab('registry')} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
-                                <button onClick={()=>setTab('sent')} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
-                            </div>
-                        ) : <div className="px-3 font-bold text-brand-700 flex items-center gap-2"><Icon name="list" size={20}/> รายการรอตรวจ (Hospital Queue)</div>}
-                        
-                        <div className="flex w-full md:w-auto gap-2">
-                            <div className="relative flex-1 md:w-64"><Icon name="search" className="absolute left-3 top-2.5 text-slate-400" size={16}/><input className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                            {role==='PCU' && tab==='registry' && <button onClick={onNew} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg shadow-sm font-bold flex items-center gap-2 text-sm whitespace-nowrap transition"><Icon name="plus" size={16}/> เพิ่ม</button>}
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-100 text-slate-500 font-semibold border-b border-slate-200"><tr><th className="p-4 pl-6">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 pr-6 text-right">จัดการ</th></tr></thead>
-                                <tbody className="divide-y divide-slate-100">
+                                <thead className="bg-gray-50 text-gray-600 border-b"><tr><th className="p-4">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 text-right">เครื่องมือ</th></tr></thead>
+                                <tbody className="divide-y">
                                     {filtered.map(p => (
-                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 pl-6 text-slate-400 text-xs font-mono">{p.createdAt.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</td>
-                                            <td className="p-4"><div className="font-bold text-slate-700">{p.part1?.name || '-'}</div><div className="text-slate-400 text-xs font-mono mt-0.5">{p.part1?.idCard || '-'}</div></td>
-                                            <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${parseFloat(p.part1?.hba1c)>=7?'bg-red-50 text-red-600 border border-red-200':'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.part1?.hba1c||'-'}</span></td>
-                                            <td className="p-4">{p.status==='Registered'?<span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs border border-slate-200">ลงทะเบียน</span>:p.status==='Waiting'?<span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded text-xs border border-yellow-200">รอตรวจ</span>:<span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs border border-teal-200">เสร็จสิ้น</span>}</td>
-                                            <td className="p-4 pr-6 text-right flex justify-end gap-2">
-                                                {role==='PCU' && p.status==='Registered' && <button onClick={()=>onSend(p.id, p.part1?.name)} className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded shadow text-xs font-bold transition">ส่ง</button>}
-                                                <button onClick={()=>onEdit(p)} className="p-1.5 border border-slate-200 rounded text-slate-400 hover:text-brand-600 hover:border-brand-200 hover:bg-white transition"><Icon name="pencil" size={14}/></button>
-                                                <button onClick={()=>onDelete(p.id)} className="p-1.5 border border-slate-200 rounded text-slate-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition"><Icon name="trash-2" size={14}/></button>
+                                        <tr key={p.id} className="hover:bg-gray-50 transition">
+                                            <td className="p-4 text-gray-500">{p.createdAt.toLocaleDateString('th-TH')}</td>
+                                            <td className="p-4"><div className="font-bold text-teal-700 font-mono">{p.part1.idCard}</div><div className="text-gray-700">{p.part1.name}</div></td>
+                                            <td className="p-4">{p.part1.hba1c || '-'}</td>
+                                            <td className="p-4">
+                                                {p.status === 'Waiting' ? <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">รอตรวจ</span> : <span className="px-2 py-1 rounded bg-green-100 text-green-800 border border-green-200 text-xs">ตรวจแล้ว</span>}
+                                            </td>
+                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                <button onClick={()=>onEdit(p)} className="p-2 border rounded-lg hover:bg-blue-50 text-blue-600"><Icon name="pencil"/></button>
+                                                <button onClick={()=>onDelete(p.id)} className="p-2 border rounded-lg hover:bg-red-50 text-red-600"><Icon name="trash-2"/></button>
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
                         </div>
-                        <div className="p-3 text-center border-t border-slate-200 bg-slate-50">
-                            <button onClick={onLoadMore} className="text-slate-500 text-xs font-bold hover:text-brand-600 flex items-center justify-center gap-1 mx-auto transition"><Icon name="arrow-down" size={12}/> โหลดเพิ่ม</button>
-                        </div>
                     </div>
                 </div>
             );
         };
 
-        // --- UNIFIED FORM ---
-        const UnifiedForm = ({ db, user, data, role, onBack, Theme }) => {
-            const isEdit = !!data;
-            const isHospital = role === 'HOSPITAL';
-            const [p1, setP1] = React.useState(data?.part1 || { idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
-            const [p2, setP2] = React.useState(data?.part2 || { cataract:'No', retinaFound:'Yes' });
-            const [findings, setFindings] = React.useState(data?.findings || { Normal:{L:false,R:false} });
+        // --- PCU FORM (Save Directly to Waiting) ---
+        const PCUForm = ({ db, user, appId, initialData, onBack }) => {
+            const [form, setForm] = React.useState({ idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
+            const [suggestions, setSuggestions] = React.useState([]);
             const [saving, setSaving] = React.useState(false);
-            const [suggestions, setSugg] = React.useState([]);
+            const isEdit = !!initialData;
+
+            React.useEffect(()=>{if(initialData)setForm(initialData.part1)},[initialData]);
 
             const handleId = async (e) => {
-                const v = e.target.value; setP1({...p1, idCard:v});
-                if(!isEdit && !isHospital && v.length>=3) {
-                    try { 
-                        const s = await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).where(firebase.firestore.FieldPath.documentId(),'>=',v).where(firebase.firestore.FieldPath.documentId(),'<=',v+'\uf8ff').limit(5).get(); 
-                        setSugg(s.docs.map(d=>({idCard:d.id, ...safeData(d)}))); // Use safeData
-                    } catch(e){}
-                } else setSugg([]);
+                const v = e.target.value; setForm({...form, idCard:v});
+                if(v.length>=3 && !isEdit) {
+                    try {
+                        // Search in Queue (Old Logic)
+                        const s = await db.collection('artifacts').doc(appId).collection(COL_QUEUE).where('part1.idCard','>=',v).where('part1.idCard','<=',v+'\uf8ff').limit(5).get();
+                        // Filter duplicates by name
+                        const unique = []; const map = new Map();
+                        s.docs.forEach(d=>{ if(!map.has(d.data().part1.name)){ map.set(d.data().part1.name, true); unique.push(d.data().part1); }});
+                        setSuggestions(unique);
+                    } catch(e) {}
+                } else setSuggestions([]);
             };
+
             const save = async () => {
+                if(!form.idCard) return alert("ระบุเลขบัตร");
                 setSaving(true);
-                try {
-                    const timeout = new Promise((_, r) => setTimeout(() => r(new Error("Server Timeout")), 5000));
-                    await Promise.race([(async()=>{
-                        if(isHospital) { await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(data.id).update({ part2:p2, findings, status:'Completed', doctorName:user.email }); }
-                        else {
-                            if(!p1.idCard || p1.idCard.length!==13) throw new Error("เลขบัตรไม่ถูกต้อง");
-                            await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(p1.idCard).set(p1, {merge:true});
-                            if(!isEdit) {
-                                const d = new Date().toDateString();
-                                const q = await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).where('part1.idCard','==',p1.idCard).get();
-                                if(q.docs.some(x=>(x.data().createdAt?.toDate?x.data().createdAt.toDate():new Date(x.data().createdAt)).toDateString()===d)) throw new Error("ซ้ำวันนี้");
-                            }
-                            const pl = { part1:p1, pcuId:user.uid, updatedAt:firebase.firestore.FieldValue.serverTimestamp() };
-                            if(isEdit) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(data.id).update(pl);
-                            else { pl.status='Registered'; pl.createdAt=firebase.firestore.FieldValue.serverTimestamp(); await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).add(pl); }
-                        }
-                    })(), timeout]);
-                    onBack();
-                } catch(e) { alert("Error: "+e.message); } finally { setSaving(false); }
+                
+                // Check Dup Today
+                if (!isEdit) {
+                    const today = new Date().toDateString();
+                    const q = await db.collection('artifacts').doc(appId).collection(COL_QUEUE).where('part1.idCard','==',form.idCard).get();
+                    if(q.docs.some(d=>(d.data().createdAt?.toDate?d.data().createdAt.toDate():new Date(d.data().createdAt)).toDateString()===today)) {
+                        alert("ข้อมูลซ้ำวันนี้"); setSaving(false); return;
+                    }
+                }
+
+                const payload = { part1: form, pcuId: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+                if(isEdit) {
+                    await db.collection('artifacts').doc(appId).collection(COL_QUEUE).doc(initialData.id).update(payload);
+                } else {
+                    payload.status = 'Waiting'; // Direct to Waiting (18.06 logic)
+                    payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    await db.collection('artifacts').doc(appId).collection(COL_QUEUE).add(payload);
+                }
+                onBack(); setSaving(false);
             };
 
             return (
-                <div className={`max-w-6xl mx-auto animate__animated animate__zoomIn ${isHospital?'flex flex-col lg:flex-row gap-6 items-start':''}`}>
-                    <div className={`${isHospital?'w-full lg:w-1/3 sticky-sidebar':'w-full max-w-3xl mx-auto'}`}>
-                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
-                                <h3 className="font-bold text-slate-700 flex items-center gap-2"><Icon name="user" size={18}/> ข้อมูลผู้ป่วย</h3>
-                                {!isHospital && <button onClick={onBack}><Icon name="x" className="text-slate-400"/></button>}
-                            </div>
-                            <div className={`p-6 space-y-4 ${isHospital?'opacity-80 pointer-events-none bg-slate-50/50':''}`}>
-                                <div className="relative">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block ml-1">เลขบัตรประชาชน</label>
-                                    <input value={p1.idCard} onChange={handleId} className="w-full p-2.5 border border-slate-300 rounded font-mono text-lg tracking-widest focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition" maxLength="13" disabled={isEdit} placeholder="x-xxxx-xxxxx-xx-x"/>
-                                    {suggestions.length>0 && <div className="absolute top-full left-0 w-full bg-white shadow border z-50">{suggestions.map((s,i)=><div key={i} onClick={()=>{setP1(s);setSugg([])}} className="p-2 hover:bg-slate-100 cursor-pointer border-b text-sm flex justify-between"><span>{s.idCard}</span><span className="text-slate-500">{s.name}</span></div>)}</div>}
-                                </div>
-                                <div className="grid gap-4"><Input l="ชื่อ-นามสกุล" v={p1.name} s={v=>setP1({...p1,name:v})} icon="user"/><div className="grid grid-cols-2 gap-4"><Input l="HbA1C" v={p1.hba1c} s={v=>setP1({...p1,hba1c:v})} icon="activity"/><Input l="BP" v={p1.bp} s={v=>setP1({...p1,bp:v})}/></div>{!isHospital && <div className="grid grid-cols-2 gap-4"><Input l="น้ำหนัก" v={p1.weight} s={v=>setP1({...p1,weight:v})}/><Input l="ส่วนสูง" v={p1.height} s={v=>setP1({...p1,height:v})}/></div>}<div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded border border-slate-200"><Input l="VA L" v={p1.vaLeft} s={v=>setP1({...p1,vaLeft:v})} bg="bg-white"/><Input l="VA R" v={p1.vaRight} s={v=>setP1({...p1,vaRight:v})} bg="bg-white"/></div></div>
-                            </div>
-                            {!isHospital && <div className="p-4 border-t bg-slate-50 flex gap-3"><button onClick={onBack} className="flex-1 border py-2.5 rounded text-slate-500 font-bold hover:bg-white transition">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-[2] bg-teal-600 text-white py-2.5 rounded font-bold shadow hover:bg-teal-700 flex justify-center items-center gap-2 transition">{saving?<div className="loader w-4 h-4 border-white/30 border-t-white"></div>:<><Icon name="save"/> บันทึก</>}</button></div>}
-                         </div>
-                         {isHospital && <button onClick={onBack} className="mt-4 w-full py-2 bg-white border border-slate-200 rounded text-slate-500 text-sm font-bold hover:bg-slate-50">กลับหน้าหลัก</button>}
-                    </div>
-                    {isHospital && (
-                        <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                             <div className="bg-brand-50 p-5 border-b border-brand-100 flex items-center gap-3"><div className="bg-brand-100 p-2 rounded text-brand-600"><Icon name="eye" size={24}/></div><h3 className="font-bold text-lg text-brand-800">บันทึกผลตรวจ</h3></div>
-                             <div className="p-6 space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-slate-50 p-4 rounded border border-slate-200"><span className="text-xs font-bold text-slate-500 block mb-2 uppercase">พบจอประสาทตา?</span><div className="flex gap-2"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.retinaFound==='Yes'?'bg-brand-600 text-white border-brand-600':'bg-white border-slate-200'}`}>เจอ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.retinaFound==='No'?'bg-brand-600 text-white border-brand-600':'bg-white border-slate-200'}`}>ไม่เจอ</button></div></div>
-                                    <div className="bg-slate-50 p-4 rounded border border-slate-200"><span className="text-xs font-bold text-slate-500 block mb-2 uppercase">เป็นต้อกระจก?</span><div className="flex gap-2"><button onClick={()=>setP2({...p2,cataract:'Yes'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.cataract==='Yes'?'bg-slate-700 text-white border-slate-700':'bg-white border-slate-200'}`}>ใช่</button><button onClick={()=>setP2({...p2,cataract:'No'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.cataract==='No'?'bg-slate-700 text-white border-slate-700':'bg-white border-slate-200'}`}>ไม่ใช่</button></div></div>
-                                </div>
-                                <div className="border rounded overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-500 font-bold"><tr><th className="p-3 pl-6 text-left">Diagnosis</th><th className="p-3 w-16 text-center">L</th><th className="p-3 w-16 text-center">R</th></tr></thead><tbody className="divide-y divide-slate-100">{['Normal','MicroAneurysm','HardExudate','FlameHemorrhage','VenousBeading'].map(k=>(<tr key={k} className="hover:bg-brand-50"><td className="p-3 pl-6 text-slate-700 font-medium">{k}</td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.L} onChange={()=>setFindings({...findings,[k]:{...findings[k],L:!findings[k]?.L}})}/></td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.R} onChange={()=>setFindings({...findings,[k]:{...findings[k],R:!findings[k]?.R}})}/></td></tr>))}</tbody></table></div>
-                                <button onClick={save} disabled={saving} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded font-bold shadow flex justify-center items-center gap-2 transition">{saving?<div className="loader border-white/30 border-t-white"></div>:<><Icon name="check-circle"/> ยืนยันผลการตรวจ</>}</button>
-                             </div>
+                <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow border border-teal-100 animate-in zoom-in">
+                    <div className="flex justify-between mb-6"><h2 className="font-bold text-xl text-teal-800">{isEdit?'แก้ไข':'ลงทะเบียนใหม่'}</h2><button onClick={onBack}><Icon name="x"/></button></div>
+                    <div className="space-y-5">
+                        <div className="relative">
+                            <label className="text-xs font-bold text-gray-500">เลขบัตรประชาชน</label>
+                            <input value={form.idCard} onChange={handleId} className="w-full p-3 border rounded-lg text-lg font-mono" placeholder="13 หลัก" maxLength="13"/>
+                            {suggestions.length>0 && <div className="absolute z-10 w-full bg-white border shadow-xl rounded-b-lg mt-1">{suggestions.map((s,i)=><div key={i} onClick={()=>{setForm({...s,idCard:s.idCard});setSuggestions([])}} className="p-2 hover:bg-gray-100 cursor-pointer text-sm">{s.idCard} - {s.name}</div>)}</div>}
                         </div>
-                    )}
+                        <div className="grid grid-cols-2 gap-4"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="p-2 border rounded" placeholder="ชื่อ-สกุล"/><input value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})} className="p-2 border rounded" placeholder="HbA1C"/></div>
+                        <div className="grid grid-cols-3 gap-4"><input value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})} className="p-2 border rounded" placeholder="BP"/><input value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="p-2 border rounded" placeholder="Wt"/><input value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="p-2 border rounded" placeholder="Ht"/></div>
+                        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded border"><input value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})} className="p-2 border rounded bg-white" placeholder="VA L"/><input value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})} className="p-2 border rounded bg-white" placeholder="VA R"/></div>
+                        <div className="flex gap-3 mt-6"><button onClick={onBack} className="flex-1 border py-3 rounded">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-1 bg-teal-600 text-white py-3 rounded font-bold shadow">{saving?'Saving...':'บันทึกและส่งตัว'}</button></div>
+                    </div>
                 </div>
             );
         };
 
-        const Input = ({l, v, s, icon, bg="bg-white"}) => (<div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block ml-1">{l}</label><div className="relative">{icon&&<Icon name={icon} className="absolute left-3 top-3 text-slate-400" size={16}/>}<input value={v||''} onChange={e=>s(e.target.value)} className={`w-full ${icon?'pl-10':'p-2.5'} border border-slate-300 rounded focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition ${bg}`}/></div></div>);
-
         // --- IMPORT VIEW ---
         const ImportView = ({ db, user, appId, onBack }) => {
-            const [csv, setCsv] = React.useState([]);
-            const [imp, setImp] = React.useState(false);
-            const handle = (e) => Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: 'TIS-620', complete: (r) => setCsv(r.data) });
-            const run = async () => { setImp(true); let c=0; for(let row of csv) { const id=(row['เลข 13 หลัก']||row['pid']||'').replace(/\D/g,''); if(id.length===13) { const p = { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' }; try { await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(id).set(p,{merge:true}); await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).add({part1:p, status:'Registered', pcuId:'Admin', createdAt:firebase.firestore.FieldValue.serverTimestamp()}); c++; } catch(e){} } } setImp(false); alert(`Imported ${c}`); };
-            return (<div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-card text-center animate__animated animate__fadeInUp"><h2 className="font-bold text-xl mb-4">Import Excel</h2><input type="file" accept=".csv" onChange={handle} className="mb-4 block w-full text-sm"/><div className="flex gap-2"><button onClick={onBack} className="flex-1 border py-2 rounded">Back</button>{csv.length>0 && <button onClick={run} disabled={imp} className="flex-1 bg-brand-600 text-white py-2 rounded shadow">{imp?'...':'Confirm'}</button>}</div></div>);
+            const [csvData, setCsvData] = React.useState([]);
+            const [encoding, setEncoding] = React.useState('TIS-620');
+            const [importing, setImporting] = React.useState(false);
+            const handleFile = (e) => { Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: encoding, complete: (res) => setCsvData(res.data) }); };
+            const startImport = async () => {
+                if(!csvData.length) return;
+                setImporting(true); let count=0;
+                for(let row of csvData) {
+                    const id = (row['เลข 13 หลัก']||row['pid']||'').toString().replace(/\D/g,'');
+                    if(id.length===13) {
+                        try {
+                            await db.collection('artifacts').doc(appId).collection(COL_QUEUE).add({
+                                part1: { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' },
+                                status: 'Waiting', // Direct to Waiting
+                                pcuId: 'AdminImport',
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                            count++;
+                        } catch(e) {}
+                    }
+                }
+                setImporting(false); alert(`Imported ${count}`);
+            };
+            return (
+                <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow"><h2 className="font-bold text-xl mb-4">Import Excel</h2><div className="mb-4"><select value={encoding} onChange={e=>setEncoding(e.target.value)} className="border p-2 mr-2"><option value="TIS-620">TIS-620</option><option value="UTF-8">UTF-8</option></select><input type="file" accept=".csv" onChange={handleFile}/></div>{csvData.length>0 && <button onClick={startImport} disabled={importing} className="bg-green-600 text-white px-6 py-2 rounded font-bold shadow">{importing?'...':'Confirm Import'}</button>}<button onClick={onBack} className="mt-4 text-gray-500 underline">Back</button></div>
+            );
         };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App /></ErrorBoundary>);
+        // --- HOSPITAL FORM ---
+        const HospitalForm = ({ db, user, appId, patient, onBack }) => {
+            const [p2, setP2] = React.useState(patient?.part2 || { cataract:'No', retinaFound:'Yes' });
+            const [findings, setFindings] = React.useState(patient?.findings || { Normal:{L:false,R:false} });
+            const [saving, setSaving] = React.useState(false);
+            const toggle = (k,s) => setFindings(f=>({...f,[k]:{...f[k],[s]:!f[k][s]}}));
+            const save = async () => {
+                setSaving(true);
+                await db.collection('artifacts').doc(appId).collection(COL_QUEUE).doc(patient.id).update({part2: p2, findings, status: 'Completed', doctorName: user.email});
+                onBack(); setSaving(false);
+            };
+            return (
+                <div className="flex gap-6"><div className="w-1/3 bg-white p-6 rounded shadow"><h3 className="font-bold mb-4">ข้อมูลผู้ป่วย</h3><p>ID: {patient?.part1?.idCard}</p><p>Name: {patient?.part1?.name}</p><button onClick={onBack} className="mt-4">Back</button></div><div className="w-2/3 bg-white p-6 rounded shadow"><h3 className="font-bold mb-4">ผลตรวจ</h3><div className="flex gap-4 mb-6"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`px-4 py-1 border ${p2.retinaFound==='Yes'?'bg-blue-600 text-white':''}`}>เจอจอฯ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`px-4 py-1 border ${p2.retinaFound==='No'?'bg-blue-600 text-white':''}`}>ไม่เจอ</button></div><table className="w-full text-sm border rounded mb-4"><thead className="bg-gray-100"><tr><th className="p-2">Condition</th><th className="p-2 w-10">L</th><th className="p-2 w-10">R</th></tr></thead><tbody>{['Normal','MicroAneurysm','HardExudate'].map(k=>(<tr key={k} className="border-t"><td className="p-2">{k}</td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/></td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/></td></tr>))}</tbody></table><button onClick={save} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">{saving?'...':'บันทึกผล'}</button></div></div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
