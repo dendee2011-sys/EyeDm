@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM v24 - Fixed Import</title>
+    <title>EyeDM v32 - No Animation</title>
     
     <!-- 1. Assets -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     
-    <!-- 2. React & Core -->
+    <!-- 2. React Core -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -32,35 +31,37 @@
                     colors: {
                         brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 900: '#1e3a8a' },
                         teal: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488', 800: '#115e59' }
-                    },
-                    boxShadow: {
-                        'soft': '0 10px 40px -10px rgba(0,0,0,0.08)',
-                        'glow': '0 0 20px rgba(59, 130, 246, 0.3)'
                     }
                 }
             }
         }
     </script>
     <style>
+        /* NO ANIMATIONS */
+        * { transition: none !important; animation: none !important; }
+        
         body { background-color: #f8fafc; color: #1e293b; }
-        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.5); }
-        .loader { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; }
+        
+        /* Simple Loader (Static Fallback if needed, but keeping simple spin for feedback) */
+        .loader { 
+            width: 18px; height: 18px; 
+            border: 3px solid #e2e8f0; border-top-color: currentColor; 
+            border-radius: 50%; 
+            /* Re-enable ONLY essential loading spin */
+            animation: spin 1s linear infinite !important; 
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .sticky-sidebar { position: sticky; top: 100px; height: fit-content; }
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .sticky-sidebar { position: sticky; top: 80px; height: fit-content; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <!-- Error Handler -->
     <script>
         window.onerror = function(msg, url, line) {
-            document.body.innerHTML = `<div style="padding:20px;color:#b91c1c;background:#fee2e2;text-align:center;margin:20px;border-radius:8px;"><h3>⚠️ System Error</h3><p>${msg} (Line:${line})</p><button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;background:white;border:1px solid #b91c1c;border-radius:4px;cursor:pointer;">Reload Application</button></div>`;
+            document.body.innerHTML = `<div style="padding:20px;color:#b91c1c;background:#fee2e2;text-align:center;margin:20px;"><h3>⚠️ Error</h3><p>${msg}</p><button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;background:white;border:1px solid #b91c1c;">Reload</button></div>`;
         };
     </script>
 
@@ -84,7 +85,7 @@
         const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
-        const Icon = ({name, size=20, className}) => {
+        const Icon = ({name, size=18, className}) => {
             React.useEffect(()=>{if(window.lucide)window.lucide.createIcons()},[name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
         };
@@ -94,7 +95,7 @@
             constructor(props) { super(props); this.state = { hasError: false }; }
             static getDerivedStateFromError(error) { return { hasError: true }; }
             render() {
-                if (this.state.hasError) return <div className="h-screen flex items-center justify-center bg-slate-50 text-red-600">ระบบขัดข้องชั่วคราว <button onClick={()=>window.location.reload()} className="ml-2 underline font-bold">รีโหลด</button></div>;
+                if (this.state.hasError) return <div className="h-screen flex items-center justify-center">System Error <button onClick={()=>window.location.reload()} className="ml-2 underline">Reload</button></div>;
                 return this.props.children;
             }
         }
@@ -111,30 +112,23 @@
                 catch(e) { 
                     if(e.code==='auth/user-not-found') {
                         try{await auth.createUserWithEmailAndPassword(pin+"@sisaket-clinic.org",password);}catch(e2){alert("Register Failed: "+e2.message);}
-                    } else alert("Login Failed: "+e.message);
+                    } else alert("Login Failed");
                 } finally { setLoading(false); }
             };
 
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-card border border-slate-100 text-center">
-                        <div className="w-14 h-14 bg-brand-50 rounded-xl flex items-center justify-center mx-auto mb-5 text-brand-600 shadow-sm"><Icon name="eye" size={28}/></div>
-                        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">EyeDM <span className="text-brand-600">Professional</span></h1>
-                        <p className="text-slate-400 mb-8 text-sm font-medium">ระบบคัดกรองเบาหวานเข้าจอประสาทตา</p>
+                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                    <div className="bg-white p-8 rounded-lg w-full max-w-md shadow border border-slate-200 text-center">
+                        <div className="w-12 h-12 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-600"><Icon name="eye" size={24}/></div>
+                        <h1 className="text-xl font-bold text-slate-800 mb-1">EyeDM v32</h1>
+                        <p className="text-slate-500 mb-6 text-sm">No Animation Edition</p>
                         <form onSubmit={handleAuth} className="space-y-4">
-                            <div className="text-left">
-                                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">รหัสเจ้าหน้าที่ (5 หลัก)</label>
-                                <input className="w-full p-3 border border-slate-200 rounded-xl text-center text-lg tracking-widest input-field bg-slate-50 focus:bg-white" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus/>
-                            </div>
-                            <div className="text-left">
-                                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">รหัสผ่าน</label>
-                                <input className="w-full p-3 border border-slate-200 rounded-xl text-center input-field bg-slate-50 focus:bg-white" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required/>
-                            </div>
-                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded-xl font-bold transition shadow-lg shadow-brand-500/20 disabled:opacity-70 mt-2">
-                                {loading?'กำลังโหลด...':'เข้าสู่ระบบ'}
+                            <input className="w-full p-3 border border-slate-300 rounded text-center text-lg tracking-widest" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus/>
+                            <input className="w-full p-3 border border-slate-300 rounded text-center" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required/>
+                            <button disabled={loading} className="w-full bg-brand-600 text-white py-3 rounded font-bold hover:bg-brand-700 disabled:opacity-70 mt-2">
+                                {loading?'Connecting...':'Login'}
                             </button>
                         </form>
-                        <p className="text-xs text-slate-300 mt-6">Secure System v27</p>
                     </div>
                 </div>
             );
@@ -170,32 +164,24 @@
 
             return (
                 <div className="min-h-screen flex flex-col font-sans text-slate-800 bg-slate-50">
-                    {/* Navbar */}
-                    <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between h-16 items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg text-white shadow-md bg-${Theme}-600`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
-                                    <div><h1 className="font-bold text-lg text-slate-800">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400 font-medium">User: {user.email.split('@')[0]}</p></div>
+                    <nav className="bg-white border-b border-slate-200 sticky top-0 z-40">
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded text-white bg-${Theme}-600`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
+                                <div><h1 className="font-bold text-lg">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400">{user.email.split('@')[0]}</p></div>
+                            </div>
+                            <div className="flex gap-2 items-center">
+                                {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1 bg-slate-100 rounded text-xs font-bold"><Icon name="file-spreadsheet" size={14}/> Import</button>}
+                                <div className="flex bg-slate-100 p-1 rounded border border-slate-200">
+                                    <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold ${role==='PCU'?'bg-white shadow-sm text-teal-600':'text-slate-500'}`}>PCU</button>
+                                    <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold ${role==='HOSPITAL'?'bg-white shadow-sm text-brand-600':'text-slate-500'}`}>Hospital</button>
                                 </div>
-                                <div className="flex gap-2 items-center">
-                                    {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold hover:bg-slate-200 transition"><Icon name="file-spreadsheet" size={14}/> Import</button>}
-                                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                                        <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${role==='PCU'?'bg-white shadow-sm text-success-600':'text-slate-500 hover:text-slate-700'}`}>PCU</button>
-                                        <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${role==='HOSPITAL'?'bg-white shadow-sm text-primary-600':'text-slate-500 hover:text-slate-700'}`}>Hospital</button>
-                                    </div>
-                                    <button onClick={()=>auth.signOut()} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"><Icon name="log-out" size={20}/></button>
-                                </div>
+                                <button onClick={()=>auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><Icon name="log-out" size={18}/></button>
                             </div>
                         </div>
                     </nav>
 
-                    <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate__animated animate__fadeIn">
-                        <div className="md:hidden flex bg-white p-1 rounded-xl shadow-sm mb-6 border border-slate-200">
-                            <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2.5 rounded-lg font-bold text-sm ${role==='PCU'?'bg-success-50 text-success-700':'text-slate-400'}`}>PCU</button>
-                            <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2.5 rounded-lg font-bold text-sm ${role==='HOSPITAL'?'bg-primary-50 text-primary-700':'text-slate-400'}`}>Hospital</button>
-                        </div>
-
+                    <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
                         {view==='dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('form')}} onEdit={p=>{setEditData(p);setView('form')}} onDelete={handleDel} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} Theme={Theme}/>}
                         {view==='form' && <UnifiedForm db={db} user={user} data={editData} role={role} onBack={()=>setView('dashboard')} Theme={Theme}/>}
                         {view==='import' && isAdmin && <ImportView db={db} onBack={()=>setView('dashboard')}/>}
@@ -218,73 +204,58 @@
             }), [queue, search, tab, role]);
 
             const StatCard = ({title, val, icon, color}) => (
-                <div className="bg-white p-5 rounded-xl shadow-soft border border-slate-100 flex items-center justify-between card-hover">
-                    <div><p className="text-slate-500 text-xs font-bold uppercase mb-1 tracking-wide">{title}</p><h3 className="text-2xl font-bold text-slate-800">{val}</h3></div>
-                    <div className={`p-3 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon} size={24}/></div>
+                <div className="bg-white p-4 rounded border border-slate-200 flex items-center justify-between">
+                    <div><p className="text-slate-500 text-xs font-bold uppercase mb-1">{title}</p><h3 className="text-2xl font-bold text-slate-800">{val}</h3></div>
+                    <div className={`p-3 rounded bg-${color}-50 text-${color}-600`}><Icon name={icon} size={20}/></div>
                 </div>
             );
 
             return (
-                <div className="space-y-8">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <StatCard title="ทั้งหมด" val={queue.length} icon="database" color="slate"/>
                         <StatCard title="รอส่ง" val={queue.filter(p=>p.status==='Registered').length} icon="clock" color="gray"/>
-                        <StatCard title="รอตรวจ" val={queue.filter(p=>p.status==='Waiting').length} icon="eye" color="warning"/>
-                        <StatCard title="เสร็จสิ้น" val={queue.filter(p=>p.status==='Completed').length} icon="check-circle" color="success"/>
+                        <StatCard title="รอตรวจ" val={queue.filter(p=>p.status==='Waiting').length} icon="eye" color="brand"/>
+                        <StatCard title="เสร็จสิ้น" val={queue.filter(p=>p.status==='Completed').length} icon="check-circle" color="teal"/>
                     </div>
 
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-soft border border-slate-100">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded border border-slate-200">
                         {role==='PCU' ? (
-                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200 w-full md:w-auto">
-                                <button onClick={()=>setTab('registry')} className={`flex-1 md:flex-none px-5 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
-                                <button onClick={()=>setTab('sent')} className={`flex-1 md:flex-none px-5 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-success-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
+                            <div className="flex bg-slate-100 p-1 rounded w-full md:w-auto">
+                                <button onClick={()=>setTab('registry')} className={`flex-1 px-4 py-2 rounded text-sm font-bold ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
+                                <button onClick={()=>setTab('sent')} className={`flex-1 px-4 py-2 rounded text-sm font-bold ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
                             </div>
-                        ) : <div className="px-4 font-bold text-brand-700 flex items-center gap-2 text-lg"><Icon name="list" size={24}/> รายการรอตรวจ</div>}
+                        ) : <div className="px-3 font-bold text-brand-700 flex items-center gap-2"><Icon name="list" size={20}/> รายการรอตรวจ</div>}
                         
-                        <div className="flex w-full md:w-auto gap-3">
-                            <div className="relative flex-1 md:w-72"><Icon name="search" className="absolute left-3 top-2.5 text-slate-400" size={18}/><input className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition text-sm font-medium" placeholder="ค้นหาชื่อ / เลขบัตร..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                            {role==='PCU' && tab==='registry' && <button onClick={onNew} className="bg-success-600 hover:bg-success-700 text-white px-5 py-2.5 rounded-lg shadow-lg shadow-success-500/20 font-bold flex items-center gap-2 transition text-sm whitespace-nowrap"><Icon name="plus" size={18}/> <span className="hidden md:inline">เพิ่มรายใหม่</span></button>}
+                        <div className="flex w-full md:w-auto gap-2">
+                            <div className="relative flex-1 md:w-64"><Icon name="search" className="absolute left-3 top-2.5 text-slate-400" size={16}/><input className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded focus:border-brand-500 outline-none text-sm" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                            {role==='PCU' && tab==='registry' && <button onClick={onNew} className="bg-teal-600 text-white px-4 py-2 rounded shadow-sm font-bold flex items-center gap-2 text-sm whitespace-nowrap hover:bg-teal-700"><Icon name="plus" size={16}/> เพิ่ม</button>}
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+                    <div className="bg-white rounded border border-slate-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200">
-                                    <tr>
-                                        <th className="p-5 pl-6 w-32">วันที่</th>
-                                        <th className="p-5">ผู้ป่วย</th>
-                                        <th className="p-5">HbA1C</th>
-                                        <th className="p-5">สถานะ</th>
-                                        <th className="p-5 pr-6 text-right">จัดการ</th>
-                                    </tr>
-                                </thead>
+                                <thead className="bg-slate-100 text-slate-500 font-semibold border-b border-slate-200"><tr><th className="p-4 pl-6">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 pr-6 text-right">จัดการ</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {filtered.map(p => (
-                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="p-5 pl-6 text-slate-400 text-xs font-mono">{p.createdAt.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</td>
-                                            <td className="p-5">
-                                                <div className="font-bold text-slate-700 text-base">{p.part1.name}</div>
-                                                <div className="text-slate-400 text-xs font-mono mt-1 flex items-center gap-1"><Icon name="credit-card" size={12}/> {p.part1.idCard}</div>
-                                            </td>
-                                            <td className="p-5"><span className={`px-2.5 py-1 rounded-lg font-bold text-xs ${parseFloat(p.part1.hba1c)>=7?'bg-red-50 text-red-600 border border-red-100':'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.part1.hba1c||'-'}</span></td>
-                                            <td className="p-5">
-                                                {p.status==='Registered' && <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200"><span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span> ลงทะเบียน</span>}
-                                                {p.status==='Waiting' && <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span> รอตรวจ</span>}
-                                                {p.status==='Completed' && <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> เสร็จสิ้น</span>}
-                                            </td>
-                                            <td className="p-5 pr-6 text-right flex justify-end gap-2">
-                                                {role==='PCU' && p.status==='Registered' && <button onClick={()=>onSend(p.id, p.part1.name)} className="px-3 py-1.5 bg-success-50 text-success-700 border border-success-200 rounded-lg text-xs font-bold hover:bg-success-100 transition flex items-center gap-1"><Icon name="send" size={14}/> ส่งตัว</button>}
-                                                <button onClick={()=>onEdit(p)} className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:text-brand-600 hover:border-brand-200 hover:bg-brand-50 transition"><Icon name="pencil" size={16}/></button>
-                                                <button onClick={()=>onDelete(p.id)} className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition"><Icon name="trash-2" size={16}/></button>
+                                        <tr key={p.id} className="hover:bg-slate-50">
+                                            <td className="p-4 pl-6 text-slate-500 text-xs">{p.createdAt.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</td>
+                                            <td className="p-4"><div className="font-bold text-slate-700">{p.part1.name}</div><div className="text-slate-400 text-xs font-mono">{p.part1.idCard}</div></td>
+                                            <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${parseFloat(p.part1.hba1c)>=7?'bg-red-50 text-red-600 border border-red-200':'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.part1.hba1c||'-'}</span></td>
+                                            <td className="p-4">{p.status==='Registered'?<span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs border">ลงทะเบียน</span>:p.status==='Waiting'?<span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded text-xs border border-yellow-200">รอตรวจ</span>:<span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs border border-teal-200">เสร็จสิ้น</span>}</td>
+                                            <td className="p-4 pr-6 text-right flex justify-end gap-2">
+                                                {role==='PCU' && p.status==='Registered' && <button onClick={()=>onSend(p.id, p.part1.name)} className="px-3 py-1 bg-teal-600 text-white rounded text-xs font-bold hover:bg-teal-700">ส่ง</button>}
+                                                <button onClick={()=>onEdit(p)} className="p-1.5 border border-slate-200 rounded text-slate-400 hover:text-brand-600 hover:border-brand-200 hover:bg-white"><Icon name="pencil" size={14}/></button>
+                                                <button onClick={()=>onDelete(p.id)} className="p-1.5 border border-slate-200 rounded text-slate-400 hover:text-red-600 hover:border-red-200 hover:bg-white"><Icon name="trash-2" size={14}/></button>
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="5" className="p-8 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
                         </div>
-                        <div className="p-3 text-center border-t border-slate-100 bg-slate-50">
+                        <div className="p-3 text-center border-t border-slate-200 bg-slate-50">
                             <button onClick={onLoadMore} className="text-slate-500 text-xs font-bold hover:text-brand-600 flex items-center justify-center gap-1 mx-auto"><Icon name="arrow-down" size={12}/> โหลดเพิ่ม</button>
                         </div>
                     </div>
@@ -332,35 +303,35 @@
             };
 
             return (
-                <div className={`max-w-6xl mx-auto animate__animated animate__zoomIn ${isHospital?'flex flex-col lg:flex-row gap-8 items-start':''}`}>
+                <div className={`max-w-6xl mx-auto ${isHospital?'flex flex-col lg:flex-row gap-6 items-start':''}`}>
                     <div className={`${isHospital?'w-full lg:w-1/3 sticky-sidebar':'w-full max-w-3xl mx-auto'}`}>
-                         <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
-                            <div className="bg-slate-50/80 p-5 border-b border-slate-200 flex justify-between items-center backdrop-blur-sm">
-                                <h3 className="font-bold text-slate-700 flex items-center gap-2 text-lg"><div className="bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm text-slate-500"><Icon name="user" size={18}/></div> ข้อมูลผู้ป่วย</h3>
-                                {!isHospital && <button onClick={onBack} className="text-slate-400 hover:text-slate-600"><Icon name="x"/></button>}
+                         <div className="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+                            <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
+                                <h3 className="font-bold text-slate-700 flex items-center gap-2"><Icon name="user" size={18}/> ข้อมูลผู้ป่วย</h3>
+                                {!isHospital && <button onClick={onBack}><Icon name="x" className="text-slate-400"/></button>}
                             </div>
-                            <div className={`p-6 space-y-5 ${isHospital?'opacity-80 pointer-events-none bg-slate-50/30':''}`}>
+                            <div className={`p-6 space-y-4 ${isHospital?'opacity-80 pointer-events-none bg-slate-50/50':''}`}>
                                 <div className="relative">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block ml-1">เลขบัตรประชาชน</label>
-                                    <input value={p1.idCard} onChange={handleId} className="w-full pl-10 p-2.5 border border-slate-300 rounded-lg font-mono text-lg tracking-widest focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition input-field" maxLength="13" disabled={isEdit} placeholder="x-xxxx-xxxxx-xx-x"/>
-                                    {suggestions.length>0 && <div className="absolute top-full left-0 w-full bg-white shadow-xl rounded-lg mt-1 border z-50 overflow-hidden animate__animated animate__fadeInDown small">{suggestions.map((s,i)=><div key={i} onClick={()=>{setP1(s);setSugg([])}} className="p-3.5 hover:bg-teal-50 cursor-pointer border-b text-sm flex justify-between items-center group"><div><span className="font-bold text-slate-700 font-mono group-hover:text-teal-700">{s.idCard}</span><div className="text-slate-500 text-xs">{s.name}</div></div><span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">ประวัติเก่า</span></div>)}</div>}
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block ml-1">เลขบัตรประชาชน</label>
+                                    <input value={p1.idCard} onChange={handleId} className="w-full p-2.5 border border-slate-300 rounded font-mono text-lg tracking-widest focus:border-brand-500 outline-none" maxLength="13" disabled={isEdit} placeholder="x-xxxx-xxxxx-xx-x"/>
+                                    {suggestions.length>0 && <div className="absolute top-full left-0 w-full bg-white shadow border z-50">{suggestions.map((s,i)=><div key={i} onClick={()=>{setP1(s);setSugg([])}} className="p-2 hover:bg-slate-100 cursor-pointer border-b text-sm flex justify-between"><span>{s.idCard}</span><span className="text-slate-500">{s.name}</span></div>)}</div>}
                                 </div>
-                                <div className="grid gap-4"><Input l="ชื่อ-นามสกุล" v={p1.name} s={v=>setP1({...p1,name:v})} icon="user"/><div className="grid grid-cols-2 gap-4"><Input l="HbA1C" v={p1.hba1c} s={v=>setP1({...p1,hba1c:v})} icon="activity"/><Input l="BP" v={p1.bp} s={v=>setP1({...p1,bp:v})}/></div>{!isHospital && <div className="grid grid-cols-2 gap-4"><Input l="น้ำหนัก" v={p1.weight} s={v=>setP1({...p1,weight:v})}/><Input l="ส่วนสูง" v={p1.height} s={v=>setP1({...p1,height:v})}/></div>}<div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed"><Input l="VA L" v={p1.vaLeft} s={v=>setP1({...p1,vaLeft:v})} bg="bg-white"/><Input l="VA R" v={p1.vaRight} s={v=>setP1({...p1,vaRight:v})} bg="bg-white"/></div></div>
+                                <div className="grid gap-4"><Input l="ชื่อ-นามสกุล" v={p1.name} s={v=>setP1({...p1,name:v})}/><div className="grid grid-cols-2 gap-4"><Input l="HbA1C" v={p1.hba1c} s={v=>setP1({...p1,hba1c:v})}/><Input l="BP" v={p1.bp} s={v=>setP1({...p1,bp:v})}/></div>{!isHospital && <div className="grid grid-cols-2 gap-4"><Input l="น้ำหนัก" v={p1.weight} s={v=>setP1({...p1,weight:v})}/><Input l="ส่วนสูง" v={p1.height} s={v=>setP1({...p1,height:v})}/></div>}<div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded border border-slate-200"><Input l="VA L" v={p1.vaLeft} s={v=>setP1({...p1,vaLeft:v})} bg="bg-white"/><Input l="VA R" v={p1.vaRight} s={v=>setP1({...p1,vaRight:v})} bg="bg-white"/></div></div>
                             </div>
-                            {!isHospital && <div className="p-5 border-t bg-slate-50/50 flex gap-4"><button onClick={onBack} className="flex-1 border py-2.5 rounded-lg text-slate-500 font-bold hover:bg-white transition">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-[2] bg-success-600 text-white py-2.5 rounded-lg font-bold shadow-lg shadow-success-500/30 hover:bg-success-700 btn-active flex justify-center items-center gap-2 transition">{saving?<div className="loader w-4 h-4 border-white/30 border-t-white"></div>:<><Icon name="save"/> บันทึก</>}</button></div>}
+                            {!isHospital && <div className="p-4 border-t bg-slate-50 flex gap-3"><button onClick={onBack} className="flex-1 border py-2.5 rounded text-slate-500 font-bold hover:bg-white">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-[2] bg-teal-600 text-white py-2.5 rounded font-bold shadow hover:bg-teal-700 flex justify-center items-center gap-2">{saving?<div className="loader w-4 h-4 border-white/30 border-t-white"></div>:<><Icon name="save"/> บันทึก</>}</button></div>}
                          </div>
-                         {isHospital && <button onClick={onBack} className="mt-6 w-full py-3 bg-white border border-slate-200 rounded-xl text-slate-500 text-sm font-bold hover:bg-slate-50 flex items-center justify-center gap-2 transition shadow-sm"><Icon name="arrow-left" size={16}/> กลับหน้าหลัก</button>}
+                         {isHospital && <button onClick={onBack} className="mt-4 w-full py-2 bg-white border border-slate-200 rounded text-slate-500 text-sm font-bold hover:bg-slate-50">กลับหน้าหลัก</button>}
                     </div>
                     {isHospital && (
-                        <div className="w-full lg:w-2/3 bg-white rounded-2xl shadow-card border border-primary-100 overflow-hidden">
-                             <div className="bg-primary-50 p-6 border-b border-primary-100 flex items-center gap-4"><div className="bg-primary-100 p-3 rounded-xl text-primary-600"><Icon name="eye" size={28}/></div><h3 className="font-bold text-xl text-primary-800">บันทึกผลตรวจ</h3></div>
-                             <div className="p-8 space-y-8">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:border-primary-300 transition cursor-pointer group"><span className="text-xs font-bold text-slate-500 block mb-3 uppercase tracking-wider group-hover:text-primary-600">พบจอประสาทตา?</span><div className="flex gap-3"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${p2.retinaFound==='Yes'?'bg-primary-600 text-white shadow-lg shadow-primary-500/30':'bg-white border text-slate-600 hover:bg-white'}`}>เจอ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${p2.retinaFound==='No'?'bg-primary-600 text-white shadow-lg shadow-primary-500/30':'bg-white border text-slate-600 hover:bg-white'}`}>ไม่เจอ</button></div></div>
-                                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:border-slate-300 transition cursor-pointer"><span className="text-xs font-bold text-slate-500 block mb-3 uppercase tracking-wider">เป็นต้อกระจก?</span><div className="flex gap-3"><button onClick={()=>setP2({...p2,cataract:'Yes'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${p2.cataract==='Yes'?'bg-slate-700 text-white shadow-lg':'bg-white border text-slate-600 hover:bg-white'}`}>ใช่</button><button onClick={()=>setP2({...p2,cataract:'No'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${p2.cataract==='No'?'bg-slate-700 text-white shadow-lg':'bg-white border text-slate-600 hover:bg-white'}`}>ไม่ใช่</button></div></div>
+                        <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-card border border-brand-100 overflow-hidden">
+                             <div className="bg-brand-50 p-5 border-b border-brand-100 flex items-center gap-3"><div className="bg-brand-100 p-2 rounded text-brand-600"><Icon name="eye" size={24}/></div><h3 className="font-bold text-lg text-brand-800">บันทึกผลตรวจ</h3></div>
+                             <div className="p-6 space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-slate-50 p-4 rounded border border-slate-200"><span className="text-xs font-bold text-slate-500 block mb-2 uppercase">พบจอประสาทตา?</span><div className="flex gap-2"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.retinaFound==='Yes'?'bg-brand-600 text-white border-brand-600':'bg-white border-slate-200'}`}>เจอ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.retinaFound==='No'?'bg-brand-600 text-white border-brand-600':'bg-white border-slate-200'}`}>ไม่เจอ</button></div></div>
+                                    <div className="bg-slate-50 p-4 rounded border border-slate-200"><span className="text-xs font-bold text-slate-500 block mb-2 uppercase">เป็นต้อกระจก?</span><div className="flex gap-2"><button onClick={()=>setP2({...p2,cataract:'Yes'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.cataract==='Yes'?'bg-slate-700 text-white border-slate-700':'bg-white border-slate-200'}`}>ใช่</button><button onClick={()=>setP2({...p2,cataract:'No'})} className={`flex-1 py-2 rounded font-bold text-sm border ${p2.cataract==='No'?'bg-slate-700 text-white border-slate-700':'bg-white border-slate-200'}`}>ไม่ใช่</button></div></div>
                                 </div>
-                                <div className="border rounded-2xl overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-500 font-bold"><tr><th className="p-4 pl-6 text-left">Diagnosis</th><th className="p-4 text-center w-24">L</th><th className="p-4 text-center w-24">R</th></tr></thead><tbody className="divide-y divide-slate-100">{['Normal','MicroAneurysm','HardExudate','FlameHemorrhage','VenousBeading'].map(k=>(<tr key={k} className="hover:bg-primary-50/30 transition"><td className="p-4 pl-6 text-slate-700 font-medium">{k}</td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.L} onChange={()=>setFindings({...findings,[k]:{...findings[k],L:!findings[k]?.L}})} className="w-5 h-5 accent-primary-600 cursor-pointer transition transform active:scale-90"/></td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.R} onChange={()=>setFindings({...findings,[k]:{...findings[k],R:!findings[k]?.R}})} className="w-5 h-5 accent-primary-600 cursor-pointer transition transform active:scale-90"/></td></tr>))}</tbody></table></div>
-                                <button onClick={save} disabled={saving} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-primary-500/30 flex justify-center items-center gap-2 transition btn-active">{saving?<div className="loader border-white/30 border-t-white"></div>:<><Icon name="check-circle"/> ยืนยันผลการตรวจ</>}</button>
+                                <div className="border rounded overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-500 font-bold"><tr><th className="p-3 pl-6 text-left">Diagnosis</th><th className="p-3 w-16 text-center">L</th><th className="p-3 w-16 text-center">R</th></tr></thead><tbody className="divide-y divide-slate-100">{['Normal','MicroAneurysm','HardExudate','FlameHemorrhage','VenousBeading'].map(k=>(<tr key={k} className="hover:bg-brand-50/30"><td className="p-3 pl-6 text-slate-700 font-medium">{k}</td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.L} onChange={()=>setFindings({...findings,[k]:{...findings[k],L:!findings[k]?.L}})} className="w-5 h-5 accent-brand-600"/></td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.R} onChange={()=>setFindings({...findings,[k]:{...findings[k],R:!findings[k]?.R}})} className="w-5 h-5 accent-brand-600"/></td></tr>))}</tbody></table></div>
+                                <button onClick={save} disabled={saving} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded font-bold shadow flex justify-center items-center gap-2">{saving?<div className="loader border-white/30 border-t-white"></div>:<><Icon name="check-circle"/> ยืนยันผลการตรวจ</>}</button>
                              </div>
                         </div>
                     )}
@@ -368,7 +339,7 @@
             );
         };
 
-        const Input = ({l, v, s, icon, bg="bg-white"}) => (<div><label className="text-xs font-bold text-slate-500 uppercase mb-2 block ml-1">{l}</label><div className="relative">{icon&&<Icon name={icon} className="absolute left-4 top-3.5 text-slate-400" size={18}/>}<input value={v||''} onChange={e=>s(e.target.value)} className={`w-full ${icon?'pl-12':'p-3.5'} border border-slate-200 rounded-xl focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 outline-none transition-all ${bg}`}/></div></div>);
+        const Input = ({l, v, s, bg="bg-white"}) => (<div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block ml-1">{l}</label><input value={v||''} onChange={e=>s(e.target.value)} className={`w-full p-2.5 border border-slate-300 rounded focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition ${bg}`}/></div>);
 
         // --- IMPORT VIEW ---
         const ImportView = ({ db, user, appId, onBack }) => {
@@ -376,7 +347,7 @@
             const [imp, setImp] = React.useState(false);
             const handle = (e) => Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: 'TIS-620', complete: (r) => setCsv(r.data) });
             const run = async () => { setImp(true); let c=0; for(let row of csv) { const id=(row['เลข 13 หลัก']||row['pid']||'').replace(/\D/g,''); if(id.length===13) { const p = { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' }; try { await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(id).set(p,{merge:true}); await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).add({part1:p, status:'Registered', pcuId:'Admin', createdAt:firebase.firestore.FieldValue.serverTimestamp()}); c++; } catch(e){} } } setImp(false); alert(`Imported ${c}`); };
-            return (<div className="max-w-2xl mx-auto bg-white p-10 rounded-3xl shadow-xl text-center animate__animated animate__fadeInUp"><div className="w-20 h-20 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Icon name="file-spreadsheet" size={40}/></div><h2 className="text-3xl font-bold text-slate-800 mb-3">Import Data</h2><p className="text-slate-500 mb-8">รองรับไฟล์ Excel (CSV TIS-620)</p><div className="p-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-300 mb-8 hover:bg-slate-100 transition cursor-pointer relative"><input type="file" accept=".csv" onChange={handle} className="absolute inset-0 opacity-0 cursor-pointer"/><div className="pointer-events-none"><Icon name="upload-cloud" className="mx-auto text-slate-400 mb-3" size={32}/><p className="text-sm text-slate-500 font-medium">คลิกเพื่อเลือกไฟล์ หรือลากมาวางที่นี่</p></div></div>{csv.length>0&&<div className="mb-8 bg-success-50 text-success-700 px-4 py-3 rounded-xl font-bold border border-success-100 flex items-center justify-center gap-2"><Icon name="check-circle" size={18}/> พร้อมนำเข้า {csv.length} รายการ</div>}<div className="flex gap-4"><button onClick={onBack} className="flex-1 py-3.5 rounded-xl border-2 border-slate-100 font-bold text-slate-500 hover:bg-slate-50 hover:border-slate-200 transition">ยกเลิก</button>{csv.length>0 && <button onClick={run} disabled={imp} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold shadow-lg hover:bg-primary-700 btn-hover disabled:opacity-70">{imp?'Processing...':'Confirm Import'}</button>}</div></div>);
+            return (<div className="max-w-xl mx-auto bg-white p-8 rounded-xl shadow-card text-center"><div className="w-12 h-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="file-spreadsheet" size={24}/></div><h2 className="text-xl font-bold mb-4">Import Excel Data</h2><input type="file" accept=".csv" onChange={handle} className="mb-4 text-sm text-slate-500"/><div className="flex gap-3"><button onClick={onBack} className="flex-1 py-2 border rounded text-slate-500 hover:bg-slate-50">Back</button>{csv.length>0 && <button onClick={run} disabled={imp} className="flex-1 py-2 bg-brand-600 text-white rounded shadow">{imp?'...':'Confirm'}</button>}</div></div>);
         };
 
         ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App /></ErrorBoundary>);
