@@ -34,7 +34,7 @@ import {
   AlertCircle,
   Glasses,
   Trash2,
-  History // Added History icon
+  History 
 } from 'lucide-react';
 
 // --- FIREBASE INIT (System Standard) ---
@@ -317,6 +317,7 @@ const PCUForm = ({ onBack, userId, existingPatients }) => {
   });
   const [saving, setSaving] = useState(false);
   const [foundOldHistory, setFoundOldHistory] = useState(false);
+  const [error, setError] = useState('');
 
   // Auto-fill Logic
   useEffect(() => {
@@ -338,8 +339,19 @@ const PCUForm = ({ onBack, userId, existingPatients }) => {
   }, [form.idCard, existingPatients]);
 
   const save = async () => {
-    if(!form.idCard || !form.name) return alert("กรุณากรอกเลขบัตรฯ และ ชื่อ-สกุล");
+    if(!form.idCard || !form.name) {
+        setError("กรุณากรอกเลขบัตรประชาชน และ ชื่อ-สกุล ให้ครบถ้วน");
+        return;
+    }
+    
     setSaving(true);
+    setError('');
+
+    // ตัวจับเวลา: ถ้าบันทึกนานเกิน 5 วินาที ให้แจ้งเตือน
+    const timeoutId = setTimeout(() => {
+       if(saving) setError("กำลังเชื่อมต่อ... กรุณารอสักครู่ (หากรอนานเกินไป โปรดตรวจสอบอินเทอร์เน็ต)");
+    }, 5000);
+
     try {
       await addDoc(getPatientsCollection(), {
         part1: form,
@@ -347,17 +359,19 @@ const PCUForm = ({ onBack, userId, existingPatients }) => {
         senderId: userId,
         createdAt: serverTimestamp()
       });
-      onBack();
+      clearTimeout(timeoutId);
+      onBack(); // สำคัญ: เมื่อบันทึกเสร็จ ต้องสั่งให้กลับหน้าหลักทันที
     } catch(e) { 
-      alert("บันทึกไม่ได้: " + e.message); 
+      clearTimeout(timeoutId);
       console.error(e);
+      setError("เกิดข้อผิดพลาดในการบันทึก: " + e.message);
     } finally { 
       setSaving(false); 
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500">
+    <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500 pb-20">
       <button onClick={onBack} className="text-gray-500 hover:text-gray-800 mb-6 flex items-center gap-2 font-medium transition-colors">
         <ArrowLeft size={20}/> ย้อนกลับไปหน้าหลัก
       </button>
@@ -427,11 +441,17 @@ const PCUForm = ({ onBack, userId, existingPatients }) => {
             <Input label="ส่วนสูง (cm)" value={form.height} onChange={v=>setForm({...form, height:v})} placeholder="165" />
           </div>
 
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg border border-red-200 flex items-center gap-2 text-sm animate-pulse">
+                <AlertCircle size={16} /> {error}
+            </div>
+          )}
+
           <div className="pt-4">
             <button 
               onClick={save} 
               disabled={saving} 
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-green-200 transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+              className={`w-full text-white py-4 rounded-xl font-bold shadow-lg transition-all flex justify-center items-center gap-2 ${saving ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 shadow-green-200'}`}
             >
               {saving ? <><Activity className="animate-spin"/> กำลังส่งข้อมูล...</> : 'บันทึกและส่งตัวทันที'}
             </button>
@@ -453,11 +473,18 @@ const HospitalForm = ({ patient, onBack, userId }) => {
     CottonWool: {L:false,R:false}
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const toggle = (k,s) => setFindings(f => ({...f, [k]:{...f[k], [s]:!f[k][s]}}));
   
   const save = async () => {
     setSaving(true);
+    setError('');
+    
+    const timeoutId = setTimeout(() => {
+        if(saving) setError("กำลังบันทึก... กรุณารอสักครู่");
+    }, 5000);
+
     try {
       const ref = doc(getPatientsCollection(), patient.id);
       await updateDoc(ref, {
@@ -467,16 +494,18 @@ const HospitalForm = ({ patient, onBack, userId }) => {
         examinerId: userId,
         examinedAt: serverTimestamp()
       });
+      clearTimeout(timeoutId);
       onBack();
     } catch(e) { 
-      alert(e.message); 
+      clearTimeout(timeoutId);
+      setError(e.message); 
     } finally { 
       setSaving(false); 
     }
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 animate-in slide-in-from-right-8 duration-500 h-[calc(100vh-100px)]">
+    <div className="flex flex-col lg:flex-row gap-6 animate-in slide-in-from-right-8 duration-500 h-[calc(100vh-100px)] pb-20">
       {/* Left Panel: Patient Info */}
       <div className="w-full lg:w-1/3 space-y-4 lg:h-full lg:overflow-y-auto no-scrollbar">
         <button onClick={onBack} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 mb-2 font-medium">
@@ -579,11 +608,17 @@ const HospitalForm = ({ patient, onBack, userId }) => {
               </tbody>
             </table>
           </div>
+          
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg border border-red-200 mb-4 flex items-center gap-2 text-sm">
+                <AlertCircle size={16} /> {error}
+            </div>
+          )}
 
           <button 
             onClick={save} 
             disabled={saving} 
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+            className={`w-full text-white py-4 rounded-xl font-bold shadow-lg transition-all ${saving ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200 hover:-translate-y-0.5'}`}
           >
             {saving ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันผลการตรวจ (Submit Findings)'}
           </button>
