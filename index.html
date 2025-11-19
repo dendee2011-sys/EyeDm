@@ -15,45 +15,83 @@
     <!-- 3. Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- 4. Firebase SDK (Compat Version - เสถียรที่สุดสำหรับ Single File) -->
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+    <!-- 4. Firebase SDK (Compat Version - Stable) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-    <!-- 5. Other Libs -->
+    <!-- 5. Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        #error-display { display: none; padding: 20px; background: #fee2e2; color: #991b1b; border: 1px solid #f87171; margin: 20px; border-radius: 8px; font-family: monospace; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <!-- Error Display Area -->
+    <div id="error-display"></div>
+
+    <!-- App Root -->
+    <div id="root">
+        <div class="flex items-center justify-center min-h-screen text-slate-500 flex-col gap-4">
+            <div class="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
+            <div>กำลังโหลดระบบ... (หากค้างนานเกิน 10 วินาที แสดงว่าเกิดข้อผิดพลาด)</div>
+        </div>
+    </div>
+
+    <script>
+        // Global Error Handler to prevent White Screen
+        window.onerror = function(message, source, lineno, colno, error) {
+            const display = document.getElementById('error-display');
+            display.style.display = 'block';
+            display.innerHTML = `<strong>System Error:</strong><br>${message}<br><small>${source}:${lineno}</small>`;
+            console.error(error);
+            document.getElementById('root').innerHTML = ''; // Clear loading spinner
+        };
+    </script>
 
     <script type="text/babel">
-        // --- 1. FIREBASE CONFIGURATION ---
-        // รับค่า Config จากระบบ หรือใช้ค่าว่างเพื่อป้องกัน Error
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        
-        // Initialize Firebase
-        try {
+        // --- 1. SYSTEM CONFIGURATION & SAFEGUARDS ---
+        const getFirebaseConfig = () => {
+            try {
+                // Check if running in environment with injected config
+                if (typeof __firebase_config !== 'undefined') {
+                    return JSON.parse(__firebase_config);
+                } 
+                // Fallback or throw error if needed
+                console.warn("No environment config found.");
+                return null;
+            } catch (e) {
+                console.error("Config parsing error", e);
+                return null;
+            }
+        };
+
+        const firebaseConfig = getFirebaseConfig();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // Initialize Firebase Safely
+        let db = null;
+        let auth = null;
+
+        if (firebaseConfig && window.firebase) {
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             }
-        } catch (e) {
-            console.error("Firebase Init Error:", e);
-            document.getElementById('root').innerHTML = `<div class="p-4 text-red-500">Firebase Error: ${e.message}</div>`;
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } else {
+            // If no config (e.g. running locally), we simulate DB for UI testing or show alert
+            console.warn("Firebase not initialized. UI will be read-only or mock.");
         }
 
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        // --- 2. ICONS COMPONENT ---
+        // --- 2. COMPONENTS ---
+        
+        // Icon Component (Safe Fallback)
         const Icon = ({ name, size = 18, className }) => {
             React.useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
@@ -61,10 +99,7 @@
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
         };
 
-        // --- 3. COMPONENTS ---
-        const ADMIN_CODE = "10700";
-
-        // --- Login Screen ---
+        // Login Screen
         const AuthScreen = ({ onLogin }) => {
             const [pin, setPin] = React.useState('');
             const [loading, setLoading] = React.useState(false);
@@ -74,18 +109,22 @@
                 setLoading(true);
                 
                 try {
-                    // 1. Sign in Anonymously to access DB
-                    if (!auth.currentUser) {
+                    if (auth && !auth.currentUser) {
+                        // Attempt anonymous login if auth exists
                         await auth.signInAnonymously();
+                    } else if (!auth) {
+                        // Simulation mode if no firebase
+                        console.log("Simulating auth...");
+                        await new Promise(r => setTimeout(r, 500));
                     }
-                    // 2. Logical PIN Check
+
                     if (pin.length >= 3) {
                         onLogin(pin);
                     } else {
                         alert("รหัสเจ้าหน้าที่ต้องมีอย่างน้อย 3 หลัก");
                     }
                 } catch (err) {
-                    alert("Connection Error: " + err.message);
+                    alert("เข้าสู่ระบบล้มเหลว: " + err.message);
                 } finally {
                     setLoading(false);
                 }
@@ -93,16 +132,23 @@
 
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-lg text-center fade-in">
+                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-lg text-center fade-in border border-slate-200">
                         <div className="mx-auto w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 mb-4">
                             <Icon name="activity" size={32}/>
                         </div>
                         <h1 className="text-2xl font-bold text-slate-800 mb-2">EyeDM System</h1>
-                        <p className="text-slate-500 text-sm mb-6">v18.06 (Compat Mode)</p>
+                        <p className="text-slate-500 text-sm mb-6">v18.06 (Safe Mode)</p>
+                        
+                        {!firebaseConfig && (
+                            <div className="mb-4 p-2 bg-yellow-50 text-yellow-700 text-xs rounded border border-yellow-200">
+                                ⚠️ ไม่พบการตั้งค่า Firebase (Offline Mode)
+                            </div>
+                        )}
+
                         <form onSubmit={handleAuth} className="space-y-4">
                             <input className="w-full p-3 border rounded-lg text-center text-lg tracking-widest" placeholder="รหัสเจ้าหน้าที่" value={pin} onChange={e=>setPin(e.target.value)} required autoFocus type="tel"/>
-                            <button disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 disabled:opacity-50">
-                                {loading ? 'กำลังเชื่อมต่อ...' : 'เข้าสู่ระบบ'}
+                            <button disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 disabled:opacity-50 shadow-lg shadow-teal-600/20">
+                                {loading ? 'กำลังโหลด...' : 'เข้าสู่ระบบ'}
                             </button>
                         </form>
                     </div>
@@ -110,91 +156,86 @@
             );
         };
 
-        // --- Main Application ---
+        // Main Application
         function App() {
-            const [appUser, setAppUser] = React.useState(null); // PIN User
-            const [dbUser, setDbUser] = React.useState(null);   // Firebase User
+            const [user, setUser] = React.useState(null);
             const [role, setRole] = React.useState('PCU');
             const [view, setView] = React.useState('dashboard');
             const [queue, setQueue] = React.useState([]);
             const [editData, setEditData] = React.useState(null);
 
-            // Check Authentication State
+            // Listen to Data
             React.useEffect(() => {
-                const unsub = auth.onAuthStateChanged(u => {
-                    setDbUser(u);
-                    // ถ้าไม่มี Custom Token จากระบบ ให้ Auto Anonymous
-                    if (!u && !window.__initial_auth_token) {
-                        auth.signInAnonymously().catch(console.error);
-                    }
-                });
-                return () => unsub();
-            }, []);
+                if (!user || !db) return;
 
-            // Fetch Data
-            React.useEffect(() => {
-                if (!dbUser) return;
+                try {
+                    const q = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
+                    
+                    const unsubscribe = q.onSnapshot(snapshot => {
+                        const items = snapshot.docs.map(d => {
+                            const data = d.data();
+                            return {
+                                id: d.id,
+                                ...data,
+                                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date()
+                            };
+                        });
+                        // Sort in JS
+                        items.sort((a, b) => b.createdAt - a.createdAt);
+                        setQueue(items);
+                        setTimeout(() => window.lucide?.createIcons(), 100);
+                    }, error => {
+                        console.error("Firestore Error:", error);
+                        // Don't crash, just log
+                    });
 
-                const q = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
-                
-                const unsubscribe = q.onSnapshot(snapshot => {
-                    const items = snapshot.docs.map(d => ({
-                        id: d.id,
-                        ...d.data(),
-                        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date()
-                    }));
-                    // Sort JS Side
-                    items.sort((a, b) => b.createdAt - a.createdAt);
-                    setQueue(items);
-                    setTimeout(() => window.lucide?.createIcons(), 100);
-                }, err => console.error("Query Error:", err));
-
-                return () => unsubscribe();
-            }, [dbUser]);
+                    return () => unsubscribe();
+                } catch (e) {
+                    console.error("Data setup error:", e);
+                }
+            }, [user]);
 
             const handleLogin = (pin) => {
-                setAppUser({ pin });
-                if (pin === ADMIN_CODE) setRole('ADMIN');
+                setUser({ pin });
+                if (pin === '10700') setRole('ADMIN');
                 else if (pin.startsWith('2')) setRole('HOSPITAL');
                 else setRole('PCU');
             };
 
             const handleDelete = async (id) => {
+                if (!db) return alert("Offline mode: Cannot delete");
                 if(confirm("ยืนยันการลบ?")) {
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue').doc(id).delete();
                 }
             };
 
-            if (!appUser) return <AuthScreen onLogin={handleLogin} />;
+            if (!user) return <AuthScreen onLogin={handleLogin} />;
 
             return (
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-sans">
-                    {/* Navbar */}
-                    <nav className="bg-white shadow border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
+                    <nav className="bg-white shadow-sm border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
                         <div className="flex gap-3 items-center">
-                            <div className={`p-2 rounded-lg text-white ${role==='HOSPITAL'?'bg-blue-600':'bg-teal-600'}`}>
+                            <div className={`p-2 rounded-lg text-white shadow ${role==='HOSPITAL'?'bg-blue-600':'bg-teal-600'}`}>
                                 <Icon name={role==='HOSPITAL'?'hospital':'home'}/>
                             </div>
                             <div>
-                                <h1 className="font-bold text-lg">EyeDM</h1>
-                                <p className="text-xs text-slate-500">User: {appUser.pin}</p>
+                                <h1 className="font-bold text-lg text-slate-700">EyeDM</h1>
+                                <p className="text-xs text-slate-400">Officer: {user.pin}</p>
                             </div>
                         </div>
                         <div className="flex gap-2">
-                             {role === 'ADMIN' && <button onClick={()=>setView('import')} className="hidden md:block px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded">Import</button>}
-                             <button onClick={()=>setAppUser(null)} className="p-2 text-red-500"><Icon name="log-out"/></button>
+                             {role === 'ADMIN' && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded font-bold"><Icon name="upload" size={14}/> Import</button>}
+                             <button onClick={()=>setUser(null)} className="p-2 text-slate-400 hover:text-red-500 transition"><Icon name="log-out"/></button>
                         </div>
                     </nav>
 
-                    {/* Mobile Tabs */}
-                    <div className="md:hidden p-4 pb-0">
-                        <div className="flex bg-white rounded-lg shadow border overflow-hidden">
-                            <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2 text-sm font-bold ${role!=='HOSPITAL'?'bg-teal-50 text-teal-700':'text-slate-400'}`}>PCU</button>
-                            <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2 text-sm font-bold ${role==='HOSPITAL'?'bg-blue-50 text-blue-700':'text-slate-400'}`}>Hospital</button>
+                    <div className="md:hidden px-4 pt-3">
+                        <div className="flex bg-white rounded-lg shadow-sm border overflow-hidden text-sm">
+                            <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2.5 font-bold ${role!=='HOSPITAL'?'bg-teal-50 text-teal-700':'text-slate-400'}`}>PCU (ส่งตัว)</button>
+                            <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2.5 font-bold ${role==='HOSPITAL'?'bg-blue-50 text-blue-700':'text-slate-400'}`}>Hospital (รับตัว)</button>
                         </div>
                     </div>
 
-                    {/* Content */}
                     <main className="flex-1 p-4 max-w-5xl mx-auto w-full">
                         {view === 'dashboard' && (
                             <Dashboard 
@@ -206,63 +247,71 @@
                                 onDelete={handleDelete} 
                             />
                         )}
-                        {view === 'pcu_form' && <PCUForm db={db} user={appUser} appId={appId} initialData={editData} onBack={()=>setView('dashboard')} />}
-                        {view === 'hospital_form' && <HospitalForm db={db} user={appUser} appId={appId} patient={editData} onBack={()=>setView('dashboard')} />}
+                        {view === 'pcu_form' && <PCUForm db={db} user={user} appId={appId} initialData={editData} onBack={()=>setView('dashboard')} />}
+                        {view === 'hospital_form' && <HospitalForm db={db} user={user} appId={appId} patient={editData} onBack={()=>setView('dashboard')} />}
                         {view === 'import' && <ImportView db={db} appId={appId} onBack={()=>setView('dashboard')} />}
                     </main>
                 </div>
             );
         }
 
-        // --- SUB COMPONENTS ---
+        // --- Sub-Components ---
         const Dashboard = ({ role, queue, onNew, onEdit, onDoctorEdit, onDelete }) => {
             const [search, setSearch] = React.useState('');
             const filtered = queue.filter(p => (p.part1?.idCard||'').includes(search) || (p.part1?.name||'').includes(search));
 
             return (
                 <div className="space-y-4 fade-in">
-                    <div className="flex justify-between gap-2">
-                        <input className="flex-1 p-2 border rounded-lg" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/>
+                    <div className="flex flex-col sm:flex-row justify-between gap-3 items-end">
+                        <div className="w-full relative">
+                            <Icon name="search" className="absolute left-3 top-3 text-slate-400" size={18}/>
+                            <input className="w-full pl-10 pr-4 py-2.5 border rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="ค้นหาชื่อ หรือ เลขบัตร..." value={search} onChange={e=>setSearch(e.target.value)}/>
+                        </div>
                         {role !== 'HOSPITAL' && (
-                            <button onClick={onNew} className="bg-teal-600 text-white px-4 py-2 rounded-lg shadow font-bold flex items-center gap-1">
-                                <Icon name="plus" size={16}/> <span className="hidden sm:inline">เพิ่ม</span>
+                            <button onClick={onNew} className="bg-teal-600 text-white px-5 py-2.5 rounded-xl shadow-md font-bold flex items-center gap-2 hover:bg-teal-700 w-full sm:w-auto justify-center whitespace-nowrap">
+                                <Icon name="user-plus" size={18}/> ลงทะเบียน
                             </button>
                         )}
                     </div>
+                    
                     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                         <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 border-b">
+                            <thead className="bg-slate-50 border-b text-slate-600">
                                 <tr>
-                                    <th className="p-3">ผู้ป่วย</th>
-                                    <th className="p-3">สถานะ</th>
-                                    <th className="p-3 text-right">Action</th>
+                                    <th className="p-4 font-semibold">ผู้ป่วย</th>
+                                    <th className="p-4 font-semibold">สถานะ</th>
+                                    <th className="p-4 font-semibold text-right">จัดการ</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
+                            <tbody className="divide-y divide-slate-100">
                                 {filtered.map(p => (
-                                    <tr key={p.id}>
-                                        <td className="p-3">
-                                            <div className="font-bold">{p.part1.name}</div>
-                                            <div className="text-xs text-slate-500">{p.part1.idCard} | HbA1C: {p.part1.hba1c}</div>
+                                    <tr key={p.id} className="hover:bg-slate-50 transition">
+                                        <td className="p-4">
+                                            <div className="font-bold text-slate-700 text-base">{p.part1.name}</div>
+                                            <div className="text-xs text-slate-400 mt-1 flex gap-2">
+                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded">{p.part1.idCard}</span>
+                                                {p.part1.hba1c && <span className={parseFloat(p.part1.hba1c)>8 ? 'text-red-500 font-bold':'text-green-600'}>HbA1C: {p.part1.hba1c}%</span>}
+                                            </div>
                                         </td>
-                                        <td className="p-3">
-                                            <span className={`px-2 py-1 rounded text-xs border ${p.status==='Waiting'?'bg-yellow-50 text-yellow-700 border-yellow-200':'bg-green-50 text-green-700 border-green-200'}`}>
+                                        <td className="p-4">
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${p.status==='Waiting'?'bg-amber-50 text-amber-700 border-amber-200':'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${p.status==='Waiting'?'bg-amber-500 animate-pulse':'bg-emerald-500'}`}></div>
                                                 {p.status==='Waiting'?'รอตรวจ':'ตรวจแล้ว'}
                                             </span>
                                         </td>
-                                        <td className="p-3 text-right">
+                                        <td className="p-4 text-right">
                                             {role === 'HOSPITAL' ? (
-                                                <button onClick={()=>onDoctorEdit(p)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs">ตรวจ</button>
+                                                <button onClick={()=>onDoctorEdit(p)} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow hover:bg-blue-700 transition">ตรวจตา</button>
                                             ) : (
-                                                <div className="flex justify-end gap-2">
-                                                    <button onClick={()=>onEdit(p)} className="text-blue-600"><Icon name="pencil" size={16}/></button>
-                                                    <button onClick={()=>onDelete(p.id)} className="text-red-600"><Icon name="trash" size={16}/></button>
+                                                <div className="flex justify-end gap-1">
+                                                    <button onClick={()=>onEdit(p)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><Icon name="pencil" size={18}/></button>
+                                                    <button onClick={()=>onDelete(p.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Icon name="trash-2" size={18}/></button>
                                                 </div>
                                             )}
                                         </td>
                                     </tr>
                                 ))}
-                                {filtered.length===0 && <tr><td colSpan="3" className="p-8 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="3" className="p-12 text-center text-slate-400">ไม่พบข้อมูลผู้ป่วย</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -275,6 +324,7 @@
             const [saving, setSaving] = React.useState(false);
 
             const save = async () => {
+                if(!db) return alert("Offline Mode");
                 if(!form.idCard) return alert("ระบุเลขบัตร");
                 setSaving(true);
                 const colRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
@@ -297,21 +347,52 @@
             };
 
             return (
-                <div className="bg-white p-6 rounded-xl shadow fade-in space-y-4">
-                    <h2 className="font-bold text-lg border-b pb-2">{initialData?'แก้ไข':'ลงทะเบียนใหม่'}</h2>
-                    <input className="w-full p-2 border rounded" placeholder="เลขบัตรประชาชน" value={form.idCard} onChange={e=>setForm({...form,idCard:e.target.value})}/>
-                    <input className="w-full p-2 border rounded" placeholder="ชื่อ-สกุล" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input className="p-2 border rounded" placeholder="HbA1C" value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})}/>
-                        <input className="p-2 border rounded" placeholder="BP" value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})}/>
+                <div className="bg-white p-6 rounded-xl shadow border border-slate-200 fade-in max-w-2xl mx-auto">
+                    <div className="flex justify-between items-center mb-6 border-b pb-4">
+                        <h2 className="font-bold text-lg text-slate-700">{initialData?'แก้ไขข้อมูล':'ลงทะเบียนใหม่'}</h2>
+                        <button onClick={onBack} className="text-slate-400 hover:text-slate-600"><Icon name="x"/></button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded">
-                        <input className="p-2 border rounded" placeholder="VA Left" value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})}/>
-                        <input className="p-2 border rounded" placeholder="VA Right" value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})}/>
+                    
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">เลขบัตรประชาชน</label>
+                            <input className="w-full p-3 border rounded-xl font-mono text-lg tracking-wider focus:ring-2 focus:ring-teal-500 outline-none" placeholder="xxxxxxxxxxxxx" value={form.idCard} onChange={e=>setForm({...form,idCard:e.target.value})} maxLength="13"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">ชื่อ-สกุล</label>
+                            <input className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="ชื่อ-สกุล" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">HbA1C</label>
+                                <input className="w-full p-2.5 border rounded-lg" placeholder="%" value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">ความดัน (BP)</label>
+                                <input className="w-full p-2.5 border rounded-lg" placeholder="mmHg" value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})}/>
+                            </div>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                             <label className="block text-sm font-bold text-slate-700 mb-3">ระดับการมองเห็น (Visual Acuity)</label>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs text-slate-400 text-center mb-1">ตาซ้าย (L)</label>
+                                    <input className="w-full p-2 border rounded text-center" placeholder="20/xx" value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-slate-400 text-center mb-1">ตาขวา (R)</label>
+                                    <input className="w-full p-2 border rounded text-center" placeholder="20/xx" value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})}/>
+                                </div>
+                             </div>
+                        </div>
                     </div>
-                    <div className="flex gap-2 pt-2">
-                        <button onClick={onBack} className="flex-1 py-2 border rounded">ยกเลิก</button>
-                        <button onClick={save} disabled={saving} className="flex-1 py-2 bg-teal-600 text-white rounded font-bold">{saving?'Saving...':'บันทึก'}</button>
+
+                    <div className="flex gap-3 mt-8">
+                        <button onClick={onBack} className="flex-1 py-3 border border-slate-300 rounded-xl font-bold text-slate-500 hover:bg-slate-50">ยกเลิก</button>
+                        <button onClick={save} disabled={saving} className="flex-[2] py-3 bg-teal-600 text-white rounded-xl font-bold shadow-lg shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-70 flex justify-center items-center gap-2">
+                            {saving ? 'กำลังบันทึก...' : <><Icon name="save" size={18}/> บันทึกข้อมูล</>}
+                        </button>
                     </div>
                 </div>
             );
@@ -320,65 +401,122 @@
         const HospitalForm = ({ db, user, appId, patient, onBack }) => {
             const [p2, setP2] = React.useState(patient?.part2 || { retinaFound:'Yes' });
             const [findings, setFindings] = React.useState(patient?.findings || {});
+            const [saving, setSaving] = React.useState(false);
+
             const toggle = (k,s) => setFindings(f=>({...f,[k]:{...f[k],[s]:!f?.[k]?.[s]}}));
             
             const save = async () => {
+                if(!db) return alert("Offline Mode");
+                setSaving(true);
                 await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue').doc(patient.id).update({
-                    part2: p2, findings, status: 'Completed', doctorCode: user.pin
+                    part2: p2, findings, status: 'Completed', doctorCode: user.pin, examinedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 onBack();
+                setSaving(false);
             };
 
             return (
-                <div className="bg-white p-6 rounded-xl shadow fade-in">
-                    <h2 className="font-bold text-lg mb-4 text-blue-700">บันทึกผลตรวจ: {patient.part1.name}</h2>
-                    <div className="mb-4">
-                        <label className="block text-sm font-bold mb-2">จอประสาทตา</label>
-                        <div className="flex gap-2">
-                            {['Yes','No'].map(o=><button key={o} onClick={()=>setP2({...p2,retinaFound:o})} className={`flex-1 py-2 border rounded ${p2.retinaFound===o?'bg-blue-600 text-white':''}`}>{o==='Yes'?'เห็นชัด':'ไม่เห็น'}</button>)}
-                        </div>
-                    </div>
-                    <div className="space-y-2 mb-6">
-                        {['Normal','MicroAneurysm','Hemorrhage','Exudate'].map(k=>(
-                            <div key={k} className="flex items-center justify-between border-b pb-2">
-                                <span className="text-sm w-1/2">{k}</span>
-                                <label className="flex items-center gap-1"><input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/> L</label>
-                                <label className="flex items-center gap-1"><input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/> R</label>
+                <div className="flex flex-col md:flex-row gap-6 fade-in">
+                    <div className="md:w-1/3 space-y-4">
+                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-slate-400 text-xs uppercase mb-2">ข้อมูลผู้ป่วย</h3>
+                            <div className="text-xl font-bold text-slate-800">{patient.part1.name}</div>
+                            <div className="font-mono text-slate-500 text-sm mb-4">{patient.part1.idCard}</div>
+                            
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between border-b border-dashed pb-2"><span>HbA1C</span> <span className="font-bold">{patient.part1.hba1c}</span></div>
+                                <div className="flex justify-between border-b border-dashed pb-2"><span>BP</span> <span className="font-bold">{patient.part1.bp}</span></div>
+                                <div className="flex justify-between"><span>VA (L/R)</span> <span className="font-bold">{patient.part1.vaLeft} / {patient.part1.vaRight}</span></div>
                             </div>
-                        ))}
+                        </div>
+                        <button onClick={onBack} className="w-full py-2 text-slate-400 hover:text-slate-600 text-sm">ยกเลิก / ย้อนกลับ</button>
                     </div>
-                    <button onClick={save} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold">บันทึกผล</button>
-                    <button onClick={onBack} className="w-full py-3 mt-2 text-slate-500">ยกเลิก</button>
+
+                    <div className="md:w-2/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h2 className="font-bold text-lg mb-6 text-blue-700 flex items-center gap-2"><Icon name="eye"/> บันทึกผลตรวจจอประสาทตา</h2>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-bold mb-2 text-slate-700">การมองเห็นจอประสาทตา</label>
+                            <div className="flex gap-3">
+                                {['Yes','No'].map(o=>(
+                                    <button key={o} onClick={()=>setP2({...p2,retinaFound:o})} className={`flex-1 py-3 rounded-xl border font-bold transition ${p2.retinaFound===o?'bg-blue-600 text-white border-blue-600 shadow-md':'text-slate-500 hover:bg-slate-50'}`}>
+                                        {o==='Yes'?'มองเห็นชัดเจน':'มองไม่เห็น/มีสิ่งบดบัง'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-1 mb-8 border rounded-xl overflow-hidden">
+                            <div className="flex bg-slate-100 p-3 font-bold text-slate-600 text-sm">
+                                <div className="flex-1">ความผิดปกติที่พบ</div>
+                                <div className="w-16 text-center">L</div>
+                                <div className="w-16 text-center">R</div>
+                            </div>
+                            {['Normal','MicroAneurysm','Hemorrhage','Exudate','CottonWool'].map(k=>(
+                                <div key={k} className="flex items-center p-3 hover:bg-slate-50 border-t border-slate-100 transition">
+                                    <span className="flex-1 text-sm text-slate-700">{k}</span>
+                                    <div className="w-16 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/></div>
+                                    <div className="w-16 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/></div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <button onClick={save} disabled={saving} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-70 flex justify-center items-center gap-2 transition">
+                            {saving ? 'กำลังบันทึก...' : <><Icon name="check-circle"/> ยืนยันผลการตรวจ</>}
+                        </button>
+                    </div>
                 </div>
             );
         };
 
         const ImportView = ({ db, appId, onBack }) => {
             const [data, setData] = React.useState([]);
-            const handle = e => Papa.parse(e.target.files[0], {header:true, complete: r=>setData(r.data)});
+            const handle = e => Papa.parse(e.target.files[0], {header:true, skipEmptyLines:true, complete: r=>setData(r.data)});
             const save = async () => {
+                if(!db) return alert("Offline Mode");
                 const col = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dr_queue');
+                let count = 0;
                 for(let r of data) {
-                     if(r['pid']) await col.add({ 
-                         part1: { idCard: r['pid'], name: r['name'], hba1c: r['hba1c'] }, 
-                         status: 'Waiting', createdAt: new Date() 
-                     });
+                     const pid = r['pid'] || r['เลขบัตร'] || r['id'];
+                     if(pid) {
+                        await col.add({ 
+                            part1: { idCard: pid, name: r['name']||r['ชื่อ']||'-', hba1c: r['hba1c']||'-', bp: r['bp']||'-' }, 
+                            status: 'Waiting', createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                        });
+                        count++;
+                     }
                 }
-                alert('Done'); onBack();
+                alert(`นำเข้าสำเร็จ ${count} รายการ`); 
+                onBack();
             };
             return (
-                <div className="bg-white p-6 rounded shadow">
-                    <h2 className="font-bold mb-4">Import CSV</h2>
-                    <input type="file" onChange={handle} className="mb-4 block w-full"/>
-                    {data.length>0 && <button onClick={save} className="bg-indigo-600 text-white px-4 py-2 rounded">Import {data.length} items</button>}
-                    <button onClick={onBack} className="ml-4">Back</button>
+                <div className="bg-white p-8 rounded-2xl shadow border border-slate-200 max-w-lg mx-auto text-center fade-in">
+                    <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="upload-cloud" size={32}/></div>
+                    <h2 className="font-bold text-xl mb-2">Import CSV</h2>
+                    <p className="text-slate-500 text-sm mb-6">รองรับไฟล์ .csv ที่มีหัวตาราง: pid, name, hba1c, bp</p>
+                    
+                    <label className="block w-full p-4 border-2 border-dashed rounded-xl hover:bg-slate-50 cursor-pointer mb-4">
+                        <input type="file" onChange={handle} accept=".csv" className="hidden"/>
+                        <span className="text-slate-500">{data.length > 0 ? `เลือกแล้ว ${data.length} รายการ` : 'คลิกเพื่อเลือกไฟล์'}</span>
+                    </label>
+
+                    <div className="flex gap-3">
+                        <button onClick={onBack} className="flex-1 py-2 text-slate-400">ยกเลิก</button>
+                        {data.length>0 && <button onClick={save} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold shadow">ยืนยัน</button>}
+                    </div>
                 </div>
             );
         }
 
-        // Start App
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // --- 3. RENDER APP ---
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        } catch (e) {
+            console.error("Render Error:", e);
+            document.getElementById('error-display').style.display = 'block';
+            document.getElementById('error-display').innerText = "Render Error: " + e.message;
+        }
     </script>
 </body>
 </html>
