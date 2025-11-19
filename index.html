@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EyeDM v35 - Enterprise Stable</title>
     
-    <!-- 1. Assets (Lightweight) -->
+    <!-- 1. Assets (Lightweight & Optimized) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -40,13 +40,18 @@
     </script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; }
+        /* Optimized Loader */
         .loader { width: 20px; height: 20px; border: 2px solid #e2e8f0; border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        /* Pagination Styles */
-        .page-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; background: white; color: #64748b; transition: all 0.2s; }
-        .page-btn:hover:not(:disabled) { background: #eff6ff; color: #3b82f6; border-color: #3b82f6; }
-        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .page-active { background: #3b82f6; color: white; border-color: #3b82f6; }
+        
+        /* Smooth Scroll but not heavy */
+        html { scroll-behavior: smooth; }
+        
+        /* Input Focus Optimization */
+        input:focus { outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); border-color: #3b82f6; }
+        
+        /* Table Row Hover Performance */
+        tr.hover-row:hover td { background-color: #f1f5f9; transition: background-color 0.1s ease; }
     </style>
 </head>
 <body>
@@ -57,7 +62,7 @@
         window.onerror = function(msg, url, line) {
             const errDiv = document.createElement('div');
             errDiv.style.cssText = "position:fixed;top:0;left:0;width:100%;padding:20px;background:#fee2e2;color:#991b1b;z-index:9999;text-align:center;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.1);";
-            errDiv.innerHTML = `<strong>⚠️ ระบบหยุดทำงาน:</strong> ${msg} (บรรทัด ${line}) <button onclick="location.reload()" style="margin-left:10px;padding:5px 15px;background:white;border:1px solid #991b1b;border-radius:4px;cursor:pointer;font-weight:bold;color:#991b1b;">รีโหลดใหม่</button>`;
+            errDiv.innerHTML = `<strong>System Halted:</strong> ${msg} (Line ${line}) <button onclick="location.reload()" style="margin-left:10px;padding:5px 15px;background:white;border:1px solid #991b1b;border-radius:4px;cursor:pointer;font-weight:bold;color:#991b1b;">รีโหลดใหม่</button>`;
             document.body.appendChild(errDiv);
         };
     </script>
@@ -78,24 +83,32 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
         
-        // VERSION 35 ID
+        // STABLE APP ID (Version 35)
         const APP_ID = "sisaket_prod_v1855_stable"; 
         const COL_QUEUE = "dr_queue";   
         const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
-        // Optimized Icon
+        // Optimized Icon Component (Memoized)
         const Icon = React.memo(({name, size=18, className}) => {
             React.useEffect(()=>{if(window.lucide)window.lucide.createIcons()},[name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
         });
 
-        // --- ERROR BOUNDARY ---
+        // --- ERROR BOUNDARY (High Level Protection) ---
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false }; }
             static getDerivedStateFromError(error) { return { hasError: true }; }
+            componentDidCatch(error, errorInfo) { console.error("React Error:", error, errorInfo); }
             render() {
-                if (this.state.hasError) return <div className="h-screen flex flex-col items-center justify-center bg-slate-50 p-4 text-center"><h2 className="text-xl font-bold text-slate-800 mb-2">ระบบทำงานผิดพลาดชั่วคราว</h2><button onClick={()=>window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-bold">รีโหลดหน้าจอ</button></div>;
+                if (this.state.hasError) return (
+                    <div className="h-screen flex flex-col items-center justify-center bg-slate-50 p-4 text-center">
+                        <div className="text-red-500 mb-4"><Icon name="alert-triangle" size={48}/></div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">ระบบทำงานผิดพลาดชั่วคราว</h2>
+                        <p className="text-slate-500 mb-6">อาจเกิดจากข้อมูลโหลดไม่ทัน หรืออินเทอร์เน็ตขัดข้อง</p>
+                        <button onClick={()=>window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-bold">รีโหลดหน้าจอ</button>
+                    </div>
+                );
                 return this.props.children;
             }
         }
@@ -108,7 +121,7 @@
 
             const handleAuth = async (e) => {
                 e.preventDefault(); 
-                if(loading) return;
+                if(loading) return; // Prevent double submit
                 setLoading(true);
                 try { await auth.signInWithEmailAndPassword(pin+"@sisaket-clinic.org", password); }
                 catch(e) { 
@@ -120,15 +133,15 @@
 
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-xl border border-slate-200 text-center animate__animated animate__fadeIn">
+                    <div className="bg-white p-8 rounded-xl w-full max-w-md shadow-lg border border-slate-200 text-center animate__animated animate__fadeIn">
                         <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-600 shadow-sm"><Icon name="shield-check" size={32}/></div>
                         <h1 className="text-2xl font-bold text-slate-800 mb-1">EyeDM <span className="text-brand-600">v35</span></h1>
                         <p className="text-slate-400 mb-6 text-sm font-medium">Enterprise Stability Edition</p>
                         <form onSubmit={handleAuth} className="space-y-4">
-                            <input className="w-full p-3 border border-slate-300 rounded-xl text-center text-lg tracking-widest font-mono focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus disabled={loading}/>
-                            <input className="w-full p-3 border border-slate-300 rounded-xl text-center focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required disabled={loading}/>
-                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded-xl font-bold transition shadow-lg disabled:opacity-70 flex justify-center items-center gap-2">
-                                {loading ? <><div className="loader"></div> กำลังโหลด...</> : 'เข้าสู่ระบบ'}
+                            <input className="w-full p-3 border border-slate-300 rounded-lg text-center text-lg tracking-widest font-mono placeholder-slate-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus disabled={loading}/>
+                            <input className="w-full p-3 border border-slate-300 rounded-lg text-center placeholder-slate-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required disabled={loading}/>
+                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition shadow-md disabled:opacity-70 flex justify-center items-center gap-2">
+                                {loading ? <><div className="loader border-white/30 border-t-white"></div> กำลังตรวจสอบ...</> : 'เข้าสู่ระบบ'}
                             </button>
                         </form>
                     </div>
@@ -141,9 +154,10 @@
             const [user, setUser] = React.useState(null);
             const [role, setRole] = React.useState('PCU');
             const [view, setView] = React.useState('dashboard');
-            const [allData, setAllData] = React.useState([]); // Store ALL data in memory
+            const [queue, setQueue] = React.useState([]); // Keep this lightweight
             const [editData, setEditData] = React.useState(null);
-            
+            const [limitCount, setLimitCount] = React.useState(50); // Pagination Limit
+
             React.useEffect(() => auth.onAuthStateChanged(setUser), []);
             
             // 1. FETCH ALL DATA ONCE (Then handle in memory to avoid frequent re-renders/fetches)
@@ -156,10 +170,11 @@
                 const unsub = q.onSnapshot(snapshot => {
                     const data = snapshot.docs.map(doc => {
                         const d = doc.data();
+                        // Safe Date Conversion
                         const createdAt = d.createdAt?.toDate ? d.data().createdAt.toDate() : new Date();
                         return { id: doc.id, ...d, createdAt };
                     });
-                    setAllData(data);
+                    setQueue(data);
                     // Defer icon rendering
                     setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
                 }, err => console.error("Data Fetch Error:", err));
@@ -181,7 +196,7 @@
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <div className="flex justify-between h-16 items-center">
                                 <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-xl text-white bg-${Theme}-600 shadow-md`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
+                                    <div className={`p-2 rounded-lg text-white bg-${Theme}-600 shadow-md`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
                                     <div><h1 className="font-bold text-lg">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400 font-mono">{user.email.split('@')[0]}</p></div>
                                 </div>
                                 <div className="flex gap-2 items-center">
@@ -197,7 +212,7 @@
                     </nav>
 
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-                        {view==='dashboard' && <Dashboard role={role} allData={allData} onNew={()=>{setEditData(null);setView('form')}} onEdit={p=>{setEditData(p);setView('form')}} onDelete={handleDel} onSend={handleSend} Theme={Theme}/>}
+                        {view==='dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('form')}} onEdit={p=>{setEditData(p);setView('form')}} onDelete={handleDel} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} Theme={Theme}/>}
                         {view==='form' && <UnifiedForm db={db} user={user} data={editData} role={role} onBack={()=>setView('dashboard')} Theme={Theme}/>}
                         {view==='import' && isAdmin && <ImportView db={db} onBack={()=>setView('dashboard')}/>}
                     </main>
@@ -205,44 +220,33 @@
             );
         }
 
-        // --- DASHBOARD (Optimized with Pagination) ---
-        const Dashboard = ({ role, allData, onNew, onEdit, onDelete, onSend, Theme }) => {
+        // --- DASHBOARD (Optimized) ---
+        const Dashboard = ({ role, queue, onNew, onEdit, onDelete, onSend, onLoadMore, Theme }) => {
             const [search, setSearch] = React.useState('');
-            const [debouncedSearch, setDebouncedSearch] = React.useState('');
             const [tab, setTab] = React.useState('registry');
             
-            // Pagination State
-            const [currentPage, setCurrentPage] = React.useState(1);
-            const itemsPerPage = 10; // Show only 10 items at a time -> Smooth as butter
-
-            // Debounce Search Effect
+            // Debounce Search input to prevent lag while typing
+            const [debouncedSearch, setDebouncedSearch] = React.useState('');
             React.useEffect(() => {
-                const handler = setTimeout(() => {
-                    setDebouncedSearch(search);
-                    setCurrentPage(1); // Reset to page 1 on search
-                }, 300);
+                const handler = setTimeout(() => setDebouncedSearch(search), 300);
                 return () => clearTimeout(handler);
             }, [search]);
+            
+            const filtered = React.useMemo(() => queue.filter(p => {
+                const txt = debouncedSearch.toLowerCase();
+                const match = (p.part1?.idCard||'').includes(txt) || (p.part1?.name||'').toLowerCase().includes(txt);
+                if(!match) return false;
+                if(role==='PCU') return tab==='registry' ? p.status==='Registered' : (p.status!=='Registered');
+                return p.status!=='Registered'; // Hospital sees everything sent
+            }), [queue, debouncedSearch, tab, role]);
 
-            // Filtering Logic
-            const filteredData = React.useMemo(() => {
-                return allData.filter(p => {
-                    const txt = debouncedSearch.toLowerCase();
-                    const match = (p.part1?.idCard||'').includes(txt) || (p.part1?.name||'').toLowerCase().includes(txt);
-                    
-                    if(!match) return false;
-                    
-                    if(role==='PCU') return tab==='registry' ? p.status==='Registered' : (p.status!=='Registered');
-                    return p.status!=='Registered';
-                });
-            }, [allData, debouncedSearch, tab, role]);
-
-            // Pagination Logic
-            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-            const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+            // Pagination Logic (Simple Slicing)
+            const ITEMS_PER_PAGE = 50;
+            const [visibleCount, setVisibleCount] = React.useState(ITEMS_PER_PAGE);
+            const visibleData = filtered.slice(0, visibleCount);
 
             const StatCard = ({title, val, icon, color}) => (
-                <div className="bg-white p-4 rounded-xl shadow-soft border border-slate-200 flex items-center justify-between">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
                     <div><p className="text-slate-500 text-xs font-bold uppercase mb-1">{title}</p><h3 className="text-2xl font-bold text-slate-800">{val}</h3></div>
                     <div className={`p-3 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon} size={20}/></div>
                 </div>
@@ -251,19 +255,19 @@
             return (
                 <div className="space-y-6 animate__animated animate__fadeIn">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <StatCard title="ทั้งหมด" val={allData.length} icon="database" color="slate"/>
-                        <StatCard title="รอส่ง" val={allData.filter(p=>p.status==='Registered').length} icon="clock" color="gray"/>
-                        <StatCard title="รอตรวจ" val={allData.filter(p=>p.status==='Waiting').length} icon="eye" color="brand"/>
-                        <StatCard title="เสร็จสิ้น" val={allData.filter(p=>p.status==='Completed').length} icon="check-circle" color="teal"/>
+                        <StatCard title="ทั้งหมด (Cached)" val={queue.length} icon="database" color="slate"/>
+                        <StatCard title="รอส่ง (Reg)" val={queue.filter(p=>p.status==='Registered').length} icon="clock" color="gray"/>
+                        <StatCard title="รอตรวจ (Wait)" val={queue.filter(p=>p.status==='Waiting').length} icon="eye" color="brand"/>
+                        <StatCard title="เสร็จสิ้น (Done)" val={queue.filter(p=>p.status==='Completed').length} icon="check-circle" color="teal"/>
                     </div>
 
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-soft border border-slate-200">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
                         {role==='PCU' ? (
                             <div className="flex bg-slate-100 p-1 rounded-lg w-full md:w-auto border border-slate-200">
-                                <button onClick={()=>{setTab('registry');setCurrentPage(1)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({allData.filter(p=>p.status==='Registered').length})</button>
-                                <button onClick={()=>{setTab('sent');setCurrentPage(1)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({allData.filter(p=>p.status!=='Registered').length})</button>
+                                <button onClick={()=>{setTab('registry');setVisibleCount(ITEMS_PER_PAGE)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
+                                <button onClick={()=>{setTab('sent');setVisibleCount(ITEMS_PER_PAGE)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
                             </div>
-                        ) : <div className="px-3 font-bold text-brand-700 flex items-center gap-2"><Icon name="list" size={20}/> รายการรอตรวจ</div>}
+                        ) : <div className="px-3 font-bold text-brand-700 flex items-center gap-2"><Icon name="list" size={20}/> รายการรอตรวจ (Hospital Queue)</div>}
                         
                         <div className="flex w-full md:w-auto gap-2">
                             <div className="relative flex-1 md:w-64"><Icon name="search" className="absolute left-3 top-2.5 text-slate-400" size={16}/><input className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -271,13 +275,13 @@
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl shadow-soft border border-slate-200 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-100 text-slate-500 font-semibold border-b border-slate-200"><tr><th className="p-4 pl-6">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 pr-6 text-right">จัดการ</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {paginatedData.map(p => (
-                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                                    {visibleData.map(p => (
+                                        <tr key={p.id} className="hover-row transition-colors">
                                             <td className="p-4 pl-6 text-slate-400 text-xs font-mono">{p.createdAt.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</td>
                                             <td className="p-4"><div className="font-bold text-slate-700">{p.part1.name}</div><div className="text-slate-400 text-xs font-mono mt-0.5">{p.part1.idCard}</div></td>
                                             <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${parseFloat(p.part1.hba1c)>=7?'bg-red-50 text-red-600 border border-red-200':'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.part1.hba1c||'-'}</span></td>
@@ -289,17 +293,13 @@
                                             </td>
                                         </tr>
                                     ))}
-                                    {paginatedData.length===0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
                         </div>
-                        
-                        {/* Pagination Controls */}
-                        {totalPages > 1 && (
-                            <div className="p-3 border-t border-slate-200 bg-slate-50 flex justify-center items-center gap-2">
-                                <button onClick={()=>setCurrentPage(c=>Math.max(1,c-1))} disabled={currentPage===1} className="page-btn"><Icon name="chevron-left" size={16}/></button>
-                                <span className="text-xs font-bold text-slate-500">หน้า {currentPage} / {totalPages}</span>
-                                <button onClick={()=>setCurrentPage(c=>Math.min(totalPages,c+1))} disabled={currentPage===totalPages} className="page-btn"><Icon name="chevron-right" size={16}/></button>
+                        {visibleCount < filtered.length && (
+                            <div className="p-3 text-center border-t border-slate-200 bg-slate-50">
+                                <button onClick={()=>setVisibleCount(c=>c+ITEMS_PER_PAGE)} className="text-slate-500 text-xs font-bold hover:text-brand-600 flex items-center justify-center gap-1 mx-auto transition"><Icon name="arrow-down" size={12}/> โหลดเพิ่ม ({filtered.length - visibleCount})</button>
                             </div>
                         )}
                     </div>
@@ -307,7 +307,7 @@
             );
         };
 
-        // --- UNIFIED FORM ---
+        // --- UNIFIED FORM (Split View & Robust) ---
         const UnifiedForm = ({ db, user, data, role, onBack, Theme }) => {
             const isEdit = !!data;
             const isHospital = role === 'HOSPITAL';
@@ -351,7 +351,7 @@
                     <div className={`${isHospital?'w-full lg:w-1/3 sticky-sidebar':'w-full max-w-3xl mx-auto'}`}>
                          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
-                                <h3 className="font-bold text-slate-700 flex items-center gap-2"><Icon name="user" size={18}/> ข้อมูลผู้ป่วย</h3>
+                                <h3 className="font-bold text-slate-700 flex items-center gap-2"><div className="bg-white p-1.5 rounded border border-slate-200 shadow-sm text-slate-500"><Icon name="user" size={18}/></div> ข้อมูลผู้ป่วย</h3>
                                 {!isHospital && <button onClick={onBack}><Icon name="x" className="text-slate-400"/></button>}
                             </div>
                             <div className={`p-6 space-y-4 ${isHospital?'opacity-80 pointer-events-none bg-slate-50/50':''}`}>
@@ -391,7 +391,7 @@
             const [imp, setImp] = React.useState(false);
             const handle = (e) => Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: 'TIS-620', complete: (r) => setCsv(r.data) });
             const run = async () => { setImp(true); let c=0; for(let row of csv) { const id=(row['เลข 13 หลัก']||row['pid']||'').replace(/\D/g,''); if(id.length===13) { const p = { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' }; try { await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).doc(id).set(p,{merge:true}); await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).add({part1:p, status:'Registered', pcuId:'Admin', createdAt:firebase.firestore.FieldValue.serverTimestamp()}); c++; } catch(e){} } } setImp(false); alert(`Imported ${c}`); };
-            return (<div className="max-w-2xl mx-auto bg-white p-10 rounded-3xl shadow-xl text-center animate__animated animate__fadeInUp"><div className="w-20 h-20 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Icon name="file-spreadsheet" size={40}/></div><h2 className="text-3xl font-bold text-slate-800 mb-3">Import Data</h2><p className="text-slate-500 mb-8">รองรับไฟล์ Excel (CSV TIS-620)</p><div className="p-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-300 mb-8 hover:bg-slate-100 transition cursor-pointer relative"><input type="file" accept=".csv" onChange={handle} className="absolute inset-0 opacity-0 cursor-pointer"/><div className="pointer-events-none"><Icon name="upload-cloud" className="mx-auto text-slate-400 mb-3" size={32}/><p className="text-sm text-slate-500 font-medium">คลิกเพื่อเลือกไฟล์ หรือลากมาวางที่นี่</p></div></div>{csv.length>0&&<div className="mb-8 bg-teal-50 text-teal-700 px-4 py-3 rounded-xl font-bold border border-teal-100 flex items-center justify-center gap-2"><Icon name="check-circle" size={18}/> พร้อมนำเข้า {csv.length} รายการ</div>}<div className="flex gap-4"><button onClick={onBack} className="flex-1 py-3.5 rounded-xl border-2 border-slate-100 font-bold text-slate-500 hover:bg-slate-50 hover:border-slate-200 transition">ยกเลิก</button>{csv.length>0 && <button onClick={run} disabled={imp} className="flex-1 py-3.5 rounded-xl bg-brand-600 text-white font-bold shadow-lg hover:bg-brand-700 transition disabled:opacity-70">{imp?'Processing...':'Confirm Import'}</button>}</div></div>);
+            return (<div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-card text-center animate__animated animate__fadeInUp"><h2 className="font-bold text-xl mb-4">Import Excel</h2><input type="file" accept=".csv" onChange={handle} className="mb-4 block w-full text-sm"/><div className="flex gap-2"><button onClick={onBack} className="flex-1 border py-2 rounded">Back</button>{csv.length>0 && <button onClick={run} disabled={imp} className="flex-1 bg-brand-600 text-white py-2 rounded shadow">{imp?'...':'Confirm'}</button>}</div></div>);
         };
 
         ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App /></ErrorBoundary>);
