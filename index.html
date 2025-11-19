@@ -5,79 +5,151 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EyeDM - ระบบส่งต่อผู้ป่วย (v18.06 Restored)</title>
     
-    <!-- Libraries -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Google Fonts -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, limit } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+        // --- FIREBASE SETUP ---
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const COL_QUEUE = 'dr_queue'; // Collection Name
+
+        // Expose to window for React components
+        window.db = db;
+        window.auth = auth;
+        window.appId = appId;
+        window.firebaseFunctions = { collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, limit, signInAnonymously };
+
+        // Mount React
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+
     <script type="text/babel">
-        // --- CONFIGURATION ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
-            authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
-            projectId: "eyedm-3ebc8-7c029",
-            storageBucket: "eyedm-3ebc8-7c029.firebasestorage.app",
-            messagingSenderId: "327117771686",
-            appId: "1:327117771686:web:e66c7683e4613d5b8db567",
-            measurementId: "G-N48NPP7K9J"
+        // Access Firebase functions from window
+        const { collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, limit, signInAnonymously } = window.firebaseFunctions;
+        const db = window.db;
+        const auth = window.auth;
+        const appId = window.appId;
+
+        // --- ICONS COMPONENT ---
+        const Icon = ({ name, size = 18, className }) => {
+            const iconRef = React.useRef(null);
+            React.useEffect(() => {
+                if (window.lucide) window.lucide.createIcons({
+                    root: iconRef.current?.parentNode,
+                    nameAttr: 'data-lucide',
+                    attrs: {class: className, width: size, height: size}
+                });
+            }, [name, className, size]);
+            return <i ref={iconRef} data-lucide={name} className={className}></i>;
         };
-        
-        try { if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e) { console.error(e); }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        
-        // ใช้ ID เดิมของช่วงเวลานั้น
-        const APP_ID = "sisaket_prod_v7_master"; 
-        const COL_QUEUE = "dr_queue";   
+
+        // --- CONSTANTS ---
         const ADMIN_CODE = "10700";
 
-        const Icon = React.memo(({name, size=18, className}) => {
-            React.useEffect(()=>{if(window.lucide)window.lucide.createIcons()},[name]);
-            return <i data-lucide={name} width={size} height={size} className={className}></i>;
-        });
-
-        // --- AUTH SCREEN ---
-        const AuthScreen = () => {
+        // --- AUTH SCREEN (LOGICAL) ---
+        const AuthScreen = ({ onLogin }) => {
             const [pin, setPin] = React.useState('');
-            const [password, setPassword] = React.useState('');
             const [loading, setLoading] = React.useState(false);
             
             const handleAuth = async (e) => {
-                e.preventDefault(); setLoading(true);
-                const email = pin + "@sisaket-clinic.org";
-                try { await auth.signInWithEmailAndPassword(email, password); } 
-                catch (err) { 
-                    if(err.code==='auth/user-not-found') {
-                        try{await auth.createUserWithEmailAndPassword(email, password);}catch(e2){alert(e2.message);}
-                    } else alert("รหัสไม่ถูกต้อง");
-                } finally { setLoading(false); }
+                e.preventDefault(); 
+                setLoading(true);
+                // In this environment, we rely on Anonymous Auth for DB access, 
+                // but use the PIN for App logic (User Role).
+                try {
+                    // Ensure we are connected to Firebase
+                    if (!auth.currentUser) {
+                        await signInAnonymously(auth);
+                    }
+                    // Simulate login delay
+                    await new Promise(r => setTimeout(r, 800));
+                    
+                    if (pin.length >= 3) {
+                        onLogin(pin);
+                    } else {
+                        alert("รหัสเจ้าหน้าที่ต้องมีอย่างน้อย 3 หลัก");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("การเชื่อมต่อผิดพลาด กรุณาลองใหม่");
+                } finally { 
+                    setLoading(false); 
+                }
             };
+
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-lg text-center">
-                        <div className="mx-auto w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 mb-4"><Icon name="database" size={32}/></div>
-                        <h1 className="text-2xl font-bold text-gray-800 mb-6">EyeDM System (18.06)</h1>
+                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans">
+                    <div className="bg-white p-8 rounded-2xl w-full max-w-md shadow-xl text-center border border-slate-200 fade-in">
+                        <div className="mx-auto w-20 h-20 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 mb-6 border-4 border-teal-100">
+                            <Icon name="activity" size={40}/>
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-800 mb-2">EyeDM System</h1>
+                        <p className="text-slate-500 text-sm mb-8">Ver 18.06 (Restored)</p>
+                        
                         <form onSubmit={handleAuth} className="space-y-4">
-                            <input className="w-full p-3 border rounded-lg text-center tracking-widest" placeholder="รหัสเจ้าหน้าที่" value={pin} onChange={e=>setPin(e.target.value)} required autoFocus/>
-                            <input className="w-full p-3 border rounded-lg text-center" type="password" placeholder="รหัสผ่าน" value={password} onChange={e=>setPassword(e.target.value)} required/>
-                            <button disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 disabled:opacity-50">{loading?'Loading...':'เข้าสู่ระบบ'}</button>
+                            <div className="relative">
+                                <Icon name="user" size={20} className="absolute left-3 top-3.5 text-slate-400"/>
+                                <input 
+                                    className="w-full pl-10 p-3 border border-slate-300 rounded-xl text-center tracking-widest text-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition" 
+                                    placeholder="รหัสเจ้าหน้าที่" 
+                                    value={pin} 
+                                    onChange={e=>setPin(e.target.value)} 
+                                    required 
+                                    autoFocus
+                                    type="tel"
+                                />
+                            </div>
+                            <button 
+                                disabled={loading} 
+                                className="w-full bg-teal-600 text-white py-3.5 rounded-xl font-bold hover:bg-teal-700 disabled:opacity-50 transition shadow-lg shadow-teal-600/20 flex justify-center items-center gap-2"
+                            >
+                                {loading ? <span>กำลังเข้าสู่ระบบ...</span> : <span>เข้าใช้งาน</span>}
+                                {!loading && <Icon name="arrow-right" size={18}/>}
+                            </button>
                         </form>
+                        <div className="mt-6 text-xs text-slate-400">
+                            Si Sa Ket Provincial Public Health Office
+                        </div>
                     </div>
                 </div>
             );
@@ -85,90 +157,241 @@
 
         // --- MAIN APP ---
         function App() {
-            const [user, setUser] = React.useState(null);
+            const [appUser, setAppUser] = React.useState(null); // Logical User (PIN)
+            const [firebaseUser, setFirebaseUser] = React.useState(null); // DB Connection User
             const [role, setRole] = React.useState('PCU');
             const [view, setView] = React.useState('dashboard');
             const [queue, setQueue] = React.useState([]);
             const [editData, setEditData] = React.useState(null);
 
-            React.useEffect(() => auth.onAuthStateChanged(setUser), []);
-            
+            // 1. Establish Firebase Connection
             React.useEffect(() => {
-                if (!user) return;
-                // Load Queue (No pagination in original 18.06, but adding limit 100 for safety)
-                const unsubscribe = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
-                    .orderBy('createdAt', 'desc').limit(100)
-                    .onSnapshot(snapshot => {
-                        setQueue(snapshot.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() || new Date() })));
-                        setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
-                    });
+                const initAuth = async () => {
+                    if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+                        // Custom token logic if provided by env (skipped for simplicity in this single file demo, relying on anon)
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+                return auth.onAuthStateChanged(setFirebaseUser);
+            }, []);
+
+            // 2. Fetch Data
+            React.useEffect(() => {
+                if (!firebaseUser) return;
+
+                // STRICT PATH: artifacts/{appId}/public/data/{collectionName}
+                const q = collection(db, 'artifacts', appId, 'public', 'data', 'dr_queue');
+                
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const items = snapshot.docs.map(d => ({ 
+                        id: d.id, 
+                        ...d.data(),
+                        // Handle Timestamp conversion safely
+                        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date() 
+                    }));
+                    
+                    // Sort in JS to avoid composite index requirements in Firestore
+                    items.sort((a, b) => b.createdAt - a.createdAt);
+                    
+                    setQueue(items);
+                }, (error) => {
+                    console.error("Data fetch error:", error);
+                });
                 return () => unsubscribe();
-            }, [user]);
+            }, [firebaseUser]);
 
-            const handleDelete = async (id) => { if(confirm("ลบข้อมูล?")) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); };
+            const handleLogicalLogin = (pin) => {
+                setAppUser({ pin });
+                // Auto-set role based on logic (Simulated)
+                if (pin === ADMIN_CODE) {
+                    setRole('ADMIN');
+                } else if (pin.startsWith('2')) {
+                    setRole('HOSPITAL');
+                } else {
+                    setRole('PCU');
+                }
+            };
+
+            const handleDelete = async (id) => { 
+                if(confirm("ยืนยันการลบข้อมูล?")) {
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'dr_queue', id));
+                    } catch(e) {
+                        alert("Error deleting: " + e.message);
+                    }
+                }
+            };
             
-            const userPin = user?.email ? user.email.split('@')[0] : '';
-            const isAdmin = userPin === ADMIN_CODE;
+            const isAdmin = appUser?.pin === ADMIN_CODE;
 
-            if (!user) return <AuthScreen />;
+            if (!appUser) return <AuthScreen onLogin={handleLogicalLogin} />;
 
             return (
-                <div className="min-h-screen flex flex-col font-sans bg-slate-50">
-                    <nav className="bg-white shadow border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
+                <div className="min-h-screen flex flex-col font-sans bg-slate-50 text-slate-800">
+                    {/* Navbar */}
+                    <nav className="bg-white shadow-sm border-b border-slate-200 px-4 py-3 flex justify-between items-center sticky top-0 z-50">
                         <div className="flex gap-3 items-center">
-                            <div className={`p-2 rounded-lg text-white shadow ${role==='PCU'?'bg-teal-600':'bg-blue-600'}`}><Icon name={role==='PCU'?'home':'hospital'}/></div>
-                            <div><h1 className="font-bold text-lg text-gray-800">EyeDM <span className="text-gray-400 text-sm">| v18.06</span></h1><p className="text-xs text-gray-500">User: {userPin}</p></div>
+                            <div className={`p-2.5 rounded-xl text-white shadow-md transition-colors ${role==='HOSPITAL'?'bg-blue-600':'bg-teal-600'}`}>
+                                <Icon name={role==='HOSPITAL'?'hospital':'home'} size={24}/>
+                            </div>
+                            <div className="leading-tight">
+                                <h1 className="font-bold text-lg text-slate-800">EyeDM <span className="text-slate-400 text-sm font-normal">| v18.06</span></h1>
+                                <p className="text-xs text-slate-500 font-medium">User: {appUser.pin}</p>
+                            </div>
                         </div>
                         <div className="flex gap-2 items-center">
-                            {isAdmin && <button onClick={()=>setView('import')} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold gap-1 flex items-center"><Icon name="upload-cloud"/> Import</button>}
-                            <div className="hidden md:flex bg-gray-100 p-1 rounded-lg"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1.5 rounded-md text-sm ${role==='PCU'?'bg-white shadow font-bold text-teal-700':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1.5 rounded-md text-sm ${role==='HOSPITAL'?'bg-white shadow font-bold text-blue-700':'text-gray-500'}`}>Hospital</button></div>
-                            <button onClick={()=>auth.signOut()} className="p-2 text-red-500 hover:bg-red-50 rounded-full"><Icon name="log-out"/></button>
+                            {isAdmin && (
+                                <button onClick={()=>setView('import')} className="hidden md:flex px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold gap-1 items-center hover:bg-indigo-100">
+                                    <Icon name="upload-cloud" size={16}/> Import
+                                </button>
+                            )}
+                            
+                            <div className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                                <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-4 py-1.5 rounded-md text-sm transition-all ${role==='PCU' || role==='ADMIN'?'bg-white shadow-sm font-bold text-teal-700':'text-slate-500 hover:text-slate-700'}`}>PCU</button>
+                                <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-4 py-1.5 rounded-md text-sm transition-all ${role==='HOSPITAL'?'bg-white shadow-sm font-bold text-blue-700':'text-slate-500 hover:text-slate-700'}`}>Hospital</button>
+                            </div>
+                            
+                            <button onClick={()=>setAppUser(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition">
+                                <Icon name="log-out" size={20}/>
+                            </button>
                         </div>
                     </nav>
-                    <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-                        <div className="md:hidden flex bg-white p-1 rounded-lg shadow-sm mb-4 text-sm"><button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='PCU'?'bg-teal-50 text-teal-700 font-bold':'text-gray-500'}`}>PCU</button><button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2 rounded-md ${role==='HOSPITAL'?'bg-blue-50 text-blue-700 font-bold':'text-gray-500'}`}>Hospital</button></div>
 
-                        {view === 'dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('pcu_form')}} onEdit={p=>{setEditData(p);setView('pcu_form')}} onDelete={handleDelete} />}
-                        {view === 'pcu_form' && <PCUForm db={db} user={user} appId={APP_ID} initialData={editData} onBack={()=>setView('dashboard')} />}
-                        {view === 'hospital_form' && <HospitalForm db={db} user={user} appId={APP_ID} patient={editData} onBack={()=>setView('dashboard')} />} 
-                        {/* Note: In 18.06, Edit button usually routed to PCU form for both roles or specific forms based on logic. Here simplified to PCU form for edit based on request context, but Hospital can edit in Hospital Form if selected */}
-                        {view === 'import' && isAdmin && <ImportView db={db} user={user} appId={APP_ID} onBack={()=>setView('dashboard')} />}
+                    {/* Mobile Role Switcher */}
+                    <div className="md:hidden px-4 pt-4">
+                        <div className="flex bg-white p-1 rounded-xl shadow-sm border text-sm">
+                            <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`flex-1 py-2.5 rounded-lg flex justify-center items-center gap-2 ${role!=='HOSPITAL'?'bg-teal-50 text-teal-700 font-bold ring-1 ring-teal-100':'text-slate-500'}`}>
+                                <Icon name="home" size={14}/> PCU
+                            </button>
+                            <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`flex-1 py-2.5 rounded-lg flex justify-center items-center gap-2 ${role==='HOSPITAL'?'bg-blue-50 text-blue-700 font-bold ring-1 ring-blue-100':'text-slate-500'}`}>
+                                <Icon name="hospital" size={14}/> Hospital
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full">
+                        {view === 'dashboard' && (
+                            <Dashboard 
+                                role={role} 
+                                queue={queue} 
+                                onNew={()=>{setEditData(null);setView('pcu_form')}} 
+                                onEdit={p=>{setEditData(p);setView('pcu_form')}} 
+                                onDoctorEdit={p=>{setEditData(p);setView('hospital_form')}}
+                                onDelete={handleDelete} 
+                            />
+                        )}
+                        {view === 'pcu_form' && <PCUForm db={db} user={appUser} appId={appId} initialData={editData} onBack={()=>setView('dashboard')} />}
+                        {view === 'hospital_form' && <HospitalForm db={db} user={appUser} appId={appId} patient={editData} onBack={()=>setView('dashboard')} />} 
+                        {view === 'import' && isAdmin && <ImportView db={db} appId={appId} onBack={()=>setView('dashboard')} />}
                     </main>
                 </div>
             );
         }
 
         // --- DASHBOARD ---
-        const Dashboard = ({ role, queue, onNew, onEdit, onDelete }) => {
+        const Dashboard = ({ role, queue, onNew, onEdit, onDoctorEdit, onDelete }) => {
             const [search, setSearch] = React.useState('');
-            const filtered = queue.filter(p => (p.part1?.idCard||'').includes(search) || (p.part1?.name||'').includes(search));
+            
+            // Filter logic
+            const filtered = queue.filter(p => 
+                (p.part1?.idCard||'').includes(search) || 
+                (p.part1?.name||'').toLowerCase().includes(search.toLowerCase())
+            );
 
             return (
-                <div className="space-y-6 animate-in fade-in">
-                    <div className="flex justify-between items-end gap-4">
-                        <div className="relative flex-1 w-full max-w-md"><Icon name="search" className="absolute left-3 top-3 text-gray-400"/><input className="w-full pl-10 pr-4 py-2.5 rounded-xl border shadow-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="ค้นหา..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                        {role === 'PCU' && <button onClick={onNew} className="bg-teal-600 text-white px-6 py-2.5 rounded-xl shadow font-bold flex items-center gap-2 hover:bg-teal-700 transition"><Icon name="user-plus"/> ลงทะเบียนใหม่</button>}
+                <div className="space-y-6 fade-in">
+                    <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+                        <div className="relative flex-1 w-full md:max-w-md group">
+                            <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-teal-500 transition">
+                                <Icon name="search" size={20}/>
+                            </div>
+                            <input 
+                                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 shadow-sm outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition" 
+                                placeholder="ค้นหา ชื่อ หรือ เลขบัตร..." 
+                                value={search} 
+                                onChange={e=>setSearch(e.target.value)}
+                            />
+                        </div>
+                        {role !== 'HOSPITAL' && (
+                            <button onClick={onNew} className="bg-teal-600 text-white px-5 py-2.5 rounded-xl shadow-md shadow-teal-600/20 font-bold flex items-center justify-center gap-2 hover:bg-teal-700 transition active:scale-95">
+                                <Icon name="user-plus" size={20}/> ลงทะเบียนใหม่
+                            </button>
+                        )}
                     </div>
-                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 text-gray-600 border-b"><tr><th className="p-4">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 text-right">เครื่องมือ</th></tr></thead>
-                                <tbody className="divide-y">
+                                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
+                                    <tr>
+                                        <th className="p-4 w-32">วันที่</th>
+                                        <th className="p-4">ผู้ป่วย</th>
+                                        <th className="p-4 w-24">HbA1C</th>
+                                        <th className="p-4 w-32">สถานะ</th>
+                                        <th className="p-4 text-right w-40">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
                                     {filtered.map(p => (
-                                        <tr key={p.id} className="hover:bg-gray-50 transition">
-                                            <td className="p-4 text-gray-500">{p.createdAt.toLocaleDateString('th-TH')}</td>
-                                            <td className="p-4"><div className="font-bold text-teal-700 font-mono">{p.part1.idCard}</div><div className="text-gray-700">{p.part1.name}</div></td>
-                                            <td className="p-4">{p.part1.hba1c || '-'}</td>
-                                            <td className="p-4">
-                                                {p.status === 'Waiting' ? <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">รอตรวจ</span> : <span className="px-2 py-1 rounded bg-green-100 text-green-800 border border-green-200 text-xs">ตรวจแล้ว</span>}
+                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="p-4 text-slate-500 whitespace-nowrap text-xs">
+                                                {p.createdAt.toLocaleDateString('th-TH', {day: 'numeric', month: 'short', year: '2-digit'})}
                                             </td>
-                                            <td className="p-4 text-right flex justify-end gap-2">
-                                                <button onClick={()=>onEdit(p)} className="p-2 border rounded-lg hover:bg-blue-50 text-blue-600"><Icon name="pencil"/></button>
-                                                <button onClick={()=>onDelete(p.id)} className="p-2 border rounded-lg hover:bg-red-50 text-red-600"><Icon name="trash-2"/></button>
+                                            <td className="p-4">
+                                                <div className="font-bold text-slate-700 text-base flex items-center gap-2">
+                                                    {p.part1.name}
+                                                </div>
+                                                <div className="text-slate-400 text-xs font-mono bg-slate-100 inline-block px-1.5 py-0.5 rounded mt-1">
+                                                    {p.part1.idCard}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 font-medium">
+                                                {p.part1.hba1c ? (
+                                                    <span className={`${parseFloat(p.part1.hba1c)>8 ? 'text-red-600' : 'text-green-600'}`}>{p.part1.hba1c}</span>
+                                                ) : '-'}
+                                            </td>
+                                            <td className="p-4">
+                                                {p.status === 'Waiting' ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold">
+                                                        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div> รอตรวจ
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                                                        <Icon name="check-circle" size={12}/> ตรวจแล้ว
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                    {role !== 'HOSPITAL' ? (
+                                                        <>
+                                                        <button onClick={()=>onEdit(p)} className="p-2 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition" title="แก้ไข">
+                                                            <Icon name="pencil" size={16}/>
+                                                        </button>
+                                                        <button onClick={()=>onDelete(p.id)} className="p-2 border border-slate-200 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition" title="ลบ">
+                                                            <Icon name="trash-2" size={16}/>
+                                                        </button>
+                                                        </>
+                                                    ) : (
+                                                        <button onClick={()=>onDoctorEdit(p)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg shadow hover:bg-blue-700 font-bold transition">
+                                                            ตรวจตา
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
+                                    {filtered.length===0 && (
+                                        <tr>
+                                            <td colSpan="5" className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
+                                                <Icon name="inbox" size={48} className="text-slate-200 mb-2"/>
+                                                ไม่พบข้อมูลผู้ป่วย
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -177,118 +400,284 @@
             );
         };
 
-        // --- PCU FORM (Save Directly to Waiting) ---
+        // --- PCU FORM ---
         const PCUForm = ({ db, user, appId, initialData, onBack }) => {
             const [form, setForm] = React.useState({ idCard:'', name:'', hba1c:'', bp:'', weight:'', height:'', vaLeft:'', vaRight:'' });
-            const [suggestions, setSuggestions] = React.useState([]);
             const [saving, setSaving] = React.useState(false);
             const isEdit = !!initialData;
 
-            React.useEffect(()=>{if(initialData)setForm(initialData.part1)},[initialData]);
-
-            const handleId = async (e) => {
-                const v = e.target.value; setForm({...form, idCard:v});
-                if(v.length>=3 && !isEdit) {
-                    try {
-                        // Search in Queue (Old Logic)
-                        const s = await db.collection('artifacts').doc(appId).collection(COL_QUEUE).where('part1.idCard','>=',v).where('part1.idCard','<=',v+'\uf8ff').limit(5).get();
-                        // Filter duplicates by name
-                        const unique = []; const map = new Map();
-                        s.docs.forEach(d=>{ if(!map.has(d.data().part1.name)){ map.set(d.data().part1.name, true); unique.push(d.data().part1); }});
-                        setSuggestions(unique);
-                    } catch(e) {}
-                } else setSuggestions([]);
-            };
+            React.useEffect(()=>{ if(initialData) setForm(initialData.part1) }, [initialData]);
 
             const save = async () => {
-                if(!form.idCard) return alert("ระบุเลขบัตร");
-                setSaving(true);
+                if(!form.idCard || form.idCard.length !== 13) return alert("กรุณาระบุเลขบัตรประชาชน 13 หลักให้ถูกต้อง");
+                if(!form.name) return alert("กรุณาระบุชื่อ-สกุล");
                 
-                // Check Dup Today
-                if (!isEdit) {
-                    const today = new Date().toDateString();
-                    const q = await db.collection('artifacts').doc(appId).collection(COL_QUEUE).where('part1.idCard','==',form.idCard).get();
-                    if(q.docs.some(d=>(d.data().createdAt?.toDate?d.data().createdAt.toDate():new Date(d.data().createdAt)).toDateString()===today)) {
-                        alert("ข้อมูลซ้ำวันนี้"); setSaving(false); return;
-                    }
-                }
+                setSaving(true);
+                try {
+                    const payload = { 
+                        part1: form, 
+                        pcuId: user.pin, 
+                        updatedAt: serverTimestamp() 
+                    };
+                    
+                    // Strictly using System Prompt path structure
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'dr_queue');
 
-                const payload = { part1: form, pcuId: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-                if(isEdit) {
-                    await db.collection('artifacts').doc(appId).collection(COL_QUEUE).doc(initialData.id).update(payload);
-                } else {
-                    payload.status = 'Waiting'; // Direct to Waiting (18.06 logic)
-                    payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-                    await db.collection('artifacts').doc(appId).collection(COL_QUEUE).add(payload);
+                    if(isEdit) {
+                        await updateDoc(doc(colRef, initialData.id), payload);
+                    } else {
+                        payload.status = 'Waiting';
+                        payload.createdAt = serverTimestamp();
+                        await addDoc(colRef, payload);
+                    }
+                    onBack();
+                } catch(e) {
+                    console.error(e);
+                    alert("บันทึกไม่สำเร็จ: " + e.message);
+                } finally {
+                    setSaving(false);
                 }
-                onBack(); setSaving(false);
             };
 
             return (
-                <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow border border-teal-100 animate-in zoom-in">
-                    <div className="flex justify-between mb-6"><h2 className="font-bold text-xl text-teal-800">{isEdit?'แก้ไข':'ลงทะเบียนใหม่'}</h2><button onClick={onBack}><Icon name="x"/></button></div>
-                    <div className="space-y-5">
-                        <div className="relative">
-                            <label className="text-xs font-bold text-gray-500">เลขบัตรประชาชน</label>
-                            <input value={form.idCard} onChange={handleId} className="w-full p-3 border rounded-lg text-lg font-mono" placeholder="13 หลัก" maxLength="13"/>
-                            {suggestions.length>0 && <div className="absolute z-10 w-full bg-white border shadow-xl rounded-b-lg mt-1">{suggestions.map((s,i)=><div key={i} onClick={()=>{setForm({...s,idCard:s.idCard});setSuggestions([])}} className="p-2 hover:bg-gray-100 cursor-pointer text-sm">{s.idCard} - {s.name}</div>)}</div>}
+                <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden fade-in">
+                    <div className="bg-teal-600 p-4 text-white flex justify-between items-center">
+                        <h2 className="font-bold text-lg flex items-center gap-2"><Icon name="file-text"/> {isEdit?'แก้ไขข้อมูลผู้ป่วย':'ลงทะเบียนผู้ป่วยใหม่'}</h2>
+                        <button onClick={onBack} className="p-1 hover:bg-white/20 rounded-full transition"><Icon name="x"/></button>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">เลขบัตรประชาชน (13 หลัก)</label>
+                                <input value={form.idCard} onChange={e=>setForm({...form,idCard:e.target.value.replace(/\D/g,'')})} className="w-full p-3 border border-slate-300 rounded-xl text-xl font-mono tracking-widest focus:ring-2 focus:ring-teal-500 outline-none" placeholder="xxxxxxxxxxxxx" maxLength="13"/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">ชื่อ-นามสกุล</label>
+                                <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl text-lg focus:ring-2 focus:ring-teal-500 outline-none" placeholder="ระบุชื่อและนามสกุล"/>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="p-2 border rounded" placeholder="ชื่อ-สกุล"/><input value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})} className="p-2 border rounded" placeholder="HbA1C"/></div>
-                        <div className="grid grid-cols-3 gap-4"><input value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})} className="p-2 border rounded" placeholder="BP"/><input value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="p-2 border rounded" placeholder="Wt"/><input value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="p-2 border rounded" placeholder="Ht"/></div>
-                        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded border"><input value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})} className="p-2 border rounded bg-white" placeholder="VA L"/><input value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})} className="p-2 border rounded bg-white" placeholder="VA R"/></div>
-                        <div className="flex gap-3 mt-6"><button onClick={onBack} className="flex-1 border py-3 rounded">ยกเลิก</button><button onClick={save} disabled={saving} className="flex-1 bg-teal-600 text-white py-3 rounded font-bold shadow">{saving?'Saving...':'บันทึกและส่งตัว'}</button></div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">HbA1C</label>
+                                <div className="relative">
+                                    <input type="number" value={form.hba1c} onChange={e=>setForm({...form,hba1c:e.target.value})} className="w-full p-2.5 pl-3 pr-8 border border-slate-300 rounded-lg" placeholder="0.0"/>
+                                    <span className="absolute right-3 top-2.5 text-slate-400 text-sm">%</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">ความดัน (BP)</label>
+                                <input value={form.bp} onChange={e=>setForm({...form,bp:e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg" placeholder="120/80"/>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">น้ำหนัก (กก.)</label>
+                                <input type="number" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg"/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">ส่วนสูง (ซม.)</label>
+                                <input type="number" value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg"/>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <label className="block text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><Icon name="glasses" size={16}/> ระดับการมองเห็น (VA)</label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs text-slate-500 mb-1 text-center">ตาซ้าย (L)</label>
+                                    <input value={form.vaLeft} onChange={e=>setForm({...form,vaLeft:e.target.value})} className="w-full p-2 border border-slate-300 rounded bg-white text-center" placeholder="20/200"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-slate-500 mb-1 text-center">ตาขวา (R)</label>
+                                    <input value={form.vaRight} onChange={e=>setForm({...form,vaRight:e.target.value})} className="w-full p-2 border border-slate-300 rounded bg-white text-center" placeholder="20/200"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={onBack} className="flex-1 py-3 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50 transition">ยกเลิก</button>
+                            <button onClick={save} disabled={saving} className="flex-[2] bg-teal-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-70 transition flex justify-center items-center gap-2">
+                                {saving ? 'กำลังบันทึก...' : <><Icon name="save"/> บันทึกข้อมูล</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
-            );
-        };
-
-        // --- IMPORT VIEW ---
-        const ImportView = ({ db, user, appId, onBack }) => {
-            const [csvData, setCsvData] = React.useState([]);
-            const [encoding, setEncoding] = React.useState('TIS-620');
-            const [importing, setImporting] = React.useState(false);
-            const handleFile = (e) => { Papa.parse(e.target.files[0], { header: true, skipEmptyLines: true, encoding: encoding, complete: (res) => setCsvData(res.data) }); };
-            const startImport = async () => {
-                if(!csvData.length) return;
-                setImporting(true); let count=0;
-                for(let row of csvData) {
-                    const id = (row['เลข 13 หลัก']||row['pid']||'').toString().replace(/\D/g,'');
-                    if(id.length===13) {
-                        try {
-                            await db.collection('artifacts').doc(appId).collection(COL_QUEUE).add({
-                                part1: { idCard: id, name: row['ชื่อสกุล']||row['fullname']||'-', hba1c: row['HbA1C']||'-', bp: row['BP']||'-', source:'Import' },
-                                status: 'Waiting', // Direct to Waiting
-                                pcuId: 'AdminImport',
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                            count++;
-                        } catch(e) {}
-                    }
-                }
-                setImporting(false); alert(`Imported ${count}`);
-            };
-            return (
-                <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow"><h2 className="font-bold text-xl mb-4">Import Excel</h2><div className="mb-4"><select value={encoding} onChange={e=>setEncoding(e.target.value)} className="border p-2 mr-2"><option value="TIS-620">TIS-620</option><option value="UTF-8">UTF-8</option></select><input type="file" accept=".csv" onChange={handleFile}/></div>{csvData.length>0 && <button onClick={startImport} disabled={importing} className="bg-green-600 text-white px-6 py-2 rounded font-bold shadow">{importing?'...':'Confirm Import'}</button>}<button onClick={onBack} className="mt-4 text-gray-500 underline">Back</button></div>
             );
         };
 
         // --- HOSPITAL FORM ---
         const HospitalForm = ({ db, user, appId, patient, onBack }) => {
             const [p2, setP2] = React.useState(patient?.part2 || { cataract:'No', retinaFound:'Yes' });
-            const [findings, setFindings] = React.useState(patient?.findings || { Normal:{L:false,R:false} });
+            const [findings, setFindings] = React.useState(patient?.findings || { 
+                Normal:{L:false,R:false}, 
+                MicroAneurysm:{L:false,R:false},
+                HardExudate:{L:false,R:false},
+                Hemorrhage:{L:false,R:false}
+            });
             const [saving, setSaving] = React.useState(false);
+
             const toggle = (k,s) => setFindings(f=>({...f,[k]:{...f[k],[s]:!f[k][s]}}));
+            
             const save = async () => {
                 setSaving(true);
-                await db.collection('artifacts').doc(appId).collection(COL_QUEUE).doc(patient.id).update({part2: p2, findings, status: 'Completed', doctorName: user.email});
-                onBack(); setSaving(false);
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'dr_queue', patient.id), {
+                        part2: p2, 
+                        findings, 
+                        status: 'Completed', 
+                        doctorCode: user.pin,
+                        examinedAt: serverTimestamp()
+                    });
+                    onBack();
+                } catch(e) {
+                    alert("Error: " + e.message);
+                } finally {
+                    setSaving(false);
+                }
             };
+
             return (
-                <div className="flex gap-6"><div className="w-1/3 bg-white p-6 rounded shadow"><h3 className="font-bold mb-4">ข้อมูลผู้ป่วย</h3><p>ID: {patient?.part1?.idCard}</p><p>Name: {patient?.part1?.name}</p><button onClick={onBack} className="mt-4">Back</button></div><div className="w-2/3 bg-white p-6 rounded shadow"><h3 className="font-bold mb-4">ผลตรวจ</h3><div className="flex gap-4 mb-6"><button onClick={()=>setP2({...p2,retinaFound:'Yes'})} className={`px-4 py-1 border ${p2.retinaFound==='Yes'?'bg-blue-600 text-white':''}`}>เจอจอฯ</button><button onClick={()=>setP2({...p2,retinaFound:'No'})} className={`px-4 py-1 border ${p2.retinaFound==='No'?'bg-blue-600 text-white':''}`}>ไม่เจอ</button></div><table className="w-full text-sm border rounded mb-4"><thead className="bg-gray-100"><tr><th className="p-2">Condition</th><th className="p-2 w-10">L</th><th className="p-2 w-10">R</th></tr></thead><tbody>{['Normal','MicroAneurysm','HardExudate'].map(k=>(<tr key={k} className="border-t"><td className="p-2">{k}</td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/></td><td className="text-center border-l"><input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/></td></tr>))}</tbody></table><button onClick={save} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">{saving?'...':'บันทึกผล'}</button></div></div>
+                <div className="flex flex-col md:flex-row gap-6 fade-in">
+                    {/* Left: Patient Info Summary */}
+                    <div className="md:w-1/3 space-y-4">
+                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="bg-teal-100 p-2 rounded-full text-teal-700"><Icon name="user"/></div>
+                                <div>
+                                    <h3 className="font-bold text-lg leading-tight">{patient?.part1?.name}</h3>
+                                    <p className="text-sm text-slate-500 font-mono">{patient?.part1?.idCard}</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between border-b border-dashed pb-2"><span>HbA1C</span><span className="font-bold">{patient?.part1?.hba1c || '-'}</span></div>
+                                <div className="flex justify-between border-b border-dashed pb-2"><span>BP</span><span className="font-bold">{patient?.part1?.bp || '-'}</span></div>
+                                <div className="flex justify-between"><span>VA (L/R)</span><span className="font-bold">{patient?.part1?.vaLeft}/{patient?.part1?.vaRight}</span></div>
+                            </div>
+                        </div>
+                        <button onClick={onBack} className="w-full py-2 text-slate-500 hover:text-slate-700 flex items-center justify-center gap-2 text-sm"><Icon name="arrow-left" size={16}/> ย้อนกลับ</button>
+                    </div>
+
+                    {/* Right: Exam Form */}
+                    <div className="md:w-2/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 className="font-bold text-xl text-blue-800 mb-6 flex items-center gap-2 pb-4 border-b"><Icon name="eye"/> ผลการตรวจจอประสาทตา</h3>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-bold text-slate-700 mb-2">การมองเห็นจอประสาทตา</label>
+                            <div className="flex gap-3">
+                                {['Yes', 'No'].map(opt => (
+                                    <button key={opt} onClick={()=>setP2({...p2,retinaFound:opt})} className={`flex-1 py-2 rounded-lg border text-sm font-bold transition ${p2.retinaFound===opt ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300'}`}>
+                                        {opt === 'Yes' ? 'มองเห็นชัดเจน' : 'มองไม่เห็น/มีสิ่งบดบัง'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="border rounded-xl overflow-hidden mb-6">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-100 text-slate-700 font-bold">
+                                    <tr>
+                                        <th className="p-3 text-left">ความผิดปกติที่พบ</th>
+                                        <th className="p-3 text-center w-20 border-l border-slate-200">ซ้าย (L)</th>
+                                        <th className="p-3 text-center w-20 border-l border-slate-200">ขวา (R)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {[
+                                        {k:'Normal', l:'ปกติ (Normal)'},
+                                        {k:'MicroAneurysm', l:'จุดเลือดออก (Micro Aneurysm)'},
+                                        {k:'HardExudate', l:'คราบไขมัน (Hard Exudate)'},
+                                        {k:'Hemorrhage', l:'เลือดออก (Hemorrhage)'}
+                                    ].map(({k, l}) => (
+                                        <tr key={k} className="hover:bg-slate-50">
+                                            <td className="p-3 text-slate-700">{l}</td>
+                                            <td className="p-3 text-center border-l border-slate-100">
+                                                <input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.L} onChange={()=>toggle(k,'L')}/>
+                                            </td>
+                                            <td className="p-3 text-center border-l border-slate-100">
+                                                <input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" checked={findings[k]?.R} onChange={()=>toggle(k,'R')}/>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <button onClick={save} disabled={saving} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-70 transition flex justify-center items-center gap-2">
+                            {saving ? 'กำลังบันทึก...' : <><Icon name="check-circle"/> ยืนยันผลตรวจ</>}
+                        </button>
+                    </div>
+                </div>
             );
         };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        // --- IMPORT VIEW ---
+        const ImportView = ({ db, appId, onBack }) => {
+            const [csvData, setCsvData] = React.useState([]);
+            const [importing, setImporting] = React.useState(false);
+            
+            const handleFile = (e) => { 
+                Papa.parse(e.target.files[0], { 
+                    header: true, 
+                    skipEmptyLines: true, 
+                    complete: (res) => setCsvData(res.data) 
+                }); 
+            };
+            
+            const startImport = async () => {
+                if(!csvData.length) return;
+                setImporting(true); 
+                let count=0;
+                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'dr_queue');
+
+                for(let row of csvData) {
+                    const id = (row['เลข 13 หลัก']||row['pid']||'').toString().replace(/\D/g,'');
+                    if(id.length===13) {
+                        try {
+                            await addDoc(colRef, {
+                                part1: { 
+                                    idCard: id, 
+                                    name: row['ชื่อสกุล']||row['fullname']||'-', 
+                                    hba1c: row['HbA1C']||'-', 
+                                    bp: row['BP']||'-', 
+                                    source:'Import' 
+                                },
+                                status: 'Waiting',
+                                pcuId: 'AdminImport',
+                                createdAt: serverTimestamp()
+                            });
+                            count++;
+                        } catch(e) { console.warn(e); }
+                    }
+                }
+                setImporting(false); 
+                alert(`นำเข้าข้อมูลสำเร็จ ${count} รายการ`);
+                onBack();
+            };
+            
+            return (
+                <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-lg border border-slate-200 text-center fade-in">
+                    <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="upload-cloud" size={32}/></div>
+                    <h2 className="font-bold text-xl mb-2">นำเข้าข้อมูลผู้ป่วย (CSV)</h2>
+                    <p className="text-slate-500 mb-6 text-sm">รองรับไฟล์ CSV ที่มีคอลัมน์: pid, fullname, HbA1C</p>
+                    
+                    <div className="mb-6 p-6 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 transition relative">
+                        <input type="file" accept=".csv" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                        <div className="text-slate-500">
+                            {csvData.length > 0 ? <span className="text-teal-600 font-bold">เลือกแล้ว {csvData.length} รายการ</span> : "คลิกเพื่อเลือกไฟล์ CSV"}
+                        </div>
+                    </div>
+                    
+                    {csvData.length > 0 && (
+                        <button onClick={startImport} disabled={importing} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow hover:bg-indigo-700 mb-4">
+                            {importing ? 'กำลังนำเข้า...' : 'ยืนยันการนำเข้า'}
+                        </button>
+                    )}
+                    <button onClick={onBack} className="text-slate-400 hover:text-slate-600 text-sm">ยกเลิก</button>
+                </div>
+            );
+        };
     </script>
 </body>
 </html>
