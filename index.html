@@ -50,14 +50,45 @@
 
         const DB_COLLECTION = db.collection('artifacts').doc('diabetic-sisaket-v4').collection('public_patients');
 
+        // --- Constants ---
+        const VA_OPTIONS = ["20/20 (ปกติ)", "20/40", "20/50", "20/70", "20/200", "CF", "HM", "PL", "NPL"];
+        
+        const DR_GRADING_OPTIONS = [
+            'No DR', 
+            'Mild NPDR', 
+            'Moderate NPDR', 
+            'Severe NPDR', 
+            'PDR'
+        ];
+
+        const INITIAL_FINDINGS = {
+            MicroAneurysm: {L:false,R:false, name: 'MicroAneurysm (MA)'}, 
+            Hemorrhage: {L:false,R:false, name: 'Hemorrhage (จุดเลือดออก)'},
+            HardExudate: {L:false,R:false, name: 'Hard Exudate (HE)'},
+            CottonWool: {L:false,R:false, name: 'Cotton Wool Spot (CWS)'},
+            VenousBeading: {L:false,R:false, name: 'Venous Beading (VB)'},
+            IRMA: {L:false,R:false, name: 'IRMA'},
+            Neovascularization: {L:false,R:false, name: 'Neovascularization (NV)'},
+        };
+
+        // CSV Required Headers
+        const REQUIRED_HEADERS = ['idCard', 'name', 'age', 'hba1c', 'bp', 'vaRight', 'vaLeft'];
+
+        // --- Helper Function: Check if date is today ---
+        const isToday = (date) => {
+            if (!date) return false;
+            const today = new Date();
+            return date.getDate() === today.getDate() &&
+                   date.getMonth() === today.getMonth() &&
+                   date.getFullYear() === today.getFullYear();
+        };
+
         // --- Components ---
         const Icon = ({ name, size = 20, className = "" }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
             const iconName = name.toLowerCase().replace(/([A-Z])/g, "-$1").replace(/^-/, ""); 
             return <i data-lucide={iconName} width={size} height={size} className={className}></i>;
         };
-
-        const VA_OPTIONS = ["20/20 (ปกติ)", "20/40", "20/50", "20/70", "20/200", "CF", "HM", "PL", "NPL"];
 
         // --- Auth Screen (5-Digit Login) ---
         const AuthScreen = () => {
@@ -67,7 +98,6 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
 
-            // เทคนิค: แปลงเลข 5 หลักเป็นอีเมลหลอกๆ เพื่อให้ Firebase ยอมรับ
             const DUMMY_DOMAIN = "@eyedm.com";
 
             const handleSubmit = async (e) => {
@@ -81,7 +111,7 @@
                 setLoading(true);
                 setError('');
 
-                const fakeEmail = unitId + DUMMY_DOMAIN; // เช่น 10700@eyedm.com
+                const fakeEmail = unitId + DUMMY_DOMAIN;
 
                 try {
                     if (isRegister) {
@@ -171,9 +201,218 @@
             );
         };
 
+        // --- CSV Parsing Function ---
+        const parseCSV = (csvText) => {
+            const lines = csvText.trim().split('\n');
+            if (lines.length === 0) return { headers: [], data: [] };
+
+            // Trim headers and handle potential surrounding quotes (simple case)
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '') continue; // Skip empty lines
+                
+                // Simple splitting by comma (may not handle commas inside quotes)
+                const values = lines[i].split(','); 
+                const obj = {};
+                
+                // Map values to headers
+                headers.forEach((header, index) => {
+                    if (header && values[index] !== undefined) {
+                        // Trim and remove surrounding quotes
+                        obj[header] = values[index].trim().replace(/"/g, ''); 
+                    }
+                });
+                data.push(obj);
+            }
+            return { headers, data };
+        };
+
+        // --- Bulk Import Screen (CSV) ---
+        const BulkImportScreen = ({ onBack, userId }) => {
+            const [file, setFile] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [message, setMessage] = useState(null);
+            
+            const handleFileChange = (e) => {
+                const selectedFile = e.target.files[0];
+                if (selectedFile) {
+                    setFile(selectedFile);
+                    setMessage(null);
+                }
+            };
+
+            const handleImport = async () => {
+                if (!file) {
+                    setMessage({ type: 'error', text: 'กรุณาเลือกไฟล์ CSV ก่อน' });
+                    return;
+                }
+
+                setLoading(true);
+                let successCount = 0;
+                let failureCount = 0;
+                let patientData = [];
+                let headers = [];
+
+                try {
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        const csvText = event.target.result;
+                        const parsed = parseCSV(csvText);
+                        patientData = parsed.data;
+                        headers = parsed.headers;
+
+                        // 1. Validate Headers
+                        const missingHeaders = REQUIRED_HEADERS.filter(h => !headers.includes(h));
+                        if (missingHeaders.length > 0) {
+                            setMessage({ type: 'error', text: `Header ไม่ครบ: ขาด ${missingHeaders.join(', ')}` });
+                            setLoading(false);
+                            return;
+                        }
+                        
+                        if (patientData.length === 0) {
+                            setMessage({ type: 'error', text: 'ไม่พบข้อมูลผู้ป่วยในไฟล์ (นับจากบรรทัดที่ 2)' });
+                            setLoading(false);
+                            return;
+                        }
+
+                        // 2. Process Batches
+                        const chunkSize = 499; 
+                        let batches = [];
+                        for (let i = 0; i < patientData.length; i += chunkSize) {
+                            batches.push(patientData.slice(i, i + chunkSize));
+                        }
+
+                        for (const chunk of batches) {
+                            const currentBatch = db.batch();
+                            
+                            for (const item of chunk) {
+                                // Basic validation for mandatory fields in data row
+                                if (!item.idCard || !item.name || String(item.idCard).length !== 13) {
+                                    failureCount++;
+                                    continue; 
+                                }
+
+                                const newDocRef = DB_COLLECTION.doc(); 
+                                
+                                currentBatch.set(newDocRef, {
+                                    part1: {
+                                        idCard: String(item.idCard).trim(), 
+                                        name: item.name || 'ไม่ระบุชื่อ',
+                                        age: String(item.age || ''),
+                                        hba1c: String(item.hba1c || ''),
+                                        bp: String(item.bp || ''),
+                                        vaRight: item.vaRight || '',
+                                        vaLeft: item.vaLeft || '',
+                                    },
+                                    status: 'Waiting', 
+                                    senderId: userId,
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                successCount++;
+                            }
+                            
+                            await currentBatch.commit();
+                        }
+                        
+                        setLoading(false);
+                        setMessage({ 
+                            type: 'success', 
+                            text: `นำเข้าข้อมูลสำเร็จ: ${successCount} รายการ (จากทั้งหมด ${patientData.length} แถว)` 
+                        });
+                        setFile(null);
+                    };
+
+                    reader.onerror = () => {
+                        setMessage({ type: 'error', text: 'ไม่สามารถอ่านไฟล์ได้' });
+                        setLoading(false);
+                    };
+
+                    reader.readAsText(file);
+
+                } catch (e) {
+                    setLoading(false);
+                    setMessage({ type: 'error', text: `เกิดข้อผิดพลาดรุนแรง: ${e.message}` });
+                }
+            };
+            
+            const HEADER_EXAMPLE = REQUIRED_HEADERS.join(', ');
+
+            return (
+                <div className="max-w-4xl mx-auto animate-fade-in pb-20">
+                    <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800 transition-colors"><Icon name="arrow-left" size={16}/> กลับหน้า Dashboard</button>
+                    <div className="bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
+                        <div className="bg-blue-600 p-4 text-white flex items-center gap-2">
+                            <Icon name="upload" className="text-white"/>
+                            <h2 className="font-bold">นำเข้าข้อมูลผู้ป่วยจำนวนมาก (CSV Import)</h2>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            
+                            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                                <h3 className="font-bold text-yellow-800 text-sm mb-2 flex items-center gap-2"><Icon name="file-text" size={16}/> รูปแบบไฟล์ CSV ที่ถูกต้อง</h3>
+                                <p className="text-xs text-gray-700 mb-2">ไฟล์จะต้องมี Header แถวแรกเรียงตามนี้ (คั่นด้วย comma `,`):</p>
+                                <pre className="bg-white p-3 rounded text-sm font-mono overflow-x-auto border text-gray-700 font-semibold">{HEADER_EXAMPLE}</pre>
+                                <p className="text-xs text-yellow-700 mt-2">* ต้องมีฟิลด์ `idCard` (13 หลัก) และ `name` เป็นอย่างน้อย</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">เลือกไฟล์ CSV</label>
+                                <div className="flex items-center gap-4 p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                                    <input
+                                        type="file"
+                                        accept=".csv"
+                                        onChange={handleFileChange}
+                                        className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                        disabled={loading}
+                                    />
+                                    {file && <span className="text-sm font-medium text-gray-700">{file.name}</span>}
+                                </div>
+                            </div>
+
+                            {message && (
+                                <div className={`p-3 rounded-lg text-sm border flex items-center gap-2 ${
+                                    message.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'
+                                }`}>
+                                    <Icon name={message.type === 'error' ? 'x-circle' : 'check-circle'} size={16}/>
+                                    {message.text}
+                                </div>
+                            )}
+
+                            <button onClick={handleImport} disabled={loading || !file} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
+                                {loading ? <><Icon name="loader-2" className="animate-spin" size={20}/> กำลังนำเข้าข้อมูล (โปรดรอ)...</> : 'เริ่มนำเข้าข้อมูล (Bulk Import)'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
         // --- Dashboard (Main) ---
-        const Dashboard = ({ role, patients, onNew, onSelect }) => {
+        const Dashboard = ({ role, patients, onNew, onSelect, onBulkImport }) => {
             const [term, setTerm] = useState('');
+            
+            // --- Stats Calculation Logic ---
+            const stats = useMemo(() => {
+                const todayPatients = patients.filter(p => isToday(p.createdAt));
+                
+                return {
+                    overall: {
+                        total: patients.length,
+                        waiting: patients.filter(p => p.status === 'Waiting').length,
+                        completed: patients.filter(p => p.status === 'Completed').length
+                    },
+                    today: {
+                        total: todayPatients.length,
+                        waiting: todayPatients.filter(p => p.status === 'Waiting').length,
+                        completed: todayPatients.filter(p => p.status === 'Completed').length
+                    }
+                };
+            }, [patients]);
+            // --- End Stats Calculation Logic ---
+
+
             const filtered = useMemo(() => patients.filter(p => (p.part1?.idCard+p.part1?.name).includes(term)), [patients, term]);
             
             const handleDelete = async (id) => {
@@ -182,18 +421,43 @@
 
             return (
                 <div className="space-y-6 animate-fade-in pb-20">
-                    <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-                        <div>
-                            <h2 className="text-2xl font-bold flex items-center gap-2 text-slate-800">
-                                <Icon name={role==='PCU'?'home':'building-2'} className={role==='PCU'?'text-green-600':'text-blue-600'} />
-                                {role === 'PCU' ? 'ทะเบียนผู้ป่วย (รพ.สต.)' : 'รายการส่งตัว (Hospital)'}
-                            </h2>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
-                                <p className="text-xs text-green-600 font-bold">Online Real-time</p>
+                    
+                    {/* STATS SECTION */}
+                    <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
+                        <div className="mb-3 border-b pb-2 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Icon name="bar-chart-2" size={20}/> สถิติการตรวจ</h3>
+                            <span className="text-xs text-gray-500">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 border-b pb-4 mb-4">
+                            {/* Today Stats */}
+                            <div className="space-y-2">
+                                <h4 className="text-sm font-bold text-blue-600 border-b border-blue-100 pb-1">📊 วันนี้</h4>
+                                <StatItem label="ส่งตรวจทั้งหมด" value={stats.today.total} color="text-gray-700"/>
+                                <StatItem label="รอตรวจ" value={stats.today.waiting} color="text-orange-600" bg="bg-orange-50"/>
+                                <StatItem label="ตรวจเสร็จ" value={stats.today.completed} color="text-green-600" bg="bg-green-50"/>
+                            </div>
+                            {/* Overall Stats */}
+                            <div className="space-y-2 border-l pl-4">
+                                <h4 className="text-sm font-bold text-gray-500 border-b pb-1">📅 ภาพรวมทั้งหมด</h4>
+                                <StatItem label="เคสรวม" value={stats.overall.total} color="text-gray-700"/>
+                                <StatItem label="รอตรวจ" value={stats.overall.waiting} color="text-orange-400"/>
+                                <StatItem label="ตรวจเสร็จ" value={stats.overall.completed} color="text-green-400"/>
                             </div>
                         </div>
+                    </div>
+                    {/* END STATS SECTION */}
+
+
+                    <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+                        <div>
+                            <h2 className="2xl font-bold flex items-center gap-2 text-slate-800">
+                                <Icon name={role==='PCU'?'home':'building-2'} className={role==='PCU'?'text-green-600':'text-blue-600'} />
+                                {role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว'}
+                            </h2>
+                        </div>
                         {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex gap-2 font-bold items-center"><Icon name="plus-circle" size={18}/> เพิ่มผู้ป่วยใหม่</button>}
+                        {role === 'HOSPITAL' && <button onClick={onBulkImport} className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow flex gap-2 font-bold items-center hover:bg-purple-700 transition-colors"><Icon name="upload" size={18}/> นำเข้าข้อมูล</button>}
                     </div>
 
                     <div className="bg-white p-2 rounded-xl shadow border flex gap-2 items-center">
@@ -238,9 +502,41 @@
             );
         };
 
-        const PCUForm = ({ onBack, userId }) => {
+        // Helper component for stat cards
+        const StatItem = ({ label, value, color, bg }) => (
+            <div className={`flex justify-between items-center p-2 rounded-lg ${bg}`}>
+                <span className="text-xs font-medium text-gray-600">{label}</span>
+                <span className={`text-lg font-extrabold ${color}`}>{value}</span>
+            </div>
+        );
+        
+        const PCUForm = ({ onBack, userId, existingPatients }) => {
             const [form, setForm] = useState({ idCard:'', name:'', age:'', hba1c:'', bp:'', vaRight:'', vaLeft:'' });
             const [saving, setSaving] = useState(false);
+            const [foundOld, setFoundOld] = useState(false); 
+
+            // --- Auto-fill Logic: ดึงข้อมูลจากเลขบัตรประชาชน ---
+            useEffect(() => {
+                if(form.idCard.length === 13 && existingPatients) {
+                    const old = existingPatients
+                        .filter(p => p.part1?.idCard === form.idCard)
+                        .sort((a, b) => b.createdAt - a.createdAt)[0]; 
+                    
+                    if(old) {
+                        setFoundOld(true);
+                        setForm(f => ({
+                            ...f, 
+                            name: old.part1.name || '', 
+                            age: old.part1.age || '',
+                        }));
+                    } else {
+                        setFoundOld(false);
+                    }
+                } else {
+                     setFoundOld(false);
+                }
+            }, [form.idCard, existingPatients]);
+            // --- End Auto-fill Logic ---
             
             const save = async () => {
                 if(!form.idCard) return alert("กรุณากรอกเลขบัตรประชาชน");
@@ -260,7 +556,16 @@
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase">เลขบัตรประชาชน</label>
-                                <input className="w-full p-3 border rounded-lg text-lg font-mono tracking-wide focus:ring-2 focus:ring-green-500 outline-none" maxLength="13" placeholder="xxxxxxxxxxxxx" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} />
+                                <div className={`relative p-3 rounded-lg border-2 transition-all ${foundOld ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                                    <input 
+                                        className="w-full text-lg font-mono tracking-wide focus:ring-0 outline-none bg-transparent" 
+                                        maxLength="13" 
+                                        placeholder="xxxxxxxxxxxxx" 
+                                        value={form.idCard} 
+                                        onChange={e=>setForm({...form, idCard:e.target.value})} 
+                                    />
+                                    {foundOld && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-700 text-xs font-bold flex items-center gap-1 animate-fade-in"><Icon name="history" size={16}/> พบประวัติเดิม</span>}
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs font-bold text-gray-500">ชื่อ-สกุล</label><input className="w-full p-2 border rounded" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} /></div>
@@ -285,37 +590,122 @@
         };
 
         const HospitalForm = ({ patient, onBack }) => {
-            const [p2, setP2] = useState(patient.part2 || { cataract:'No' });
+            // Part 2: State Initialization with expanded findings and grading
+            const getInitialFindings = () => {
+                const initial = {};
+                Object.keys(INITIAL_FINDINGS).forEach(key => {
+                    initial[key] = patient.findings?.[key] || INITIAL_FINDINGS[key];
+                });
+                return initial;
+            };
+
+            const [p2, setP2] = useState(patient.part2 || { 
+                cataract:'No', 
+                retinaFound: 'Yes',
+                dilation: 'No',
+                drGradeL: 'No DR', // New
+                drGradeR: 'No DR', // New
+                advice: '' // New
+            });
+            const [findings, setFindings] = useState(getInitialFindings());
             const [saving, setSaving] = useState(false);
+
+            const toggle = (k,s) => setFindings(f => ({...f, [k]:{...f[k], [s]:!f[k][s]}}));
+
             const save = async () => {
                 setSaving(true);
-                try { await DB_COLLECTION.doc(patient.id).update({ part2: p2, status: 'Completed' }); onBack(); } catch(e){alert(e.message); setSaving(false);}
+                try { 
+                    await DB_COLLECTION.doc(patient.id).update({ 
+                        part2: p2, 
+                        findings, 
+                        status: 'Completed',
+                        examinedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }); 
+                    onBack(); 
+                } catch(e){alert(e.message); setSaving(false);}
             };
+            
             return (
-                <div className="max-w-xl mx-auto animate-fade-in pb-20">
-                    <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ</button>
-                    <div className="bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
-                        <div className="bg-blue-600 p-4 text-white flex items-center gap-2">
-                            <Icon name="eye" className="text-white"/>
-                            <h2 className="font-bold">บันทึกผลตรวจ (Hospital)</h2>
+                <div className="flex flex-col lg:flex-row gap-4 animate-fade-in pb-20">
+                    {/* Patient Info (Part 1 Summary) */}
+                    <div className="w-full lg:w-1/3">
+                        <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ</button>
+                        <div className="bg-white p-4 rounded-xl shadow border">
+                            <h3 className="font-bold text-lg border-b pb-2 mb-2 flex items-center gap-2 text-gray-700"><Icon name="user" size={20}/> ข้อมูลผู้ป่วย (Part 1)</h3>
+                            <div className="font-mono text-blue-600 font-bold text-lg">{patient.part1.idCard}</div>
+                            <div className="text-xl mb-2 font-bold text-gray-800">{patient.part1.name}</div>
+                            <div className="bg-gray-50 p-3 rounded text-sm space-y-2">
+                                <div className="flex justify-between"><span>VA:</span> <b>{patient.part1.vaRight}/{patient.part1.vaLeft}</b></div>
+                                <div className="flex justify-between"><span>HbA1C:</span> <b>{patient.part1.hba1c}</b></div>
+                                <div className="flex justify-between"><span>BP:</span> <b>{patient.part1.bp}</b></div>
+                            </div>
                         </div>
+                    </div>
+
+                    {/* Examination Form (Part 2 Detail) */}
+                    <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
+                        <div className="bg-blue-600 p-4 text-white font-bold flex items-center gap-2"><Icon name="eye" className="text-white"/> บันทึกผลตรวจจอประสาทตา (Part 2)</div>
                         <div className="p-6 space-y-6">
-                            <div className="bg-blue-50 p-4 rounded border border-blue-100">
-                                <div className="text-xs text-blue-500 font-bold uppercase mb-1">ผู้ป่วย</div>
-                                <div className="font-bold text-xl text-blue-700">{patient.part1.name}</div>
-                                <div className="font-mono text-sm text-gray-600">{patient.part1.idCard}</div>
-                                <div className="mt-2 text-sm flex gap-3">
-                                    <span className="bg-white px-2 py-1 rounded border">VA: {patient.part1.vaRight}/{patient.part1.vaLeft}</span>
-                                    <span className="bg-white px-2 py-1 rounded border">HbA1C: {patient.part1.hba1c}</span>
+                            
+                            {/* General Exam Status */}
+                            <div className="bg-blue-50 p-4 rounded border border-blue-100 space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="font-medium text-blue-700">เป็นต้อกระจก (Cataract)?</span>
+                                    <div className="flex gap-2">
+                                        {['Yes','No'].map(opt => (
+                                            <button key={opt} onClick={()=>setP2({...p2, cataract:opt})} className={`px-3 py-1 rounded text-xs border font-bold ${p2.cataract===opt ? (opt==='Yes'?'bg-red-500 text-white':'bg-green-500 text-white') : 'bg-white text-gray-600'}`}>{opt}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="font-medium text-blue-700">ใช้ยาขยายม่านตา (Dilation)?</span>
+                                    <div className="flex gap-2">
+                                        {['Yes','No'].map(opt => (
+                                            <button key={opt} onClick={()=>setP2({...p2, dilation:opt})} className={`px-3 py-1 rounded text-xs border font-bold ${p2.dilation===opt ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}`}>{opt}</button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex justify-between items-center p-2">
-                                <span className="font-bold text-gray-700">ต้อกระจก (Cataract)?</span>
-                                <div className="flex gap-2">
-                                    <button onClick={()=>setP2({cataract:'Yes'})} className={`px-4 py-2 rounded border font-bold transition-all ${p2.cataract==='Yes'?'bg-red-500 text-white border-red-600 shadow-md':'bg-white text-gray-500 hover:bg-gray-50'}`}>Yes</button>
-                                    <button onClick={()=>setP2({cataract:'No'})} className={`px-4 py-2 rounded border font-bold transition-all ${p2.cataract==='No'?'bg-green-500 text-white border-green-600 shadow-md':'bg-white text-gray-500 hover:bg-gray-50'}`}>No</button>
+
+                            {/* Findings Checklist */}
+                            <div>
+                                <h4 className="font-bold text-sm text-gray-700 mb-2">Findings Checklist (L/R)</h4>
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100"><tr><th className="p-2 text-left">Condition</th><th className="w-12 text-center">L</th><th className="w-12 text-center">R</th></tr></thead>
+                                        <tbody className="divide-y">
+                                            {Object.keys(INITIAL_FINDINGS).map(k => (
+                                                <tr key={k} className="hover:bg-gray-50/50">
+                                                    <td className="p-2">{INITIAL_FINDINGS[k].name}</td>
+                                                    <td className="text-center bg-gray-50"><input type="checkbox" checked={findings[k]?.L || false} onChange={()=>toggle(k,'L')}/></td>
+                                                    <td className="text-center bg-gray-50"><input type="checkbox" checked={findings[k]?.R || false} onChange={()=>toggle(k,'R')}/></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
+                            {/* DR Grading */}
+                            <div className="bg-green-50 p-4 rounded border border-green-100">
+                                <h4 className="font-bold text-sm text-green-700 uppercase mb-2">Diabetic Retinopathy (DR) Grading</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1">Right (ขวา)</label>
+                                        <select value={p2.drGradeR} onChange={e=>setP2({...p2, drGradeR:e.target.value})} className="p-2 border rounded bg-white w-full text-sm"><option value="">-- เลือกเกรด --</option>{DR_GRADING_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1">Left (ซ้าย)</label>
+                                        <select value={p2.drGradeL} onChange={e=>setP2({...p2, drGradeL:e.target.value})} className="p-2 border rounded bg-white w-full text-sm"><option value="">-- เลือกเกรด --</option>{DR_GRADING_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Advice */}
+                            <div>
+                                <label className="text-xs font-bold text-gray-700 uppercase block mb-1">คำแนะนำ / Follow-up Plan</label>
+                                <textarea rows="2" value={p2.advice} onChange={e=>setP2({...p2, advice:e.target.value})} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm" placeholder="เช่น นัดติดตาม 6 เดือน, ส่งต่อไปรักษาด้วยเลเซอร์"></textarea>
+                            </div>
+
                             <button onClick={save} disabled={saving} className="w-full bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-700 transition-all shadow-md disabled:opacity-50">{saving?'กำลังบันทึก...':'ยืนยันผลการตรวจ'}</button>
                         </div>
                     </div>
@@ -341,6 +731,7 @@
 
             useEffect(() => {
                 if(!user) return;
+                // ดึงข้อมูลทั้งหมด
                 return DB_COLLECTION.orderBy('createdAt', 'desc').onSnapshot(s => {
                     setPatients(s.docs.map(d => ({id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate()})));
                     if(window.lucide) setTimeout(()=>window.lucide.createIcons(), 100);
@@ -350,9 +741,23 @@
             if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600 font-bold animate-pulse">Connecting...</div>;
             if (!user) return <AuthScreen />;
 
-            // ตัดเอาเฉพาะชื่อหน่วยงาน (เลข 5 หลัก) มาแสดง
+            // กำหนด Role และกรองข้อมูลตามสิทธิ์
             const unitName = user.email ? user.email.split('@')[0] : 'Unknown';
             const role = unitName === '10700' ? 'HOSPITAL' : 'PCU';
+            
+            // --- Dashboard Filtering Logic (สำหรับแสดงผลในตาราง) ---
+            const dashboardPatients = useMemo(() => {
+                // HOSPITAL (10700) sees all data
+                if (role === 'HOSPITAL') {
+                    return patients;
+                } 
+                
+                // PCU sees only their own submitted cases (filtered by senderId, which is user.uid)
+                return patients.filter(p => p.senderId === user.uid);
+
+            }, [patients, role, user]);
+            // --- End Dashboard Filtering Logic ---
+
 
             return (
                 <div className="max-w-4xl mx-auto p-4">
@@ -367,9 +772,12 @@
                         </div>
                     </nav>
                     
-                    {view === 'dashboard' && <Dashboard role={role} patients={patients} onNew={()=>setView('pcu')} onSelect={p=>{setSelectedPatient(p); setView('hospital');}} />}
-                    {view === 'pcu' && <PCUForm onBack={()=>setView('dashboard')} userId={user.uid} />}
+                    {/* ส่งข้อมูลที่ถูกกรองแล้วไปที่ Dashboard */}
+                    {view === 'dashboard' && <Dashboard role={role} patients={dashboardPatients} onNew={()=>setView('pcu')} onSelect={p=>{setSelectedPatient(p); setView('hospital');}} onBulkImport={()=>setView('bulk_import')}/>}
+                    {/* PCUForm ต้องเห็นข้อมูลทั้งหมด (patients) เพื่อใช้ในการ Auto-fill */}
+                    {view === 'pcu' && <PCUForm onBack={()=>setView('dashboard')} userId={user.uid} existingPatients={patients} />}
                     {view === 'hospital' && <HospitalForm patient={selectedPatient} onBack={()=>setView('dashboard')} />}
+                    {view === 'bulk_import' && <BulkImportScreen onBack={()=>setView('dashboard')} userId={user.uid} />}
                 </div>
             );
         };
