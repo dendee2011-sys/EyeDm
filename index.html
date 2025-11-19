@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM v36 - Robust Fix</title>
+    <title>EyeDM v37 - Emergency Fix</title>
     
     <!-- 1. Assets -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,7 +30,7 @@
                     fontFamily: { sans: ['Sarabun', 'sans-serif'] },
                     colors: {
                         brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
-                        teal: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e' }
+                        teal: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488' }
                     }
                 }
             }
@@ -38,32 +38,27 @@
     </script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; }
-        .loader { width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+        .loader { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: currentColor; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <!-- Robust Error Handler -->
-    <script>
-        window.onerror = function(msg, url, line) {
-            const errDiv = document.createElement('div');
-            errDiv.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(254,226,226,0.95);color:#991b1b;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:sans-serif;";
-            errDiv.innerHTML = `<h2 style="font-size:24px;font-weight:bold;margin-bottom:10px;">⚠️ ระบบพบปัญหา (Auto-Recover)</h2><p>${msg} (Line ${line})</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 20px;background:#b91c1c;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">รีโหลดระบบใหม่</button>`;
-            document.body.appendChild(errDiv);
-            return true; // Prevent default console error
-        };
-    </script>
-
     <script type="text/babel">
-        // --- HELPER: Safe Data Extractor (ตัวแก้ Bug นี้โดยเฉพาะ) ---
-        const safeGetData = (doc) => {
-            if (!doc) return {};
-            // ถ้าเป็น Snapshot มีฟังก์ชัน .data() ให้เรียกใช้
-            if (typeof doc.data === 'function') return doc.data();
-            // ถ้าเป็น Object ธรรมดาอยู่แล้ว ให้ใช้ได้เลย
-            return doc;
+        // --- UTILITY: The Safest Data Extractor ---
+        // ฟังก์ชันนี้คือฮีโร่ที่จะช่วยกันไม่ให้จอขาว
+        const safeData = (doc) => {
+            try {
+                if (!doc) return null;
+                // กรณีเป็น Snapshot ปกติ
+                if (typeof doc.data === 'function') return { id: doc.id, ...doc.data() };
+                // กรณีข้อมูลเพี้ยน หรือเป็น Object อยู่แล้ว
+                return { id: doc.id || 'unknown', ...doc };
+            } catch (e) {
+                console.error("Data corrupted:", e);
+                return null; // คืนค่าว่างแทนการทำให้แอปพัง
+            }
         };
 
         // --- CONFIG ---
@@ -77,50 +72,69 @@
             measurementId: "G-N48NPP7K9J"
         };
         
-        try { if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e) { console.error(e); }
+        try { if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e){}
         const auth = firebase.auth();
         const db = firebase.firestore();
-        
         const APP_ID = "sisaket_prod_v1855_stable"; 
         const COL_QUEUE = "dr_queue";   
         const COL_MASTER = "dr_master"; 
         const ADMIN_CODE = "10700";
 
-        const Icon = React.memo(({name, size=18, className}) => {
+        const Icon = ({name, size=20, className}) => {
             React.useEffect(()=>{if(window.lucide)window.lucide.createIcons()},[name]);
             return <i data-lucide={name} width={size} height={size} className={className}></i>;
-        });
+        };
 
-        // --- AUTH ---
+        // --- ERROR BOUNDARY (กันน็อค) ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) { super(props); this.state = { hasError: false, errorInfo: "" }; }
+            static getDerivedStateFromError(error) { return { hasError: true, errorInfo: error.toString() }; }
+            render() {
+                if (this.state.hasError) return (
+                    <div className="h-screen flex flex-col items-center justify-center bg-red-50 p-4 text-center">
+                        <div className="bg-white p-6 rounded-xl shadow-xl border border-red-200 max-w-md">
+                            <Icon name="alert-triangle" size={48} className="text-red-500 mx-auto mb-4"/>
+                            <h2 className="text-xl font-bold text-red-700 mb-2">ระบบพบปัญหาฉุกเฉิน</h2>
+                            <p className="text-gray-600 text-sm mb-4">ไม่ต้องตกใจ ข้อมูลของคุณปลอดภัย กดปุ่มด้านล่างเพื่อรีเซ็ตการแสดงผล</p>
+                            <div className="bg-gray-100 p-2 rounded text-xs font-mono text-left mb-4 overflow-auto max-h-20">{this.state.errorInfo}</div>
+                            <button onClick={()=>{ localStorage.clear(); window.location.reload(); }} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">ล้างแคชและโหลดใหม่ (Hard Reset)</button>
+                        </div>
+                    </div>
+                );
+                return this.props.children;
+            }
+        }
+
+        // --- AUTH SCREEN ---
         const AuthScreen = () => {
             const [pin, setPin] = React.useState('');
             const [password, setPassword] = React.useState('');
             const [loading, setLoading] = React.useState(false);
 
             const handleAuth = async (e) => {
-                e.preventDefault(); 
-                if(loading) return;
-                setLoading(true);
+                e.preventDefault(); setLoading(true);
                 try { await auth.signInWithEmailAndPassword(pin+"@sisaket-clinic.org", password); }
                 catch(e) { 
                     if(e.code==='auth/user-not-found') {
-                        try{await auth.createUserWithEmailAndPassword(pin+"@sisaket-clinic.org",password);}catch(e2){alert("ลงทะเบียนไม่สำเร็จ: "+e2.message);}
-                    } else alert("รหัสไม่ถูกต้อง");
+                        try{await auth.createUserWithEmailAndPassword(pin+"@sisaket-clinic.org",password);}catch(e2){alert("Register Failed: "+e2.message);}
+                    } else alert("Login Failed: "+e.message);
                 } finally { setLoading(false); }
             };
+            
+            // Emergency Reset
+            const clearCache = () => { if(confirm("ยืนยันล้างแคชแก้ปัญหา?")) { localStorage.clear(); window.location.reload(); } };
 
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                    <div className="bg-white p-8 rounded-xl w-full max-w-md shadow-lg border border-slate-200 text-center">
-                        <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-600 shadow-sm"><Icon name="shield-check" size={32}/></div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-1">EyeDM <span className="text-brand-600">v36</span></h1>
-                        <p className="text-slate-400 mb-6 text-sm">Robust Fix Edition</p>
+                <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
+                    <div className="bg-white p-10 rounded-3xl w-full max-w-md shadow-xl border border-slate-100 text-center relative">
+                        <button onClick={clearCache} className="absolute top-4 right-4 text-slate-300 hover:text-red-500" title="แก้ปัญหาจอขาว"><Icon name="refresh-cw" size={16}/></button>
+                        <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-600"><Icon name="activity" size={36}/></div>
+                        <h1 className="text-3xl font-bold text-slate-800 mb-1">EyeDM <span className="text-brand-600">v37</span></h1>
+                        <p className="text-slate-400 mb-8 text-sm">Emergency Fix Edition</p>
                         <form onSubmit={handleAuth} className="space-y-4">
-                            <input className="w-full p-3 border border-slate-300 rounded-lg text-center text-lg tracking-widest font-mono placeholder-slate-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" placeholder="xxxxx" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus disabled={loading}/>
-                            <input className="w-full p-3 border border-slate-300 rounded-lg text-center placeholder-slate-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required disabled={loading}/>
-                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition shadow-md disabled:opacity-70 flex justify-center items-center gap-2">
-                                {loading ? <><div className="loader"></div> ตรวจสอบ...</> : 'เข้าสู่ระบบ'}
-                            </button>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl text-center text-lg tracking-widest focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition" placeholder="รหัสเจ้าหน้าที่" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,5))} required autoFocus/>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl text-center focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition" type="password" placeholder="รหัสผ่าน" value={password} onChange={e=>setPassword(e.target.value)} required/>
+                            <button disabled={loading} className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition disabled:opacity-70 mt-2">{loading?'Connecting...':'เข้าสู่ระบบ'}</button>
                         </form>
                     </div>
                 </div>
@@ -132,30 +146,37 @@
             const [user, setUser] = React.useState(null);
             const [role, setRole] = React.useState('PCU');
             const [view, setView] = React.useState('dashboard');
-            const [queue, setQueue] = React.useState([]); 
+            const [queue, setQueue] = React.useState([]);
             const [editData, setEditData] = React.useState(null);
-            const [limitCount, setLimitCount] = React.useState(50); 
+            const [limitCount, setLimitCount] = React.useState(50);
 
             React.useEffect(() => auth.onAuthStateChanged(setUser), []);
             
             React.useEffect(() => {
                 if(!user) return;
-                const q = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).orderBy('createdAt', 'desc').limit(2000);
-                const unsub = q.onSnapshot(snapshot => {
-                    const data = snapshot.docs.map(doc => {
-                        // SAFE DATA EXTRACTION HERE
-                        const d = safeGetData(doc);
-                        const createdAt = d.createdAt?.toDate ? d.createdAt.toDate() : new Date();
-                        return { id: doc.id, ...d, createdAt };
-                    });
-                    setQueue(data);
-                    setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
-                }, err => console.error("Fetch Error:", err));
-                return () => unsub();
-            }, [user]);
+                // SAFE SNAPSHOT LISTENER
+                try {
+                    const unsub = db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE)
+                        .orderBy('createdAt', 'desc').limit(limitCount)
+                        .onSnapshot(s => {
+                            const safeQueue = [];
+                            s.docs.forEach(doc => {
+                                const data = safeData(doc); // Use safe extractor
+                                if (data) {
+                                    // Ensure createdAt exists
+                                    data.createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+                                    safeQueue.push(data);
+                                }
+                            });
+                            setQueue(safeQueue);
+                            setTimeout(()=>window.lucide?.createIcons(), 100);
+                        }, err => console.error("Firestore Error:", err));
+                    return () => unsub();
+                } catch(e) { console.error("Setup Error:", e); }
+            }, [user, limitCount]);
 
-            const handleSend = async (id, name) => { if(confirm(`ยืนยันส่งตัว: ${name}?`)) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).update({status:'Waiting', sentAt:firebase.firestore.FieldValue.serverTimestamp()}); };
-            const handleDel = async (id) => { if(confirm('ยืนยันลบรายการนี้?')) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); };
+            const handleSend = async (id, name) => { if(confirm(`ส่งตัว: ${name}?`)) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).update({status:'Waiting', sentAt:firebase.firestore.FieldValue.serverTimestamp()}); };
+            const handleDel = async (id) => { if(confirm('ลบรายการ?')) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(id).delete(); };
 
             if(!user) return <AuthScreen/>;
             const isAdmin = user.email.startsWith(ADMIN_CODE);
@@ -168,19 +189,20 @@
                             <div className="flex justify-between h-16 items-center">
                                 <div className="flex items-center gap-3">
                                     <div className={`p-2 rounded-lg text-white bg-${Theme}-600 shadow-md`}><Icon name={role==='PCU'?'home':'building-2'} size={20}/></div>
-                                    <div><h1 className="font-bold text-lg">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400 font-mono">{user.email.split('@')[0]}</p></div>
+                                    <div><h1 className="font-bold text-lg">EyeDM <span className={`text-${Theme}-600`}>{role}</span></h1><p className="text-xs text-slate-400">{user.email.split('@')[0]}</p></div>
                                 </div>
                                 <div className="flex gap-2 items-center">
-                                    {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition"><Icon name="file-spreadsheet" size={14}/> Import</button>}
+                                    {isAdmin && <button onClick={()=>setView('import')} className="hidden md:flex items-center gap-1 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold hover:bg-slate-200 transition"><Icon name="file-spreadsheet" size={14}/> Import</button>}
                                     <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                                        <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='PCU'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>PCU</button>
-                                        <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='HOSPITAL'?'bg-white shadow-sm text-brand-600':'text-slate-500 hover:text-slate-700'}`}>Hospital</button>
+                                        <button onClick={()=>{setRole('PCU');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='PCU'?'bg-white shadow-sm text-teal-600':'text-slate-500'}`}>PCU</button>
+                                        <button onClick={()=>{setRole('HOSPITAL');setView('dashboard')}} className={`px-3 py-1 rounded text-xs font-bold transition ${role==='HOSPITAL'?'bg-white shadow-sm text-brand-600':'text-slate-500'}`}>Hospital</button>
                                     </div>
-                                    <button onClick={()=>auth.signOut()} className="p-2 text-slate-400 hover:text-red-500 transition"><Icon name="log-out" size={18}/></button>
+                                    <button onClick={()=>auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><Icon name="log-out" size={18}/></button>
                                 </div>
                             </div>
                         </div>
                     </nav>
+
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
                         {view==='dashboard' && <Dashboard role={role} queue={queue} onNew={()=>{setEditData(null);setView('form')}} onEdit={p=>{setEditData(p);setView('form')}} onDelete={handleDel} onSend={handleSend} onLoadMore={()=>setLimitCount(c=>c+50)} Theme={Theme}/>}
                         {view==='form' && <UnifiedForm db={db} user={user} data={editData} role={role} onBack={()=>setView('dashboard')} Theme={Theme}/>}
@@ -195,25 +217,19 @@
             const [search, setSearch] = React.useState('');
             const [tab, setTab] = React.useState('registry');
             
-            // Safe Filtering
             const filtered = React.useMemo(() => queue.filter(p => {
                 const txt = search.toLowerCase();
-                // SAFE ACCESS: p.part1 might be undefined if bad data
-                const idCard = p.part1?.idCard || '';
+                // Safe Access
+                const id = p.part1?.idCard || '';
                 const name = p.part1?.name || '';
-                
-                const match = idCard.includes(txt) || name.toLowerCase().includes(txt);
+                const match = id.includes(txt) || name.includes(txt);
                 if(!match) return false;
                 if(role==='PCU') return tab==='registry' ? p.status==='Registered' : (p.status!=='Registered');
-                return p.status!=='Registered'; 
+                return p.status!=='Registered';
             }), [queue, search, tab, role]);
 
-            const ITEMS_PER_PAGE = 50;
-            const [visibleCount, setVisibleCount] = React.useState(ITEMS_PER_PAGE);
-            const visibleData = filtered.slice(0, visibleCount);
-
             const StatCard = ({title, val, icon, color}) => (
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div className="bg-white p-4 rounded-xl shadow-soft border border-slate-200 flex items-center justify-between">
                     <div><p className="text-slate-500 text-xs font-bold uppercase mb-1">{title}</p><h3 className="text-2xl font-bold text-slate-800">{val}</h3></div>
                     <div className={`p-3 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon} size={20}/></div>
                 </div>
@@ -227,11 +243,12 @@
                         <StatCard title="รอตรวจ" val={queue.filter(p=>p.status==='Waiting').length} icon="eye" color="brand"/>
                         <StatCard title="เสร็จสิ้น" val={queue.filter(p=>p.status==='Completed').length} icon="check-circle" color="teal"/>
                     </div>
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-soft border border-slate-200">
                         {role==='PCU' ? (
                             <div className="flex bg-slate-100 p-1 rounded-lg w-full md:w-auto border border-slate-200">
-                                <button onClick={()=>{setTab('registry');setVisibleCount(ITEMS_PER_PAGE)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
-                                <button onClick={()=>{setTab('sent');setVisibleCount(ITEMS_PER_PAGE)}} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
+                                <button onClick={()=>setTab('registry')} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='registry'?'bg-white shadow-sm text-slate-800':'text-slate-500 hover:text-slate-700'}`}>ทะเบียน ({queue.filter(p=>p.status==='Registered').length})</button>
+                                <button onClick={()=>setTab('sent')} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold transition ${tab==='sent'?'bg-white shadow-sm text-teal-600':'text-slate-500 hover:text-slate-700'}`}>ส่งแล้ว ({queue.filter(p=>p.status!=='Registered').length})</button>
                             </div>
                         ) : <div className="px-3 font-bold text-brand-700 flex items-center gap-2"><Icon name="list" size={20}/> รายการรอตรวจ (Hospital Queue)</div>}
                         
@@ -246,10 +263,10 @@
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-100 text-slate-500 font-semibold border-b border-slate-200"><tr><th className="p-4 pl-6">วันที่</th><th className="p-4">ผู้ป่วย</th><th className="p-4">HbA1C</th><th className="p-4">สถานะ</th><th className="p-4 pr-6 text-right">จัดการ</th></tr></thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {visibleData.map(p => (
-                                        <tr key={p.id} className="hover-row transition-colors">
+                                    {filtered.map(p => (
+                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                                             <td className="p-4 pl-6 text-slate-400 text-xs font-mono">{p.createdAt.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</td>
-                                            <td className="p-4"><div className="font-bold text-slate-700">{p.part1?.name || 'Unknown'}</div><div className="text-slate-400 text-xs font-mono mt-0.5">{p.part1?.idCard || '-'}</div></td>
+                                            <td className="p-4"><div className="font-bold text-slate-700">{p.part1?.name || '-'}</div><div className="text-slate-400 text-xs font-mono mt-0.5">{p.part1?.idCard || '-'}</div></td>
                                             <td className="p-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${parseFloat(p.part1?.hba1c)>=7?'bg-red-50 text-red-600 border border-red-200':'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.part1?.hba1c||'-'}</span></td>
                                             <td className="p-4">{p.status==='Registered'?<span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs border border-slate-200">ลงทะเบียน</span>:p.status==='Waiting'?<span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded text-xs border border-yellow-200">รอตรวจ</span>:<span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs border border-teal-200">เสร็จสิ้น</span>}</td>
                                             <td className="p-4 pr-6 text-right flex justify-end gap-2">
@@ -259,16 +276,19 @@
                                             </td>
                                         </tr>
                                     ))}
+                                    {filtered.length===0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">ไม่พบข้อมูล</td></tr>}
                                 </tbody>
                             </table>
                         </div>
-                        {visibleCount < filtered.length && <div className="p-3 text-center border-t border-slate-200 bg-slate-50"><button onClick={()=>setVisibleCount(c=>c+ITEMS_PER_PAGE)} className="text-slate-500 text-xs font-bold hover:text-brand-600 flex items-center justify-center gap-1 mx-auto transition"><Icon name="arrow-down" size={12}/> โหลดเพิ่ม ({filtered.length - visibleCount})</button></div>}
+                        <div className="p-3 text-center border-t border-slate-200 bg-slate-50">
+                            <button onClick={onLoadMore} className="text-slate-500 text-xs font-bold hover:text-brand-600 flex items-center justify-center gap-1 mx-auto transition"><Icon name="arrow-down" size={12}/> โหลดเพิ่ม</button>
+                        </div>
                     </div>
                 </div>
             );
         };
 
-        // --- UNIFIED FORM (Robust) ---
+        // --- UNIFIED FORM ---
         const UnifiedForm = ({ db, user, data, role, onBack, Theme }) => {
             const isEdit = !!data;
             const isHospital = role === 'HOSPITAL';
@@ -281,7 +301,10 @@
             const handleId = async (e) => {
                 const v = e.target.value; setP1({...p1, idCard:v});
                 if(!isEdit && !isHospital && v.length>=3) {
-                    try { const s = await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).where(firebase.firestore.FieldPath.documentId(),'>=',v).where(firebase.firestore.FieldPath.documentId(),'<=',v+'\uf8ff').limit(5).get(); setSugg(s.docs.map(d=>({idCard:d.id, ...safeGetData(d)}))); } catch(e){}
+                    try { 
+                        const s = await db.collection('artifacts').doc(APP_ID).collection(COL_MASTER).where(firebase.firestore.FieldPath.documentId(),'>=',v).where(firebase.firestore.FieldPath.documentId(),'<=',v+'\uf8ff').limit(5).get(); 
+                        setSugg(s.docs.map(d=>({idCard:d.id, ...safeData(d)}))); // Use safeData
+                    } catch(e){}
                 } else setSugg([]);
             };
             const save = async () => {
@@ -296,14 +319,7 @@
                             if(!isEdit) {
                                 const d = new Date().toDateString();
                                 const q = await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).where('part1.idCard','==',p1.idCard).get();
-                                // SAFE DUPLICATE CHECK using safeGetData
-                                const isDup = q.docs.some(doc => {
-                                    const data = safeGetData(doc);
-                                    if(!data.createdAt) return false;
-                                    const dt = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
-                                    return dt.toDateString() === d;
-                                });
-                                if(isDup) throw new Error("ซ้ำวันนี้");
+                                if(q.docs.some(x=>(x.data().createdAt?.toDate?x.data().createdAt.toDate():new Date(x.data().createdAt)).toDateString()===d)) throw new Error("ซ้ำวันนี้");
                             }
                             const pl = { part1:p1, pcuId:user.uid, updatedAt:firebase.firestore.FieldValue.serverTimestamp() };
                             if(isEdit) await db.collection('artifacts').doc(APP_ID).collection(COL_QUEUE).doc(data.id).update(pl);
@@ -313,6 +329,7 @@
                     onBack();
                 } catch(e) { alert("Error: "+e.message); } finally { setSaving(false); }
             };
+
             return (
                 <div className={`max-w-6xl mx-auto animate__animated animate__zoomIn ${isHospital?'flex flex-col lg:flex-row gap-6 items-start':''}`}>
                     <div className={`${isHospital?'w-full lg:w-1/3 sticky-sidebar':'w-full max-w-3xl mx-auto'}`}>
