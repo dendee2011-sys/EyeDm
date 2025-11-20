@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM - Login 5 หลัก</title>
+    <title>EyeDM Connect - ระบบส่งต่อผู้ป่วยเบาหวาน</title>
     
-    <!-- Libraries -->
+    <!-- 1. Import Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase -->
+    <!-- Firebase Libraries (Compat versions) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     
+    <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
@@ -23,15 +24,20 @@
         body { font-family: 'Sarabun', sans-serif; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        /* Custom Checkbox Style for easier hitting */
+        .chk-lg { transform: scale(1.3); margin-right: 8px; cursor: pointer; }
+        .card-hover { transition: all 0.2s; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        input[type="checkbox"] { transform: scale(1.2); }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- CONFIG ---
+        // --- FIREBASE CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyAARBcx9RDy-cQUeRZwjXQxvLhPGbZ5MNo",
             authDomain: "eyedm-3ebc8-7c029.firebaseapp.com",
@@ -42,459 +48,260 @@
             measurementId: "G-N48NPP7K9J"
         };
 
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        // Initialize helper
+        const initFirebase = () => {
+            if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+                try {
+                    firebase.initializeApp(firebaseConfig);
+                    // Enable offline persistence if possible
+                    firebase.firestore().enablePersistence().catch(err => console.log("Persistence disabled:", err.code));
+                    firebase.firestore.setLogLevel('silent');
+                } catch (e) {
+                    console.error("Firebase init error:", e);
+                }
+            }
+        };
+
+        // Call init immediately
+        initFirebase();
+
+        // --- GLOBAL FIREBASE INSTANCES ---
         const auth = firebase.auth();
         const db = firebase.firestore();
-        // Offline persistence
-        db.enablePersistence({ synchronizeTabs: true }).catch(err => {});
 
-        const DB_COLLECTION = db.collection('artifacts').doc('diabetic-sisaket-v4').collection('public_patients');
-
-        // --- Constants ---
-        const VA_OPTIONS = ["20/20 (ปกติ)", "20/40", "20/50", "20/70", "20/200", "CF", "HM", "PL", "NPL"];
+        // Helper to get DB collection safely
+        const getCollection = (collectionName) => {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const BASE_PATH = `artifacts/${appId}/public/data`;
+            return db.collection(`${BASE_PATH}/${collectionName}`);
+        };
         
-        const DR_GRADING_OPTIONS = [
-            'No DR', 
-            'Mild NPDR', 
-            'Moderate NPDR', 
-            'Severe NPDR', 
-            'PDR'
+        // --- CONSTANTS ---
+        const VA_OPTIONS = [
+            "20/20 (6/6) (ปกติ)", "20/25 (6/7.5)", "20/30 (6/9)", "20/40 (6/12)", "20/50 (6/15)", 
+            "20/70 (6/21)", "20/100 (6/30)", "20/200 (6/60)", "20/400 (6/120)", 
+            "CF (นับนิ้ว)", "HM (โบกมือ)", "PL (เห็นแสง)", "NPL (ไม่เห็นแสง)"
         ];
-
-        const INITIAL_FINDINGS = {
-            MicroAneurysm: {L:false,R:false, name: 'MicroAneurysm (MA)'}, 
-            Hemorrhage: {L:false,R:false, name: 'Hemorrhage (จุดเลือดออก)'},
-            HardExudate: {L:false,R:false, name: 'Hard Exudate (HE)'},
-            CottonWool: {L:false,R:false, name: 'Cotton Wool Spot (CWS)'},
-            VenousBeading: {L:false,R:false, name: 'Venous Beading (VB)'},
-            IRMA: {L:false,R:false, name: 'IRMA'},
-            Neovascularization: {L:false,R:false, name: 'Neovascularization (NV)'},
+        const DR_STAGES = [
+            "No DR (ปกติ)", 
+            "Mild NPDR", 
+            "Moderate NPDR", 
+            "Severe NPDR", 
+            "PDR (Proliferative)",
+            "Incomplete / ภาพไม่ชัด"
+        ];
+        const defaultFindings = { 
+            Normal:{L:true,R:true}, 
+            MicroAneurysm:{L:false,R:false}, 
+            Hemorrhage:{L:false,R:false}, 
+            HardExudate:{L:false,R:false}, 
+            Other:{L:false,R:false} 
+        };
+        const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount'];
+        const STATIC_PCU_DATA = {
+            "03277": "รพ.สต.บ้านคูซอด", "03278": "รพ.สต.บ้านแทง", "03279": "รพ.สต.บ้านหนองคู", "03280": "รพ.สต.ตะดอบ",
+            "03281": "รพ.สต.บ้านหนองครกใต้", "03282": "รพ.สต.บ้านกุดโง้ง", "03283": "รพ.สต.บ้านกลาง", "03284": "รพ.สต.บ้านหนองแวง",
+            "03285": "รพ.สต.บ้านสร้างเรือง", "03286": "รพ.สต.บ้านโนนแกด", "03287": "รพ.สต.บ้านหนองไฮ", "03288": "รพ.สต.บ้านหนองแก้ว",
+            "03289": "รพ.สต.บ้านน้ำคำ", "03290": "รพ.สต.บ้านหนองโน", "03291": "รพ.สต.บ้านโพธิ์", "03292": "รพ.สต.บ้านก้านเหลือง",
+            "03293": "รพ.สต.บ้านหนองไผ่", "14422": "ศูนย์บริการสาธารณสุข 2", "15204": "ศูนย์บริการสาธารณสุข 3",
+            "21986": "ศูนย์บริการสาธารณสุข 4", "23954": "ศูนย์บริการสาธารณสุข 5", "77475": "ศุนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ"
         };
 
-        // CSV Required Headers
-        const REQUIRED_HEADERS = ['idCard', 'name', 'age', 'hba1c', 'bp', 'vaRight', 'vaLeft'];
-
-        // --- Helper Function: Check if date is today ---
-        const isToday = (date) => {
-            if (!date) return false;
-            const today = new Date();
-            return date.getDate() === today.getDate() &&
-                   date.getMonth() === today.getMonth() &&
-                   date.getFullYear() === today.getFullYear();
-        };
-
-        // --- Components ---
-        const Icon = ({ name, size = 20, className = "" }) => {
+        // --- COMPONENTS ---
+        const Icon = ({ name, size = 20, className = "", color }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-            const iconName = name.toLowerCase().replace(/([A-Z])/g, "-$1").replace(/^-/, ""); 
-            return <i data-lucide={iconName} width={size} height={size} className={className}></i>;
+            return <i data-lucide={name.toLowerCase().replace(/([A-Z])/g, "-$1").replace(/^-/, "")} width={size} height={size} className={className} style={{color}}></i>;
         };
 
-        // --- Auth Screen (5-Digit Login) ---
+        const MessageModal = ({ modal, setModal }) => {
+            if (!modal.visible) return null;
+            return (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm animate-fade-in p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Icon name={modal.onConfirm ? "help-circle" : "info"} size={24} className={modal.onConfirm ? "text-orange-500" : "text-blue-500"} />
+                            <h3 className="text-xl font-bold">{modal.title || "แจ้งเตือน"}</h3>
+                        </div>
+                        <p className="text-gray-700 mb-6">{modal.message}</p>
+                        <div className="flex justify-end gap-3">
+                            {modal.onConfirm && <button onClick={() => setModal({ ...modal, visible: false })} className="px-4 py-2 rounded border bg-gray-100">ยกเลิก</button>}
+                            <button onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ ...modal, visible: false }); }} className={`px-4 py-2 rounded text-white ${modal.onConfirm ? 'bg-red-600' : 'bg-blue-600'}`}>ตกลง</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const StatCard = ({ title, value, color, bgColor }) => (
+            <div className={`${bgColor} p-4 rounded-xl shadow-sm border border-gray-200 text-center`}>
+                <div className="text-gray-500 text-xs uppercase mb-1">{title}</div>
+                <div className={`text-2xl font-bold ${color}`}>{value}</div>
+            </div>
+        );
+
+        // --- AUTH SCREEN ---
         const AuthScreen = () => {
-            const [unitId, setUnitId] = useState('');
+            const [agencyCode, setAgencyCode] = useState('');
             const [password, setPassword] = useState('');
-            const [isRegister, setIsRegister] = useState(false);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
 
-            const DUMMY_DOMAIN = "@eyedm.com";
-
-            const handleSubmit = async (e) => {
+            const handleLogin = async (e) => {
                 e.preventDefault();
-                
-                if(unitId.length < 5) {
-                    setError("รหัสหน่วยงานต้องมีอย่างน้อย 5 หลัก");
-                    return;
-                }
-
-                setLoading(true);
                 setError('');
-
-                const fakeEmail = unitId + DUMMY_DOMAIN;
-
+                const code = agencyCode.trim();
+                if (code.length !== 5) { setError('กรุณากรอกรหัสหน่วยงาน 5 หลัก'); return; }
+                if (!password) { setError('กรุณากรอกรหัสผ่าน'); return; }
+                
+                setLoading(true);
                 try {
-                    if (isRegister) {
-                        await auth.createUserWithEmailAndPassword(fakeEmail, password);
-                        alert(`ลงทะเบียนรหัสหน่วยงาน ${unitId} สำเร็จ!`);
-                    } else {
-                        await auth.signInWithEmailAndPassword(fakeEmail, password);
-                    }
+                    const email = `${code}@eyedm.com`;
+                    await auth.signInWithEmailAndPassword(email, password);
                 } catch (err) {
                     console.error(err);
-                    if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-                        setError("รหัสหน่วยงาน หรือ รหัสผ่าน ไม่ถูกต้อง");
-                    } else if (err.code === 'auth/email-already-in-use') {
-                        setError("รหัสหน่วยงานนี้ถูกลงทะเบียนไปแล้ว");
-                    } else if (err.code === 'auth/weak-password') {
-                        setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+                    if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-email') {
+                        setError('รหัสหน่วยงานหรือรหัสผ่านไม่ถูกต้อง');
                     } else {
-                        setError("Error: " + err.message);
+                        setError('เกิดข้อผิดพลาด: ' + err.message);
                     }
-                    setLoading(false);
                 }
+                setLoading(false);
             };
 
             return (
                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 p-4 animate-fade-in">
-                    <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border-4 border-white/50">
-                        <div className="text-center mb-6">
-                            <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-blue-600">
-                                <Icon name="building-2" size={32} />
-                            </div>
-                            <h1 className="text-2xl font-bold text-gray-800">{isRegister ? 'ลงทะเบียนหน่วยงาน' : 'เข้าสู่ระบบ'}</h1>
-                            <p className="text-slate-500 text-sm">EyeDM Connect (Secure System)</p>
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
+                        <div className="text-center mb-8">
+                            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Icon name="lock-keyhole" size={40} /></div>
+                            <h1 className="text-3xl font-bold text-gray-800">EyeDM Connect</h1>
+                            <p className="text-slate-500 mt-2">ระบบส่งต่อผู้ป่วยเบาหวานเข้าจอประสาทตา</p>
                         </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">รหัสหน่วยงาน (5 หลัก)</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        inputMode="numeric" 
-                                        pattern="[0-9]*" 
-                                        maxLength="5"
-                                        value={unitId} 
-                                        onChange={e=>setUnitId(e.target.value.replace(/[^0-9]/g, ''))} 
-                                        className="w-full p-3 pl-10 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-lg font-mono tracking-widest font-bold text-gray-700" 
-                                        placeholder="xxxxx" 
-                                        required 
-                                    />
-                                    <div className="absolute left-3 top-3.5 text-gray-400"><Icon name="hash" size={18}/></div>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">รหัสผ่าน (Password)</label>
-                                <div className="relative">
-                                    <input 
-                                        type="password" 
-                                        value={password} 
-                                        onChange={e=>setPassword(e.target.value)} 
-                                        className="w-full p-3 pl-10 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
-                                        placeholder="อย่างน้อย 6 ตัวอักษร" 
-                                        required 
-                                    />
-                                    <div className="absolute left-3 top-3.5 text-gray-400"><Icon name="lock" size={18}/></div>
-                                </div>
-                            </div>
-
-                            {error && <div className="bg-red-50 text-red-600 p-3 rounded text-sm border border-red-200 flex gap-2"><Icon name="alert-circle" size={16}/> {error}</div>}
-
-                            <button disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50">
-                                {loading ? 'กำลังประมวลผล...' : (isRegister ? 'ลงทะเบียน' : 'เข้าสู่ระบบ')}
-                            </button>
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div><label className="block text-xs font-semibold text-gray-500 mb-1">รหัสหน่วยงาน (User ID)</label><input type="text" inputMode="numeric" maxLength="5" value={agencyCode} onChange={e=>setAgencyCode(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl text-lg font-mono" placeholder="เช่น 10700, 03277" required /></div>
+                            <div><label className="block text-xs font-semibold text-gray-500 mb-1">รหัสผ่าน (Password)</label><input type="password" placeholder="กรอกรหัสผ่าน..." value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl text-lg" required /></div>
+                            {error && <div className="bg-red-100 text-red-700 p-3 rounded-lg text-sm border border-red-300 flex items-center gap-2"><Icon name="alert-circle" size={16}/> {error}</div>}
+                            <button disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-md">{loading ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}</button>
                         </form>
-
-                        <div className="mt-6 text-center text-sm">
-                            <button onClick={()=>{setIsRegister(!isRegister); setError('');}} className="text-blue-600 hover:underline font-medium">
-                                {isRegister ? 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? ลงทะเบียนใหม่'}
-                            </button>
-                        </div>
-                        
-                        {!isRegister && <div className="mt-4 pt-4 border-t text-center text-xs text-gray-400">
-                            * รหัส <b>10700</b> สำหรับโรงพยาบาลแม่ข่าย<br/>
-                            * รหัสอื่นๆ สำหรับ รพ.สต.
-                        </div>}
+                        <div className="mt-6 text-center pt-4 border-t text-xs text-gray-400">เข้าสู่ระบบด้วยบัญชี @eyedm.com</div>
                     </div>
                 </div>
             );
         };
 
-        // --- CSV Parsing Function ---
-        const parseCSV = (csvText) => {
-            const lines = csvText.trim().split('\n');
-            if (lines.length === 0) return { headers: [], data: [] };
-
-            // Trim headers and handle potential surrounding quotes (simple case)
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            const data = [];
-
-            for (let i = 1; i < lines.length; i++) {
-                if (lines[i].trim() === '') continue; // Skip empty lines
-                
-                // Simple splitting by comma (may not handle commas inside quotes)
-                const values = lines[i].split(','); 
-                const obj = {};
-                
-                // Map values to headers
-                headers.forEach((header, index) => {
-                    if (header && values[index] !== undefined) {
-                        // Trim and remove surrounding quotes
-                        obj[header] = values[index].trim().replace(/"/g, ''); 
-                    }
-                });
-                data.push(obj);
-            }
-            return { headers, data };
-        };
-
-        // --- Bulk Import Screen (CSV) ---
-        const BulkImportScreen = ({ onBack, userId }) => {
-            const [file, setFile] = useState(null);
-            const [loading, setLoading] = useState(false);
-            const [message, setMessage] = useState(null);
-            
-            const handleFileChange = (e) => {
-                const selectedFile = e.target.files[0];
-                if (selectedFile) {
-                    setFile(selectedFile);
-                    setMessage(null);
-                }
-            };
-
-            const handleImport = async () => {
-                if (!file) {
-                    setMessage({ type: 'error', text: 'กรุณาเลือกไฟล์ CSV ก่อน' });
-                    return;
-                }
-
-                setLoading(true);
-                let successCount = 0;
-                let failureCount = 0;
-                let patientData = [];
-                let headers = [];
-
-                try {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        const csvText = event.target.result;
-                        const parsed = parseCSV(csvText);
-                        patientData = parsed.data;
-                        headers = parsed.headers;
-
-                        // 1. Validate Headers
-                        const missingHeaders = REQUIRED_HEADERS.filter(h => !headers.includes(h));
-                        if (missingHeaders.length > 0) {
-                            setMessage({ type: 'error', text: `Header ไม่ครบ: ขาด ${missingHeaders.join(', ')}` });
-                            setLoading(false);
-                            return;
-                        }
-                        
-                        if (patientData.length === 0) {
-                            setMessage({ type: 'error', text: 'ไม่พบข้อมูลผู้ป่วยในไฟล์ (นับจากบรรทัดที่ 2)' });
-                            setLoading(false);
-                            return;
-                        }
-
-                        // 2. Process Batches
-                        const chunkSize = 499; 
-                        let batches = [];
-                        for (let i = 0; i < patientData.length; i += chunkSize) {
-                            batches.push(patientData.slice(i, i + chunkSize));
-                        }
-
-                        for (const chunk of batches) {
-                            const currentBatch = db.batch();
-                            
-                            for (const item of chunk) {
-                                // Basic validation for mandatory fields in data row
-                                if (!item.idCard || !item.name || String(item.idCard).length !== 13) {
-                                    failureCount++;
-                                    continue; 
-                                }
-
-                                const newDocRef = DB_COLLECTION.doc(); 
-                                
-                                currentBatch.set(newDocRef, {
-                                    part1: {
-                                        idCard: String(item.idCard).trim(), 
-                                        name: item.name || 'ไม่ระบุชื่อ',
-                                        age: String(item.age || ''),
-                                        hba1c: String(item.hba1c || ''),
-                                        bp: String(item.bp || ''),
-                                        vaRight: item.vaRight || '',
-                                        vaLeft: item.vaLeft || '',
-                                    },
-                                    status: 'Waiting', 
-                                    senderId: userId,
-                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                                });
-                                successCount++;
-                            }
-                            
-                            await currentBatch.commit();
-                        }
-                        
-                        setLoading(false);
-                        setMessage({ 
-                            type: 'success', 
-                            text: `นำเข้าข้อมูลสำเร็จ: ${successCount} รายการ (จากทั้งหมด ${patientData.length} แถว)` 
-                        });
-                        setFile(null);
-                    };
-
-                    reader.onerror = () => {
-                        setMessage({ type: 'error', text: 'ไม่สามารถอ่านไฟล์ได้' });
-                        setLoading(false);
-                    };
-
-                    reader.readAsText(file);
-
-                } catch (e) {
-                    setLoading(false);
-                    setMessage({ type: 'error', text: `เกิดข้อผิดพลาดรุนแรง: ${e.message}` });
-                }
-            };
-            
-            const HEADER_EXAMPLE = REQUIRED_HEADERS.join(', ');
-
-            return (
-                <div className="max-w-4xl mx-auto animate-fade-in pb-20">
-                    <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800 transition-colors"><Icon name="arrow-left" size={16}/> กลับหน้า Dashboard</button>
-                    <div className="bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
-                        <div className="bg-blue-600 p-4 text-white flex items-center gap-2">
-                            <Icon name="upload" className="text-white"/>
-                            <h2 className="font-bold">นำเข้าข้อมูลผู้ป่วยจำนวนมาก (CSV Import)</h2>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            
-                            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                                <h3 className="font-bold text-yellow-800 text-sm mb-2 flex items-center gap-2"><Icon name="file-text" size={16}/> รูปแบบไฟล์ CSV ที่ถูกต้อง</h3>
-                                <p className="text-xs text-gray-700 mb-2">ไฟล์จะต้องมี Header แถวแรกเรียงตามนี้ (คั่นด้วย comma `,`):</p>
-                                <pre className="bg-white p-3 rounded text-sm font-mono overflow-x-auto border text-gray-700 font-semibold">{HEADER_EXAMPLE}</pre>
-                                <p className="text-xs text-yellow-700 mt-2">* ต้องมีฟิลด์ `idCard` (13 หลัก) และ `name` เป็นอย่างน้อย</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">เลือกไฟล์ CSV</label>
-                                <div className="flex items-center gap-4 p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                                    <input
-                                        type="file"
-                                        accept=".csv"
-                                        onChange={handleFileChange}
-                                        className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                        disabled={loading}
-                                    />
-                                    {file && <span className="text-sm font-medium text-gray-700">{file.name}</span>}
-                                </div>
-                            </div>
-
-                            {message && (
-                                <div className={`p-3 rounded-lg text-sm border flex items-center gap-2 ${
-                                    message.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'
-                                }`}>
-                                    <Icon name={message.type === 'error' ? 'x-circle' : 'check-circle'} size={16}/>
-                                    {message.text}
-                                </div>
-                            )}
-
-                            <button onClick={handleImport} disabled={loading || !file} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
-                                {loading ? <><Icon name="loader-2" className="animate-spin" size={20}/> กำลังนำเข้าข้อมูล (โปรดรอ)...</> : 'เริ่มนำเข้าข้อมูล (Bulk Import)'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-
-        // --- Dashboard (Main) ---
-        const Dashboard = ({ role, patients, onNew, onSelect, onBulkImport }) => {
+        const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap }) => {
             const [term, setTerm] = useState('');
+            const [agencyFilter, setAgencyFilter] = useState('All');
             
-            // --- Stats Calculation Logic ---
-            const stats = useMemo(() => {
-                const todayPatients = patients.filter(p => isToday(p.createdAt));
-                
-                return {
-                    overall: {
-                        total: patients.length,
-                        waiting: patients.filter(p => p.status === 'Waiting').length,
-                        completed: patients.filter(p => p.status === 'Completed').length
-                    },
-                    today: {
-                        total: todayPatients.length,
-                        waiting: todayPatients.filter(p => p.status === 'Waiting').length,
-                        completed: todayPatients.filter(p => p.status === 'Completed').length
+            const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
+            const uniqueAgencies = useMemo(() => {
+                const codes = new Set(patients.filter(p => !p.isDeleted && p.referringAgencyCode).map(p => p.referringAgencyCode));
+                Object.keys(allAgenciesMap).forEach(c => codes.add(c));
+                return Array.from(codes).sort();
+            }, [patients, allAgenciesMap]);
+            
+            const filtered = useMemo(() => {
+                return patients.filter(p => {
+                    if (p.isDeleted === true) return false;
+                    const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
+                    const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
+                    
+                    if (role === 'HOSPITAL') {
+                        const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
+                        if (term.length > 0) return matchesTerm && matchesAgency;
+                        return p.status !== 'Imported' && matchesAgency;
                     }
-                };
-            }, [patients]);
-            // --- End Stats Calculation Logic ---
+                    if (term.length > 0) return matchesTerm;
+                    return p.referringAgencyCode === agencyCode;
+                });
+            }, [patients, term, role, agencyCode, agencyFilter]);
 
+            const stats = useMemo(() => {
+                let scopePatients = patients.filter(p => p.isDeleted !== true);
+                if (role === 'PCU') scopePatients = scopePatients.filter(p => p.referringAgencyCode === agencyCode);
+                else if (role === 'HOSPITAL' && agencyFilter !== 'All') scopePatients = scopePatients.filter(p => p.referringAgencyCode === agencyFilter);
+                return { total: scopePatients.length, waiting: scopePatients.filter(p => p.status === 'Waiting').length, completed: scopePatients.filter(p => p.status === 'Completed').length, imported: scopePatients.filter(p => p.status === 'Imported').length };
+            }, [patients, role, agencyCode, agencyFilter]);
 
-            const filtered = useMemo(() => patients.filter(p => (p.part1?.idCard+p.part1?.name).includes(term)), [patients, term]);
-            
-            const handleDelete = async (id) => {
-                if(confirm("ยืนยันการลบ?")) await DB_COLLECTION.doc(id).delete();
+            const getStatusBadge = (status) => {
+                switch(status) {
+                    case 'Waiting': return <span className="px-2 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-orange-100 text-orange-700">รอตรวจ</span>;
+                    case 'Completed': return <span className="px-2 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-green-100 text-green-700">เรียบร้อย</span>;
+                    case 'Imported': return <span className="px-2 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-purple-100 text-purple-700">ฐานข้อมูล</span>;
+                    default: return <span className="px-2 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-gray-100 text-gray-700">N/A</span>;
+                }
             };
 
             return (
                 <div className="space-y-6 animate-fade-in pb-20">
-                    
-                    {/* STATS SECTION */}
-                    <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
-                        <div className="mb-3 border-b pb-2 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Icon name="bar-chart-2" size={20}/> สถิติการตรวจ</h3>
-                            <span className="text-xs text-gray-500">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 border-b pb-4 mb-4">
-                            {/* Today Stats */}
-                            <div className="space-y-2">
-                                <h4 className="text-sm font-bold text-blue-600 border-b border-blue-100 pb-1">📊 วันนี้</h4>
-                                <StatItem label="ส่งตรวจทั้งหมด" value={stats.today.total} color="text-gray-700"/>
-                                <StatItem label="รอตรวจ" value={stats.today.waiting} color="text-orange-600" bg="bg-orange-50"/>
-                                <StatItem label="ตรวจเสร็จ" value={stats.today.completed} color="text-green-600" bg="bg-green-50"/>
-                            </div>
-                            {/* Overall Stats */}
-                            <div className="space-y-2 border-l pl-4">
-                                <h4 className="text-sm font-bold text-gray-500 border-b pb-1">📅 ภาพรวมทั้งหมด</h4>
-                                <StatItem label="เคสรวม" value={stats.overall.total} color="text-gray-700"/>
-                                <StatItem label="รอตรวจ" value={stats.overall.waiting} color="text-orange-400"/>
-                                <StatItem label="ตรวจเสร็จ" value={stats.overall.completed} color="text-green-400"/>
-                            </div>
-                        </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">	
+                        <StatCard title="ผู้ป่วยทั้งหมด" value={stats.total} color="text-gray-800" bgColor="bg-gray-100"/>
+                        <StatCard title="รอตรวจ" value={stats.waiting} color="text-orange-600" bgColor="bg-orange-50"/>
+                        <StatCard title="ตรวจแล้ว" value={stats.completed} color="text-green-600" bgColor="bg-green-50"/>
+                         {role === 'HOSPITAL' && <StatCard title="ข้อมูลนำเข้า" value={stats.imported} color="text-purple-600" bgColor="bg-purple-50"/>}
                     </div>
-                    {/* END STATS SECTION */}
 
-
-                    <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3">
                         <div>
-                            <h2 className="2xl font-bold flex items-center gap-2 text-slate-800">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                                 <Icon name={role==='PCU'?'home':'building-2'} className={role==='PCU'?'text-green-600':'text-blue-600'} />
-                                {role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว'}
+                                {role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}
                             </h2>
+                            {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex gap-2 font-bold items-center"><Icon name="plus-circle" size={18}/> เพิ่มผู้ป่วยใหม่</button>}
-                        {role === 'HOSPITAL' && <button onClick={onBulkImport} className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow flex gap-2 font-bold items-center hover:bg-purple-700 transition-colors"><Icon name="upload" size={18}/> นำเข้าข้อมูล</button>}
+                        <div className="flex gap-2">
+                            {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
+                        </div>
                     </div>
 
-                    <div className="bg-white p-2 rounded-xl shadow border flex gap-2 items-center">
-                        <Icon name="search" className="text-gray-400 ml-2"/>
-                        <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาด้วยเลขบัตรประชาชน หรือ ชื่อ..." className="flex-1 p-2 outline-none" />
+                    <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
+                        {role === 'HOSPITAL' && (
+                            <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} className="w-full sm:w-auto p-2 border-b sm:border-b-0 sm:border-r outline-none text-sm bg-gray-50 text-blue-600 font-bold cursor-pointer">
+                                <option value="All">ทุกหน่วยงาน (All PCU)</option>
+                                {uniqueAgencies.map(code => <option key={code} value={code}>{code} - {allAgenciesMap[code] || 'Unknown'}</option>)}
+                            </select>
+                        )}
+                        <div className="flex-1 flex items-center w-full">
+                            <Icon name="search" className="text-gray-400 ml-2 mr-2"/>
+                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาด้วยเลขบัตรประชาชน หรือ ชื่อ-สกุล..." className="flex-1 p-2 outline-none text-sm w-full" />
+                        </div>
                     </div>
 
-                    <div className="bg-white rounded-xl shadow border overflow-hidden">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-gray-50 border-b"><tr><th className="p-3">วันที่</th><th className="p-3">ผู้ป่วย</th><th className="p-3">สถานะ</th><th className="p-3 text-right">Action</th></tr></thead>
+                    <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+                        <table className="w-full text-sm text-left whitespace-nowrap">
+                            <thead className="bg-gray-50 border-b text-gray-500">
+                                <tr>
+                                    <th className="p-3">วันที่บันทึก</th>
+                                    <th className="p-3">ผู้ป่วย / ID</th>
+                                    <th className="p-3">หน่วยงาน</th>
+                                    <th className="p-3 text-center">สถานะ</th>
+                                    <th className="p-3 text-right">Action</th>
+                                </tr>
+                            </thead>
                             <tbody className="divide-y">
                                 {filtered.map(p => (
                                     <tr key={p.id} className="hover:bg-gray-50">
-                                        <td className="p-3 text-gray-500 align-top">
-                                            {p.createdAt?.toLocaleDateString('th-TH')}
-                                            <div className="text-xs text-gray-400">{p.createdAt?.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}</div>
-                                        </td>
+                                        <td className="p-3 text-gray-500 align-top"><div>{p.createdAt?.toLocaleDateString('th-TH')}</div></td>
                                         <td className="p-3 align-top">
-                                            <div className="font-bold text-blue-600 font-mono text-base">{p.part1.idCard}</div>
-                                            <div className="font-medium text-gray-800">{p.part1.name}</div>
-                                            {p.part1.vaRight && <div className="text-xs text-gray-500 mt-1 bg-gray-100 w-fit px-1 rounded">VA: {p.part1.vaRight}/{p.part1.vaLeft}</div>}
+                                            <div className="font-mono text-blue-600 font-bold">{p.part1.idCard || 'N/A'}</div>
+                                            <div>{p.part1.name || 'N/A'}</div>
+                                            <div className="text-xs text-gray-500 mt-1">VA: {p.part1.vaRight || '-'}/{p.part1.vaLeft || '-'}</div>
                                         </td>
-                                        <td className="p-3 align-top"><span className={`px-2 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${p.status==='Waiting'?'bg-orange-100 text-orange-700':'bg-green-100 text-green-700'}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${p.status==='Waiting'?'bg-orange-500':'bg-green-500'}`}></span>
-                                            {p.status==='Waiting'?'รอตรวจ':'ตรวจแล้ว'}
-                                        </span></td>
+                                        <td className="p-3 align-top text-gray-500">
+                                            {p.referringAgencyCode ? <div className="flex flex-col"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono w-fit mb-1">PCU:{p.referringAgencyCode}</span><span className="text-xs truncate max-w-[150px]" title={allAgenciesMap[p.referringAgencyCode]}>{allAgenciesMap[p.referringAgencyCode] || '-'}</span></div> : <span>-</span>}
+                                        </td>
+                                        <td className="p-3 text-center align-top">{getStatusBadge(p.status)}</td>
                                         <td className="p-3 text-right align-top">
                                             <div className="flex justify-end gap-2">
-                                                {role === 'HOSPITAL' ? (
-                                                    <button onClick={()=>onSelect(p)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold text-xs shadow-sm">ตรวจ</button>
-                                                ) : <span className="text-gray-400 text-xs bg-gray-100 px-2 py-1 rounded">ส่งตัวแล้ว</span>}
-                                                <button onClick={()=>handleDelete(p.id)} className="text-red-400 hover:bg-red-50 p-1 rounded border border-transparent hover:border-red-100"><Icon name="trash-2" size={16}/></button>
+                                                {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
+                                                {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs hover:bg-blue-700">ตรวจ</button>}
+                                                {role === 'HOSPITAL' && p.status === 'Imported' && <button onClick={()=>onSelect(p)} className="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs hover:bg-purple-700">เพิ่มผล</button>}
+                                                {role === 'HOSPITAL' && p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs hover:bg-gray-400">ดูผล</button>}
+                                                <button onClick={() => { setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบข้อมูลนี้?", onConfirm: async () => { try { const ref = getCollection('patients_referrals'); if(ref) await ref.doc(p.id).update({ isDeleted: true }); } catch(e) { alert(e.message); } } }); }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>
                                             </div>
                                         </td>
                                     </tr>
                                 ))}
-                                {filtered.length===0 && <tr><td colSpan="4" className="p-8 text-center text-gray-400 flex flex-col items-center"><Icon name="inbox" size={32} className="mb-2 opacity-50"/>ไม่พบข้อมูลผู้ป่วย</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -502,287 +309,462 @@
             );
         };
 
-        // Helper component for stat cards
-        const StatItem = ({ label, value, color, bg }) => (
-            <div className={`flex justify-between items-center p-2 rounded-lg ${bg}`}>
-                <span className="text-xs font-medium text-gray-600">{label}</span>
-                <span className={`text-lg font-extrabold ${color}`}>{value}</span>
-            </div>
-        );
-        
-        const PCUForm = ({ onBack, userId, existingPatients }) => {
-            const [form, setForm] = useState({ idCard:'', name:'', age:'', hba1c:'', bp:'', vaRight:'', vaLeft:'' });
+        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode }) => {
+            const isEditing = !!patientToEdit;
+            const defaultForm = { 
+                idCard:'', name:'', age:'', dmYears:'', 
+                hba1c:'', bp:'', weight:'', height:'', 
+                vaRight:'', vaLeft:'', 
+                priorExam:'No', priorExamCount: 0, 
+                wheelchair: false 
+            };
+            const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [saving, setSaving] = useState(false);
-            const [foundOld, setFoundOld] = useState(false); 
+            const [foundOld, setFoundOld] = useState(false);
 
-            // --- Auto-fill Logic: ดึงข้อมูลจากเลขบัตรประชาชน ---
             useEffect(() => {
-                if(form.idCard.length === 13 && existingPatients) {
-                    const old = existingPatients
-                        .filter(p => p.part1?.idCard === form.idCard)
-                        .sort((a, b) => b.createdAt - a.createdAt)[0]; 
-                    
-                    if(old) {
-                        setFoundOld(true);
-                        setForm(f => ({
-                            ...f, 
-                            name: old.part1.name || '', 
-                            age: old.part1.age || '',
-                        }));
-                    } else {
-                        setFoundOld(false);
-                    }
-                } else {
-                     setFoundOld(false);
+                if (!isEditing && form.idCard.length === 13 && existingPatients) {
+                    const old = existingPatients.find(p => p.part1?.idCard === form.idCard);
+                    if(old) { setFoundOld(true); setForm(f => ({...f, ...old.part1})); } else { setFoundOld(false); }
                 }
-            }, [form.idCard, existingPatients]);
-            // --- End Auto-fill Logic ---
-            
+            }, [form.idCard, existingPatients, isEditing]);
+
             const save = async () => {
-                if(!form.idCard) return alert("กรุณากรอกเลขบัตรประชาชน");
+                if(!form.idCard || form.idCard.length !== 13 || !form.name) { setModal({visible:true, message: "กรุณากรอกข้อมูลให้ครบ"}); return; }
+                
+                const collection = getCollection('patients_referrals');
+                if (!collection) { setModal({visible:true, message: "ไม่สามารถเชื่อมต่อฐานข้อมูลได้"}); return; }
+
                 setSaving(true);
-                try { await DB_COLLECTION.add({ part1: form, status: 'Waiting', senderId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); onBack(); } 
-                catch(e){alert(e.message); setSaving(false);}
+                try {
+                    const data = { part1: form, referringAgencyCode: agencyCode, ...(isEditing ? {} : { status: 'Waiting', isDeleted: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }) };
+                    if (isEditing) await collection.doc(patientToEdit.id).update(data);
+                    else await collection.add(data);
+                    setModal({ visible: true, title: "สำเร็จ", message: "บันทึกข้อมูลเรียบร้อย", onConfirm: onBack });
+                } catch(e) { setModal({visible:true, message: "เกิดข้อผิดพลาด: "+e.message}); }
+                setSaving(false);
             };
 
             return (
-                <div className="max-w-xl mx-auto animate-fade-in pb-20">
-                    <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800 transition-colors"><Icon name="arrow-left" size={16}/> ยกเลิก</button>
-                    <div className="bg-white rounded-xl shadow-lg border border-green-100 overflow-hidden">
-                         <div className="bg-green-600 p-4 text-white flex items-center gap-2">
-                            <Icon name="file-plus" className="text-white"/>
-                            <h2 className="font-bold">ส่งตัวผู้ป่วย (Referral)</h2>
-                        </div>
+                <div className="max-w-2xl mx-auto animate-fade-in pb-20">
+                    <button onClick={onBack} className="text-gray-500 mb-4 flex items-center gap-1 hover:text-gray-700"><Icon name="arrow-left" size={16}/> ยกเลิก</button>
+                    <div className="bg-white rounded-2xl shadow-xl border border-green-100 overflow-hidden">
+                        <div className="bg-green-600 p-4 text-white flex items-center gap-2"><Icon name="file-text" className="text-white"/><h2 className="font-bold">{isEditing ? 'แก้ไขข้อมูล' : 'แบบฟอร์มส่งตัว'}</h2></div>
                         <div className="p-6 space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">เลขบัตรประชาชน</label>
-                                <div className={`relative p-3 rounded-lg border-2 transition-all ${foundOld ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                            <div className={`p-4 rounded-xl border ${foundOld ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-200'}`}>
+                                <label className="block text-xs font-bold text-blue-900 mb-1">เลขบัตรประชาชน 13 หลัก *</label>
+                                <div className="relative"><input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
+                                {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}</div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div><label className="text-xs text-gray-500 mb-1">ชื่อ-สกุล</label><input type="text" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                                <div><label className="text-xs text-gray-500 mb-1">อายุ</label><input type="number" value={form.age} onChange={e=>setForm({...form, age:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                                <div><label className="text-xs text-gray-500 mb-1">เป็น DM (ปี)</label><input type="number" value={form.dmYears} onChange={e=>setForm({...form, dmYears:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                            </div>
+                            
+                            {/* UPDATED GRID: BP Auto-slash logic added */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div><label className="text-xs text-gray-500 mb-1">HbA1C (%)</label><input type="text" value={form.hba1c} onChange={e=>setForm({...form, hba1c:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                                <div>
+                                    <label className="text-xs text-gray-500 mb-1">BP (mmHg)</label>
                                     <input 
-                                        className="w-full text-lg font-mono tracking-wide focus:ring-0 outline-none bg-transparent" 
-                                        maxLength="13" 
-                                        placeholder="xxxxxxxxxxxxx" 
-                                        value={form.idCard} 
-                                        onChange={e=>setForm({...form, idCard:e.target.value})} 
+                                        type="text" 
+                                        value={form.bp} 
+                                        onChange={e => {
+                                            let val = e.target.value.replace(/[^0-9]/g, '');
+                                            if (val.length > 3) val = val.slice(0, 3) + '/' + val.slice(3);
+                                            setForm({...form, bp: val});
+                                        }} 
+                                        className="w-full p-2 border rounded-lg" 
+                                        placeholder="120/80"
                                     />
-                                    {foundOld && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-700 text-xs font-bold flex items-center gap-1 animate-fade-in"><Icon name="history" size={16}/> พบประวัติเดิม</span>}
+                                </div>
+                                {/* Added Weight & Height Inputs */}
+                                <div><label className="text-xs text-gray-500 mb-1">น้ำหนัก (kg)</label><input type="number" value={form.weight} onChange={e=>setForm({...form, weight:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                                <div><label className="text-xs text-gray-500 mb-1">ส่วนสูง (cm)</label><input type="number" value={form.height} onChange={e=>setForm({...form, height:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                            </div>
+
+                            {/* NEW SECTION: Physical & History (UPDATED: Checkbox for Prior Exam) */}
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                                <h3 className="text-sm font-bold text-gray-700">ข้อมูลเพิ่มเติม</h3>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                        <input type="checkbox" checked={form.wheelchair} onChange={e=>setForm({...form, wheelchair:e.target.checked})} className="scale-125 text-green-600 rounded"/> 
+                                        <span className="text-sm">นั่งรถเข็น</span>
+                                    </label>
+                                </div>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={form.priorExam === 'Yes'} 
+                                            onChange={e => {
+                                                const newVal = e.target.checked ? 'Yes' : 'No';
+                                                setForm({...form, priorExam: newVal, priorExamCount: newVal === 'No' ? 0 : form.priorExamCount});
+                                            }} 
+                                            className="scale-125 text-green-600 rounded"
+                                        /> 
+                                        <span className="text-sm">เคยตรวจจอประสาทตา</span>
+                                    </label>
+                                    
+                                    {form.priorExam === 'Yes' && (
+                                        <div className="flex items-center gap-2 animate-fade-in ml-2">
+                                            <span className="text-sm text-gray-600">จำนวน:</span>
+                                            <input type="number" value={form.priorExamCount} onChange={e=>setForm({...form, priorExamCount:e.target.value})} className="w-16 p-1 border rounded text-sm text-center" placeholder="0"/>
+                                            <span className="text-sm text-gray-600">ครั้ง</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500">ชื่อ-สกุล</label><input className="w-full p-2 border rounded" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} /></div>
-                                <div><label className="text-xs font-bold text-gray-500">อายุ</label><input type="number" className="w-full p-2 border rounded" value={form.age} onChange={e=>setForm({...form, age:e.target.value})} /></div>
-                            </div>
-                            <div className="bg-gray-50 p-4 rounded border">
-                                <div className="text-xs font-bold text-gray-500 mb-2">ค่าสายตา (VA)</div>
-                                <div className="grid grid-cols-2 gap-4">
-                                     <select className="p-2 border rounded bg-white" value={form.vaRight} onChange={e=>setForm({...form, vaRight:e.target.value})}><option value="">ขวา (Right)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
-                                     <select className="p-2 border rounded bg-white" value={form.vaLeft} onChange={e=>setForm({...form, vaLeft:e.target.value})}><option value="">ซ้าย (Left)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+
+                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                <h3 className="text-sm font-bold text-gray-700 mb-3">ค่าสายตา (Visual Acuity)</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <select value={form.vaRight} onChange={e=>setForm({...form, vaRight:e.target.value})} className="w-full p-2 border rounded text-sm"><option value="">ขวา (Right)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                                    <select value={form.vaLeft} onChange={e=>setForm({...form, vaLeft:e.target.value})} className="w-full p-2 border rounded text-sm"><option value="">ซ้าย (Left)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                 <div><label className="text-xs font-bold text-gray-500">HbA1C</label><input className="w-full p-2 border rounded" value={form.hba1c} onChange={e=>setForm({...form, hba1c:e.target.value})} /></div>
-                                 <div><label className="text-xs font-bold text-gray-500">ความดัน (BP)</label><input className="w-full p-2 border rounded" value={form.bp} onChange={e=>setForm({...form, bp:e.target.value})} /></div>
-                            </div>
-                            <button onClick={save} disabled={saving} className="w-full bg-green-600 text-white py-3 rounded font-bold hover:bg-green-700 transition-all shadow-md disabled:opacity-50">{saving?'กำลังส่ง...':'บันทึกและส่งตัว'}</button>
+                            <button onClick={save} disabled={saving} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700">{saving ? 'บันทึก...' : 'บันทึกและส่งตัว'}</button>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        const HospitalForm = ({ patient, onBack }) => {
-            // Part 2: State Initialization with expanded findings and grading
-            const getInitialFindings = () => {
-                const initial = {};
-                Object.keys(INITIAL_FINDINGS).forEach(key => {
-                    initial[key] = patient.findings?.[key] || INITIAL_FINDINGS[key];
-                });
-                return initial;
-            };
-
-            const [p2, setP2] = useState(patient.part2 || { 
-                cataract:'No', 
-                retinaFound: 'Yes',
-                dilation: 'No',
-                drGradeL: 'No DR', // New
-                drGradeR: 'No DR', // New
-                advice: '' // New
+        const HospitalForm = ({ patient, onBack, setModal }) => {
+            const [p2, setP2] = useState({
+                cataract: false, 
+                hearingUnclear: false, 
+                cannotSit: false, 
+                liftEyelids: false, 
+                retinaViewable: true,
+                mydriasis: false,
+                drStageL: 'No DR (ปกติ)',
+                drStageR: 'No DR (ปกติ)',
+                ...patient.part2 
             });
-            const [findings, setFindings] = useState(getInitialFindings());
+            const [findings, setFindings] = useState(patient.findings || JSON.parse(JSON.stringify(defaultFindings)));
             const [saving, setSaving] = useState(false);
 
-            const toggle = (k,s) => setFindings(f => ({...f, [k]:{...f[k], [s]:!f[k][s]}}));
-
             const save = async () => {
+                const collection = getCollection('patients_referrals');
+                if (!collection) { setModal({visible:true, message: "ไม่สามารถเชื่อมต่อฐานข้อมูลได้"}); return; }
+
                 setSaving(true);
-                try { 
-                    await DB_COLLECTION.doc(patient.id).update({ 
+                try {
+                    await collection.doc(patient.id).update({ 
                         part2: p2, 
                         findings, 
-                        status: 'Completed',
-                        examinedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }); 
-                    onBack(); 
-                } catch(e){alert(e.message); setSaving(false);}
+                        status: 'Completed', 
+                        // FIX: Use new Date() to prevent crash
+                        examinedAt: new Date() 
+                    });
+                    setModal({ visible: true, title: "สำเร็จ", message: "บันทึกผลเรียบร้อย", onConfirm: onBack });
+                } catch(e){ setModal({ visible: true, message: e.message }); }
+                setSaving(false);
             };
             
+            const toggle = (k,s) => {
+                 const n = JSON.parse(JSON.stringify(findings)); 
+                 n[k][s] = !n[k][s];
+                 if (k === 'Normal' && n[k][s]) {
+                    Object.keys(n).forEach(key => { if (key !== 'Normal') n[key][s] = false; });
+                 } else if (k !== 'Normal' && n[k][s]) {
+                    n['Normal'][s] = false;
+                 }
+                 setFindings(n);
+            };
+
+            const updateP2 = (field, value) => setP2(prev => ({...prev, [field]: value}));
+            const toggleP2 = (field) => setP2(prev => ({...prev, [field]: !prev[field]}));
+
+            // Safe helper for rendering undefined values
+            const safeVal = (val) => val || '-';
+
             return (
-                <div className="flex flex-col lg:flex-row gap-4 animate-fade-in pb-20">
-                    {/* Patient Info (Part 1 Summary) */}
-                    <div className="w-full lg:w-1/3">
-                        <button onClick={onBack} className="mb-4 flex gap-1 text-gray-500 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ</button>
-                        <div className="bg-white p-4 rounded-xl shadow border">
-                            <h3 className="font-bold text-lg border-b pb-2 mb-2 flex items-center gap-2 text-gray-700"><Icon name="user" size={20}/> ข้อมูลผู้ป่วย (Part 1)</h3>
+                <div className="flex flex-col lg:flex-row gap-6 pb-20 animate-fade-in">
+                     <div className="w-full lg:w-1/3 space-y-4">
+                        <button onClick={onBack} className="text-gray-500 mb-2 flex items-center gap-1 hover:text-gray-700"><Icon name="arrow-left" size={16}/> กลับ</button>
+                        
+                        {/* HOSPITAL FORM SIDE PANEL: PCU DATA DISPLAY */}
+                        <div className="bg-white p-5 rounded-xl shadow-lg border border-gray-100 sticky top-20">
                             <div className="font-mono text-blue-600 font-bold text-lg">{patient.part1.idCard}</div>
-                            <div className="text-xl mb-2 font-bold text-gray-800">{patient.part1.name}</div>
-                            <div className="bg-gray-50 p-3 rounded text-sm space-y-2">
-                                <div className="flex justify-between"><span>VA:</span> <b>{patient.part1.vaRight}/{patient.part1.vaLeft}</b></div>
-                                <div className="flex justify-between"><span>HbA1C:</span> <b>{patient.part1.hba1c}</b></div>
-                                <div className="flex justify-between"><span>BP:</span> <b>{patient.part1.bp}</b></div>
+                            <div className="text-2xl font-semibold">{patient.part1.name}</div>
+                            
+                            {/* PCU Data Block */}
+                            <div className="mt-4 space-y-3 text-sm text-gray-600 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                <div className="font-bold text-blue-800 border-b border-blue-200 pb-1 mb-2">ประวัติจาก PCU</div>
+                                <div className="flex justify-between"><span>อายุ:</span> <span className="font-bold text-gray-900">{safeVal(patient.part1.age)} ปี</span></div>
+                                <div className="flex justify-between"><span>เป็นเบาหวาน:</span> <span className="font-bold text-gray-900">{safeVal(patient.part1.dmYears)} ปี</span></div>
+                                <div className="flex justify-between"><span>HbA1C:</span> <span className="font-bold text-gray-900">{safeVal(patient.part1.hba1c)}</span></div>
+                                <div className="flex justify-between"><span>BP:</span> <span className="font-bold text-gray-900">{safeVal(patient.part1.bp)}</span></div>
+                                
+                                {/* Added display for new fields */}
+                                {patient.part1.weight && <div className="flex justify-between"><span>น้ำหนัก:</span> <span className="font-bold text-gray-900">{patient.part1.weight} kg</span></div>}
+                                {patient.part1.height && <div className="flex justify-between"><span>ส่วนสูง:</span> <span className="font-bold text-gray-900">{patient.part1.height} cm</span></div>}
+                                {patient.part1.wheelchair && <div className="flex justify-between text-red-600 font-bold"><span>สถานะ:</span> <span>นั่งรถเข็น</span></div>}
+                                
+                                {/* Display Prior Exam info from PCU */}
+                                {patient.part1.priorExam === 'Yes' && (
+                                    <div className="flex justify-between text-blue-700">
+                                        <span>เคยตรวจจอประสาทตา:</span> 
+                                        <span className="font-bold">{patient.part1.priorExamCount} ครั้ง</span>
+                                    </div>
+                                )}
+
+                                <div className="pt-2 border-t border-blue-200 mt-2">
+                                    <p className="font-bold text-blue-800 mb-1 text-xs uppercase">ค่าสายตา (VA)</p>
+                                    <div className="flex justify-between text-gray-800"><span>ขวา:</span> <b>{safeVal(patient.part1.vaRight)}</b></div>
+                                    <div className="flex justify-between text-gray-800"><span>ซ้าย:</span> <b>{safeVal(patient.part1.vaLeft)}</b></div>
+                                </div>
                             </div>
                         </div>
                     </div>
-
-                    {/* Examination Form (Part 2 Detail) */}
-                    <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
-                        <div className="bg-blue-600 p-4 text-white font-bold flex items-center gap-2"><Icon name="eye" className="text-white"/> บันทึกผลตรวจจอประสาทตา (Part 2)</div>
-                        <div className="p-6 space-y-6">
-                            
-                            {/* General Exam Status */}
-                            <div className="bg-blue-50 p-4 rounded border border-blue-100 space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="font-medium text-blue-700">เป็นต้อกระจก (Cataract)?</span>
-                                    <div className="flex gap-2">
-                                        {['Yes','No'].map(opt => (
-                                            <button key={opt} onClick={()=>setP2({...p2, cataract:opt})} className={`px-3 py-1 rounded text-xs border font-bold ${p2.cataract===opt ? (opt==='Yes'?'bg-red-500 text-white':'bg-green-500 text-white') : 'bg-white text-gray-600'}`}>{opt}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="font-medium text-blue-700">ใช้ยาขยายม่านตา (Dilation)?</span>
-                                    <div className="flex gap-2">
-                                        {['Yes','No'].map(opt => (
-                                            <button key={opt} onClick={()=>setP2({...p2, dilation:opt})} className={`px-3 py-1 rounded text-xs border font-bold ${p2.dilation===opt ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}`}>{opt}</button>
-                                        ))}
-                                    </div>
-                                </div>
+                    
+                    <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border overflow-hidden p-6 space-y-6">
+                        {/* General Assessment */}
+                        <div className="p-4 bg-gray-50 rounded border mb-4">
+                            <p className="font-bold mb-3 text-blue-800">การประเมินเบื้องต้น</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.cataract} onChange={()=>toggleP2('cataract')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>เป็นต้อกระจก</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.hearingUnclear} onChange={()=>toggleP2('hearingUnclear')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>การได้ยินไม่ชัดเจน</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.cannotSit} onChange={()=>toggleP2('cannotSit')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>นั่งเก้าอี้ตรวจตาไม่ได้</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.liftEyelids} onChange={()=>toggleP2('liftEyelids')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>ต้องช่วยยกหนังตา</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.retinaViewable} onChange={()=>toggleP2('retinaViewable')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>พบจอประสาทตา</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={p2.mydriasis} onChange={()=>toggleP2('mydriasis')} className="chk-lg text-blue-600 rounded"/> 
+                                    <span>ต้องหยอดยาขยายม่านตา</span>
+                                </label>
                             </div>
-
-                            {/* Findings Checklist */}
-                            <div>
-                                <h4 className="font-bold text-sm text-gray-700 mb-2">Findings Checklist (L/R)</h4>
-                                <div className="border rounded-lg overflow-hidden">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-100"><tr><th className="p-2 text-left">Condition</th><th className="w-12 text-center">L</th><th className="w-12 text-center">R</th></tr></thead>
-                                        <tbody className="divide-y">
-                                            {Object.keys(INITIAL_FINDINGS).map(k => (
-                                                <tr key={k} className="hover:bg-gray-50/50">
-                                                    <td className="p-2">{INITIAL_FINDINGS[k].name}</td>
-                                                    <td className="text-center bg-gray-50"><input type="checkbox" checked={findings[k]?.L || false} onChange={()=>toggle(k,'L')}/></td>
-                                                    <td className="text-center bg-gray-50"><input type="checkbox" checked={findings[k]?.R || false} onChange={()=>toggle(k,'R')}/></td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            {/* DR Grading */}
-                            <div className="bg-green-50 p-4 rounded border border-green-100">
-                                <h4 className="font-bold text-sm text-green-700 uppercase mb-2">Diabetic Retinopathy (DR) Grading</h4>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">Right (ขวา)</label>
-                                        <select value={p2.drGradeR} onChange={e=>setP2({...p2, drGradeR:e.target.value})} className="p-2 border rounded bg-white w-full text-sm"><option value="">-- เลือกเกรด --</option>{DR_GRADING_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">Left (ซ้าย)</label>
-                                        <select value={p2.drGradeL} onChange={e=>setP2({...p2, drGradeL:e.target.value})} className="p-2 border rounded bg-white w-full text-sm"><option value="">-- เลือกเกรด --</option>{DR_GRADING_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Advice */}
-                            <div>
-                                <label className="text-xs font-bold text-gray-700 uppercase block mb-1">คำแนะนำ / Follow-up Plan</label>
-                                <textarea rows="2" value={p2.advice} onChange={e=>setP2({...p2, advice:e.target.value})} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm" placeholder="เช่น นัดติดตาม 6 เดือน, ส่งต่อไปรักษาด้วยเลเซอร์"></textarea>
-                            </div>
-
-                            <button onClick={save} disabled={saving} className="w-full bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-700 transition-all shadow-md disabled:opacity-50">{saving?'กำลังบันทึก...':'ยืนยันผลการตรวจ'}</button>
                         </div>
+
+                        {/* Retina Findings Section (UPDATED UI SPLIT) */}
+                        <div className="p-4 bg-gray-50 rounded border">
+                            <p className="font-bold mb-4 text-blue-800 border-b pb-2">ผลการตรวจจอประสาทตา</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* LEFT EYE (OS) */}
+                                <div className="bg-white p-3 rounded border shadow-sm card-hover">
+                                    <h4 className="font-bold text-center text-blue-600 mb-3 bg-blue-50 p-1 rounded">ตาซ้าย (OS)</h4>
+                                    <div className="mb-4">
+                                        <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง (DR Stage)</label>
+                                        <select value={p2.drStageL} onChange={(e)=>updateP2('drStageL', e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">
+                                            {DR_STAGES.map(s=><option key={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="text-xs text-gray-400 border-b pb-1">สิ่งที่ตรวจพบ (Findings)</p>
+                                        {Object.keys(defaultFindings).map(k => (
+                                            <label key={`L-${k}`} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                                <input type="checkbox" checked={findings[k]?.L} onChange={()=>toggle(k,'L')} className="chk-lg"/>
+                                                <span className="text-sm">{k}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* RIGHT EYE (OD) */}
+                                <div className="bg-white p-3 rounded border shadow-sm card-hover">
+                                    <h4 className="font-bold text-center text-orange-600 mb-3 bg-orange-50 p-1 rounded">ตาขวา (OD)</h4>
+                                    <div className="mb-4">
+                                        <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง (DR Stage)</label>
+                                        <select value={p2.drStageR} onChange={(e)=>updateP2('drStageR', e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">
+                                            {DR_STAGES.map(s=><option key={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="text-xs text-gray-400 border-b pb-1">สิ่งที่ตรวจพบ (Findings)</p>
+                                        {Object.keys(defaultFindings).map(k => (
+                                            <label key={`R-${k}`} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                                <input type="checkbox" checked={findings[k]?.R} onChange={()=>toggle(k,'R')} className="chk-lg"/>
+                                                <span className="text-sm">{k}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onClick={save} disabled={saving} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 text-lg">
+                            {saving ? 'กำลังบันทึก...' : <><Icon name="save"/> บันทึกผลการตรวจ</>}
+                        </button>
                     </div>
                 </div>
             );
         };
+        
+        // --- ADMIN TOOLS ---
+        const AdminHome = ({ onNavigate }) => (
+            <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
+                <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
+                <div className="bg-white p-6 rounded-xl shadow-lg border border-blue-100">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-800"><Icon name="cog" className="text-blue-600"/> Admin Tools</h2>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100"><div><h3 className="font-bold text-blue-900">จัดการรายชื่อ PCU</h3><p className="text-sm text-blue-700">เพิ่มหน่วยงาน PCU ใหม่ลงในระบบ Firebase</p></div><button onClick={()=>onNavigate('manage_agencies')} className="bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded hover:bg-blue-100 font-bold">จัดการ</button></div>
+                        <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-100"><div><h3 className="font-bold text-yellow-900">นำเข้าข้อมูล (CSV)</h3><p className="text-sm text-yellow-700">อัปโหลดข้อมูลผู้ป่วยจำนวนมาก</p></div><button onClick={()=>onNavigate('import_csv')} className="bg-white border border-yellow-200 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-100 font-bold">นำเข้า</button></div>
+                        <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-100"><div><h3 className="font-bold text-green-900">รายงานและสถิติ</h3><p className="text-sm text-green-700">ดูภาพรวมและส่งออกข้อมูล</p></div><button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded hover:bg-green-100 font-bold">ดูรายงาน</button></div>
+                    </div>
+                </div>
+            </div>
+        );
 
-        // --- Main App ---
+        const ManageAgencies = ({ onBack, agenciesMap }) => {
+            const [code, setCode] = useState('');
+            const [name, setName] = useState('');
+            const [saving, setSaving] = useState(false);
+            const [error, setError] = useState('');
+            const [success, setSuccess] = useState('');
+            const allAgencies = useMemo(() => {
+                const list = [];
+                Object.entries(STATIC_PCU_DATA).forEach(([c, n]) => list.push({ code: c, name: n, type: 'Static' }));
+                Object.entries(agenciesMap).forEach(([c, n]) => list.push({ code: c, name: n, type: 'Dynamic' }));
+                return list.sort((a, b) => a.code.localeCompare(b.code));
+            }, [agenciesMap]);
+
+            const handleAdd = async (e) => {
+                e.preventDefault(); setError(''); setSuccess('');
+                if (code.length !== 5 || !name) { setError("กรุณากรอกรหัส 5 หลักและชื่อหน่วยงาน"); return; }
+                setSaving(true);
+                try {
+                    const collection = getCollection('agencies');
+                    if (collection) {
+                        await collection.doc(code).set({ name: name, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                        setSuccess(`เพิ่มหน่วยงาน ${code} - ${name} เรียบร้อยแล้ว`); setCode(''); setName('');
+                    } else { setError("ระบบฐานข้อมูลไม่พร้อมใช้งาน"); }
+                } catch(err) { setError("บันทึกไม่สำเร็จ: " + err.message); }
+                setSaving(false);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto pb-20 animate-fade-in">
+                    <button onClick={()=>onBack('admin_home')} className="text-gray-500 mb-4 flex items-center gap-1 hover:text-gray-700"><Icon name="arrow-left" size={16}/> กลับสู่หน้า Admin</button>
+                    <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon name="plus-circle" className="text-green-600"/> ลงทะเบียน PCU ใหม่</h2>
+                        <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4 items-end">
+                            <div className="flex-1 w-full"><label className="block text-xs text-gray-500 mb-1">รหัส 5 หลัก</label><input type="text" maxLength="5" value={code} onChange={e=>setCode(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 99999"/></div>
+                            <div className="flex-[2] w-full"><label className="block text-xs text-gray-500 mb-1">ชื่อหน่วยงาน</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น รพ.สต.บ้านใหม่"/></div>
+                            <button disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 w-full md:w-auto">{saving ? '...' : 'บันทึก'}</button>
+                        </form>
+                        {error && <p className="text-red-500 text-sm mt-2">{error}</p>} {success && <p className="text-green-500 text-sm mt-2">{success}</p>}
+                    </div>
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden"><div className="p-4 bg-gray-50 border-b font-bold text-gray-700">รายชื่อหน่วยงานทั้งหมด ({allAgencies.length})</div><div className="max-h-96 overflow-y-auto"><table className="w-full text-sm"><thead className="bg-gray-100 text-left sticky top-0"><tr><th className="p-3">รหัส</th><th className="p-3">ชื่อหน่วยงาน</th><th className="p-3">ประเภท</th></tr></thead><tbody className="divide-y">{allAgencies.map(a => (<tr key={a.code}><td className="p-3 font-mono font-bold text-blue-600">{a.code}</td><td className="p-3">{a.name}</td><td className="p-3 text-xs text-gray-400">{a.type}</td></tr>))}</tbody></table></div></div>
+                </div>
+            );
+        };
+
+        const HospitalImport = ({ onBack, setModal }) => {
+            const [csvData, setCsvData] = useState(null);
+            const [file, setFile] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [uploadError, setUploadError] = useState('');
+            const [validCount, setValidCount] = useState(0);
+            const parseCSV = (text) => {
+                const lines = text.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
+                const headers = lines[0].split(',').map(h => h.trim());
+                const data = []; let validCount = 0; const headerMap = {};
+                CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+                    const values = lines[i].split(',').map(v => v.trim()); const patient = {};
+                    CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
+                    if (patient.idCard && patient.idCard.length === 13 && patient.name) { data.push({ part1: patient, status: 'Imported', isDeleted: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); validCount++; }
+                }
+                setValidCount(validCount); return data;
+            };
+            const handleParse = () => { if (!file) return; setLoading(true); setUploadError(''); const reader = new FileReader(); reader.onload = (event) => { try { setCsvData(parseCSV(event.target.result)); setLoading(false); } catch (error) { setUploadError(error.message); setLoading(false); } }; reader.readAsText(file, 'UTF-8'); };
+            const uploadData = async () => { const collection = getCollection('patients_referrals'); if (!collection) { setUploadError("DB Error"); return; } setLoading(true); setUploadError(''); try { const batch = db.batch(); let count = 0; csvData.forEach(data => { if (data.part1.idCard.length === 13) { const newDocRef = collection.doc(); batch.set(newDocRef, data); count++; } }); if(count===0) { setUploadError('No valid data'); setLoading(false); return; } await batch.commit(); setModal({ visible: true, title: "สำเร็จ", message: `Imported ${count} records`, onConfirm: () => onBack('admin_home') }); } catch (e) { setUploadError(e.message); } finally { setLoading(false); } };
+            return (
+                <div className="max-w-3xl mx-auto pb-20 animate-fade-in"><button onClick={() => onBack('admin_home')} className="mb-4">Back</button><div className="bg-white p-6 rounded shadow"><h2 className="font-bold mb-4">Import CSV</h2><input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>{file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}{csvData && <div className="mt-4"><p>Found {validCount} valid records.</p><button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button></div>}{uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}</div></div>
+            );
+        };
+
+        const ReportsPage = ({ onBack }) => (<div className="max-w-3xl mx-auto pb-20 animate-fade-in"><button onClick={()=>onBack('admin_home')} className="mb-4">Back</button><div className="bg-white p-6 rounded shadow"><h2 className="text-xl font-bold mb-4">Reports & Statistics</h2><p className="text-gray-500">ฟีเจอร์นี้อยู่ระหว่างการพัฒนา (สามารถใช้ปุ่ม Export ในหน้า Dashboard แทนได้ชั่วคราว)</p></div></div>);
+
+        // --- MAIN APP ---
         const App = () => {
             const [user, setUser] = useState(null);
-            const [loading, setLoading] = useState(true);
-            const [patients, setPatients] = useState([]);
+            const [role, setRole] = useState(null);
+            const [agencyCode, setAgencyCode] = useState(null);
+            const [agencyName, setAgencyName] = useState(null);
             const [view, setView] = useState('dashboard');
+            const [patients, setPatients] = useState([]);
+            const [dynamicAgencies, setDynamicAgencies] = useState({});
             const [selectedPatient, setSelectedPatient] = useState(null);
-
-            useEffect(() => {
-                const unsubscribe = auth.onAuthStateChanged(u => {
-                    setUser(u);
-                    setLoading(false);
-                });
-                return unsubscribe;
-            }, []);
-
-            useEffect(() => {
-                if(!user) return;
-                // ดึงข้อมูลทั้งหมด
-                return DB_COLLECTION.orderBy('createdAt', 'desc').onSnapshot(s => {
-                    setPatients(s.docs.map(d => ({id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate()})));
-                    if(window.lucide) setTimeout(()=>window.lucide.createIcons(), 100);
-                });
-            }, [user]);
-
-            if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600 font-bold animate-pulse">Connecting...</div>;
-            if (!user) return <AuthScreen />;
-
-            // กำหนด Role และกรองข้อมูลตามสิทธิ์
-            const unitName = user.email ? user.email.split('@')[0] : 'Unknown';
-            const role = unitName === '10700' ? 'HOSPITAL' : 'PCU';
+            const [modal, setModal] = useState({ visible: false, title: '', message: '', onConfirm: null });
             
-            // --- Dashboard Filtering Logic (สำหรับแสดงผลในตาราง) ---
-            const dashboardPatients = useMemo(() => {
-                // HOSPITAL (10700) sees all data
-                if (role === 'HOSPITAL') {
-                    return patients;
-                } 
-                
-                // PCU sees only their own submitted cases (filtered by senderId, which is user.uid)
-                return patients.filter(p => p.senderId === user.uid);
+            useEffect(() => {
+                if (!auth) return;
+                return auth.onAuthStateChanged(u => {
+                    setUser(u);
+                    if (u && u.email) {
+                        const code = u.email.split('@')[0];
+                        setAgencyCode(code);
+                        if (code === '10700') { setRole('HOSPITAL'); setAgencyName('โรงพยาบาลศรีสะเกษ'); } 
+                        else { setRole('PCU'); setAgencyName(STATIC_PCU_DATA[code] || `PCU ${code}`); }
+                        setView('dashboard');
+                    } else { setRole(null); setAgencyCode(null); }
+                });
+            }, []); 
 
-            }, [patients, role, user]);
-            // --- End Dashboard Filtering Logic ---
+            useEffect(() => {
+                const collection = getCollection('patients_referrals');
+                if(!user || !collection) return;
+                const unsub = collection.onSnapshot(snap => {
+                    let newPatients = snap.docs.map(d => { const data = d.data(); return { id: d.id, ...data, createdAt: data.createdAt?.toDate(), examinedAt: data.examinedAt?.toDate() }; });
+                    newPatients.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+                    setPatients(newPatients);
+                });
+                return () => unsub();
+            }, [user]);
+            
+            useEffect(() => {
+                const collection = getCollection('agencies');
+                if(!user || !collection) return;
+                const unsub = collection.onSnapshot(snap => {
+                    const map = {}; snap.docs.forEach(d => map[d.id] = d.data().name); setDynamicAgencies(map);
+                    if (role === 'PCU' && agencyCode && map[agencyCode]) setAgencyName(map[agencyCode]);
+                });
+                return () => unsub();
+            }, [user, role, agencyCode]);
 
+            if(!role) return <AuthScreen />;
 
             return (
-                <div className="max-w-4xl mx-auto p-4">
-                    <nav className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border">
-                        <div className="flex items-center gap-2 font-bold text-gray-700 text-lg"><Icon name="activity" className="text-blue-600"/> EyeDM</div>
-                        <div className="flex items-center gap-3">
-                            <div className="hidden sm:flex flex-col items-end">
-                                <span className="text-sm font-bold text-gray-800">หน่วยงาน: {unitName}</span>
-                                <span className="text-xs text-gray-500">{role === 'HOSPITAL' ? 'โรงพยาบาล' : 'รพ.สต.'}</span>
-                            </div>
-                            <button onClick={()=>auth.signOut()} className="text-red-500 hover:bg-red-50 p-2 rounded border border-transparent hover:border-red-100 transition-colors" title="ออกจากระบบ"><Icon name="log-out" size={20}/></button>
-                        </div>
+                <div className="max-w-5xl mx-auto p-4">
+                    <nav className="flex justify-between items-center mb-6 bg-white p-3 rounded-xl shadow-md sticky top-4 z-10">
+                        <h1 className="font-bold text-gray-700 flex items-center gap-2"><Icon name="activity" size={20} className="text-blue-600"/> EyeDM Connect ({role})</h1>
+                        <div className="flex gap-2">{role === 'HOSPITAL' && <button onClick={() => setView('admin_home')}><Icon name="cog" size={18}/></button>}<button onClick={()=>auth.signOut()}><Icon name="log-out" size={18}/></button></div>
                     </nav>
                     
-                    {/* ส่งข้อมูลที่ถูกกรองแล้วไปที่ Dashboard */}
-                    {view === 'dashboard' && <Dashboard role={role} patients={dashboardPatients} onNew={()=>setView('pcu')} onSelect={p=>{setSelectedPatient(p); setView('hospital');}} onBulkImport={()=>setView('bulk_import')}/>}
-                    {/* PCUForm ต้องเห็นข้อมูลทั้งหมด (patients) เพื่อใช้ในการ Auto-fill */}
-                    {view === 'pcu' && <PCUForm onBack={()=>setView('dashboard')} userId={user.uid} existingPatients={patients} />}
-                    {view === 'hospital' && <HospitalForm patient={selectedPatient} onBack={()=>setView('dashboard')} />}
-                    {view === 'bulk_import' && <BulkImportScreen onBack={()=>setView('dashboard')} userId={user.uid} />}
+                    {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={dynamicAgencies} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} />}
+                    {view === 'pcu_form' && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={selectedPatient} agencyCode={agencyCode} />}
+                    {view === 'hospital' && <HospitalForm patient={selectedPatient} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
+                    {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} />}
+                    {role === 'HOSPITAL' && view === 'manage_agencies' && <ManageAgencies onBack={setView} agenciesMap={dynamicAgencies} />}
+                    {role === 'HOSPITAL' && view === 'import_csv' && <HospitalImport onBack={setView} setModal={setModal} />}
+                    {role === 'HOSPITAL' && view === 'reports' && <ReportsPage onBack={() => setView('admin_home')} />}
+                    <MessageModal modal={modal} setModal={setModal} />
                 </div>
             );
         };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
