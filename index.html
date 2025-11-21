@@ -95,6 +95,13 @@
         const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount'];
         const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Ulcer (มีแผล)"];
 
+        // --- UTILS ---
+        const getTodayStr = () => {
+            const now = new Date();
+            const offset = now.getTimezoneOffset() * 60000;
+            return new Date(now.getTime() - offset).toISOString().split('T')[0];
+        };
+
         // --- COMPONENTS ---
         const Icon = ({ name, size = 20, className = "", color }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
@@ -120,14 +127,23 @@
             );
         };
 
-        const QueueStatusBar = ({ patients, role, agencyCode }) => {
+        const QueueStatusBar = ({ patients, role, agencyCode, selectedDate }) => {
             const myPatients = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
+                    
+                    // [ADDED] Filter by selected date
+                    if (selectedDate) {
+                        const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
+                        const offset = pDate.getTimezoneOffset() * 60000;
+                        const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+                        if (pDateStr !== selectedDate) return false;
+                    }
+                    
                     return true;
                 });
-            }, [patients, role, agencyCode]);
+            }, [patients, role, agencyCode, selectedDate]);
 
             const totalPatients = myPatients.length;
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
@@ -200,18 +216,9 @@
             );
         };
 
-        const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap }) => {
+        const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
             const [agencyFilter, setAgencyFilter] = useState('All');
-            
-            // [NEW] Date Filter (Default: Today)
-            const getTodayStr = () => {
-                const now = new Date();
-                const offset = now.getTimezoneOffset() * 60000;
-                return new Date(now.getTime() - offset).toISOString().split('T')[0];
-            };
-            const [selectedDate, setSelectedDate] = useState(getTodayStr());
-
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
             const getFootBadge = (p) => {
@@ -233,21 +240,26 @@
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
                     
-                    // [ADDED] Date Match Logic
+                    // Date Match Logic
                     const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                     const offset = pDate.getTimezoneOffset() * 60000;
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                     const matchesDate = pDateStr === selectedDate;
 
+                    // Common Logic: Must match date and term
+                    let matches = matchesDate;
+                    if (term.length > 0) matches = matches || matchesTerm; // Allow search to override date filter slightly if needed, or enforce date? 
+                    // Requirement: "Look at data only for current day" implies strict date filter unless searching specifically might be broad. 
+                    // Let's enforce date for the list view as per request.
+                    matches = matchesDate; // Strict date filter
+                    if (term.length > 0) matches = matches && matchesTerm;
+
                     if (role === 'HOSPITAL') {
                         const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
-                        // [MODIFIED] Apply Date Filter for Hospital, allowing text search to override OR work within date
-                        // Strictly filtering by date as requested for "Daily View"
-                        return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
+                        return matches && matchesAgency && (p.status !== 'Imported' || term.length > 0);
                     }
                     
-                    if (term.length > 0) return matchesTerm;
-                    return p.referringAgencyCode === agencyCode;
+                    return matches && p.referringAgencyCode === agencyCode;
                 });
             }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
 
@@ -273,13 +285,11 @@
                         {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
-                        {/* [ADDED] Date Picker for Hospital */}
-                        {role === 'HOSPITAL' && (
-                            <div className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded p-1">
-                                <span className="text-xs font-bold text-blue-600 px-2">วันที่:</span>
-                                <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-blue-800 font-bold"/>
-                            </div>
-                        )}
+                        {/* [UPDATED] Date Picker for Everyone */}
+                        <div className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded p-1">
+                            <span className="text-xs font-bold text-blue-600 px-2">วันที่:</span>
+                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-blue-800 font-bold cursor-pointer"/>
+                        </div>
 
                         {role === 'HOSPITAL' && (
                             <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} className="w-full sm:w-auto p-2 border bg-gray-50 rounded text-sm">
@@ -324,7 +334,7 @@
                                         </td>
                                     </tr>
                                 ))}
-                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูล{role === 'HOSPITAL' ? 'ในวันที่เลือก' : ''}</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -780,19 +790,12 @@
             );
         };
 
-        const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout }) => {
+        // [UPDATED] FootDashboard - รับ selectedDate และ setSelectedDate จาก App
+        const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
             // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
-            // [NEW] Date Filter (Default: Today)
-            const getTodayStr = () => {
-                const now = new Date();
-                const offset = now.getTimezoneOffset() * 60000;
-                return new Date(now.getTime() - offset).toISOString().split('T')[0];
-            };
-            const [selectedDate, setSelectedDate] = useState(getTodayStr());
-
             // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
@@ -823,13 +826,12 @@
                 <div className="space-y-6 animate-fade-in pb-20">
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
                         
-                        {/* [ADDED] Date Picker */}
+                        {/* [UPDATED] Date Picker for Foot */}
                         <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded p-1">
                             <span className="text-xs font-bold text-pink-600 px-2">วันที่:</span>
-                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-pink-800 font-bold"/>
+                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-pink-800 font-bold cursor-pointer"/>
                         </div>
 
-                        {/* [ADDED] Agency Select Dropdown */}
                         <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} className="w-full sm:w-auto p-2 border bg-gray-50 rounded text-sm">
                             <option value="All">ทุกหน่วยงาน (All PCU)</option>
                             {Object.keys(allAgenciesMap).sort().map(code => <option key={code} value={code}>{code} - {allAgenciesMap[code]}</option>)}
@@ -852,7 +854,6 @@
                                             <td className="p-3">
                                                 <div className="font-bold text-gray-800">{p.part1?.name}</div>
                                                 <div className="text-xs text-gray-400 font-mono mb-1">{p.part1?.idCard}</div>
-                                                {/* [ADDED] Show PCU Badge */}
                                                 <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px] border">{allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode}</span>
                                             </td>
                                             <td className="p-3 text-gray-600 align-top">{p.part1?.age} ปี / DM {p.part1?.dmYears} ปี</td>
@@ -901,7 +902,6 @@
             useEffect(() => {
                 let risk = 'Low Risk (ความเสี่ยงต่ำ)';
                 const lossSensation = form.monofilament.L === 'Abnormal' || form.monofilament.R === 'Abnormal';
-                // [UPDATED] Pulse logic: Weak or Absent is considered risk
                 const noPulse = ['Absent', 'Weak'].includes(form.pulse.L) || ['Absent', 'Weak'].includes(form.pulse.R);
                 
                 if (form.ulcer) risk = 'Ulcer (มีแผล)';
@@ -924,7 +924,19 @@
                 <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                     <button onClick={onBack} className="mb-4 text-gray-500 flex items-center gap-1 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับทะเบียน</button>
                     <div className="bg-white rounded-xl shadow-lg border border-pink-100 overflow-hidden">
-                        <div className="bg-pink-600 p-4 text-white flex items-center justify-between"><div className="flex items-center gap-2"><Icon name="activity" className="text-white"/><h2 className="font-bold text-lg">แบบประเมินเท้าเบาหวาน</h2></div><div className="text-right text-xs opacity-90"><div>{patient.part1.name}</div><div>{patient.part1.age} ปี</div></div></div>
+                        <div className="bg-pink-600 p-6 text-white flex flex-col md:flex-row items-center justify-between gap-4 shadow-md">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-white/20 p-2 rounded-full"><Icon name="activity" size={32} className="text-white"/></div>
+                                <h2 className="font-bold text-2xl">แบบประเมินเท้าเบาหวาน</h2>
+                            </div>
+                            <div className="text-center md:text-right">
+                                <div className="text-3xl font-bold mb-1 tracking-wide">{patient.part1.name}</div>
+                                <div className="text-xl font-medium opacity-90 flex flex-col md:flex-row gap-2 md:gap-4 justify-center md:justify-end">
+                                    <span className="bg-pink-700/50 px-3 py-1 rounded-lg">อายุ <b>{patient.part1.age}</b> ปี</span>
+                                    <span className="bg-pink-700/50 px-3 py-1 rounded-lg">เป็นเบาหวาน <b>{patient.part1.dmYears}</b> ปี</span>
+                                </div>
+                            </div>
+                        </div>
                         <div className="p-6 space-y-6">
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2"><Icon name="scissors" size={16}/> ประวัติการตัดนิ้ว/ขา/เท้า (History of Amputation)</h3>
@@ -971,7 +983,6 @@
                                 <div className="flex gap-4 flex-wrap">{[{v:'Sandal', l:'รองเท้าแตะ/คีบ'}, {v:'Shoe', l:'รองเท้าหุ้มส้น/สวม'}, {v:'DiabetesShoe', l:'รองเท้าเบาหวาน'}].map(fw => (<label key={fw.v} className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border shadow-sm"><input type="radio" checked={form.footwear === fw.v} onChange={()=>setForm({...form, footwear:fw.v})} className="text-green-600 scale-125"/> <span className="text-sm">{fw.l}</span></label>))}</div>
                             </div>
                             
-                            {/* [NEW] Other Comments */}
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <h3 className="font-bold text-gray-800 mb-2 text-sm">การลงความเห็นอื่นๆ (Other Comments)</h3>
                                 <textarea 
@@ -1000,6 +1011,9 @@
             const [agenciesMap, setAgenciesMap] = useState({});
             const [selectedPatient, setSelectedPatient] = useState(null);
             const [modal, setModal] = useState({ visible: false, title: '', message: '', onConfirm: null });
+            
+            // [MOVED] Global Date State
+            const [currentDate, setCurrentDate] = useState(getTodayStr());
 
             useEffect(() => {
                 return auth.onAuthStateChanged(u => {
@@ -1051,8 +1065,9 @@
                             <h1 className="font-bold text-gray-700 flex items-center gap-2"><Icon name="footprints" size={20} className="text-pink-600"/> EyeDM Foot Clinic</h1>
                             <button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button>
                         </nav>
-                        <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} />
-                        {view === 'foot_dashboard' && <FootDashboard patients={patients} agenciesMap={agenciesMap} onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} />}
+                        {/* [UPDATED] Pass global date state */}
+                        <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
+                        {view === 'foot_dashboard' && <FootDashboard patients={patients} agenciesMap={agenciesMap} onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                         {view === 'foot_form' && <FootForm patient={selectedPatient} onBack={()=>{setSelectedPatient(null);setView('foot_dashboard');}} setModal={setModal} />}
                         <MessageModal modal={modal} setModal={setModal} />
                     </div>
@@ -1065,8 +1080,9 @@
                         <h1 className="font-bold text-gray-700 flex items-center gap-2"><Icon name="activity" size={20} className="text-blue-600"/> EyeDM Connect ({role})</h1>
                         <div className="flex gap-2">{role === 'HOSPITAL' && <button onClick={() => setView('admin_home')} className="text-gray-500 hover:text-blue-600"><Icon name="settings" size={18}/></button>}<button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button></div>
                     </nav>
-                    <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} />
-                    {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} />}
+                    {/* [UPDATED] Pass global date state */}
+                    <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
+                    {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                     {view === 'pcu_form' && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={selectedPatient} agencyCode={agencyCode} />}
                     {view === 'hospital' && <HospitalForm patient={selectedPatient} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} />}
