@@ -92,7 +92,7 @@
             "03293": "รพ.สต.บ้านหนองไผ่", "14422": "ศูนย์บริการสาธารณสุข 2", "15204": "ศูนย์บริการสาธารณสุข 3",
             "21986": "ศูนย์บริการสาธารณสุข 4", "23954": "ศูนย์บริการสาธารณสุข 5", "77475": "ศุนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ"
         };
-        const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount'];
+        const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount', 'agencyCode', 'examDate', 'drStageR', 'drStageL'];
         const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Very High Risk (ความเสี่ยงสูงมาก)", "Active Ulcer (มีแผลขณะนี้)"];
 
         // --- UTILS ---
@@ -133,7 +133,7 @@
                     if (p.isDeleted) return false;
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
                     
-                    // [ADDED] Filter by selected date
+                    // Filter by selected date
                     if (selectedDate) {
                         const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                         const offset = pDate.getTimezoneOffset() * 60000;
@@ -240,18 +240,14 @@
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
                     
-                    // Date Match Logic
                     const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                     const offset = pDate.getTimezoneOffset() * 60000;
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                     const matchesDate = pDateStr === selectedDate;
 
-                    // Common Logic: Must match date and term
                     let matches = matchesDate;
-                    if (term.length > 0) matches = matches || matchesTerm; 
+                    if (term.length > 0) matches = matches || matchesTerm;
                     
-                    // Strict date filter unless searching by term (and even then, usually date context is preferred)
-                    // For daily operations, we usually stick to the selected date view.
                     matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
 
@@ -286,7 +282,6 @@
                         {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
-                        {/* [UPDATED] Date Picker for Everyone */}
                         <div className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded p-1">
                             <span className="text-xs font-bold text-blue-600 px-2">วันที่:</span>
                             <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-blue-800 font-bold cursor-pointer"/>
@@ -316,7 +311,6 @@
                                             <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
                                             <div className="flex items-center gap-2">
                                                 <span>{p.part1?.name || 'N/A'}</span>
-                                                {/* [ADDED] Show Gender Icon */}
                                                 {p.part1?.gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
                                                 {p.part1?.gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
                                             </div>
@@ -368,14 +362,12 @@
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
 
-            // [ADDED] Gender Detection Logic
+            // Gender Auto-detect
             const handleNameChange = (e) => {
                 const val = e.target.value;
                 let detectedGender = form.gender;
-                
                 if (val.startsWith('นาย') || val.startsWith('ด.ช.') || val.startsWith('พระ') || val.startsWith('สามเณร') || val.startsWith('พลฯ')) detectedGender = 'ชาย';
                 else if (val.startsWith('นาง') || val.startsWith('ด.ญ.') || val.startsWith('น.ส.') || val.startsWith('ดญ')) detectedGender = 'หญิง';
-                
                 setForm({ ...form, name: val, gender: detectedGender });
             };
 
@@ -515,11 +507,23 @@
             );
         };
 
-        const HospitalForm = ({ patient, onBack, setModal, role }) => {
+        const HospitalForm = ({ patient, patients, onBack, setModal, role }) => { 
             const isReadOnly = role === 'PCU';
             const [p2, setP2] = useState({ cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false, drStageL: 'No DR (ปกติ)', drStageR: 'No DR (ปกติ)', ...patient.part2 });
             const [findings, setFindings] = useState(patient.findings || JSON.parse(JSON.stringify(defaultFindings)));
             const [saving, setSaving] = useState(false);
+
+            const previousResult = useMemo(() => {
+                if (!patients || !patient.part1?.idCard) return null;
+                const history = patients.filter(p => 
+                    p.part1?.idCard === patient.part1.idCard && 
+                    p.id !== patient.id && 
+                    p.status === 'Completed' && 
+                    !p.isDeleted
+                );
+                history.sort((a, b) => b.createdAt - a.createdAt);
+                return history.length > 0 ? history[0] : null;
+            }, [patient, patients]);
 
             const save = async () => {
                 setSaving(true);
@@ -558,6 +562,47 @@
                                     <div className="flex justify-between text-gray-800"><span>ขวา:</span> <b>{patient.part1.vaRight || '-'}</b></div>
                                     <div className="flex justify-between text-gray-800"><span>ซ้าย:</span> <b>{patient.part1.vaLeft || '-'}</b></div>
                                 </div>
+
+                                {/* [ADDED] Previous Result Section (with Findings) */}
+                                {previousResult && (
+                                    <div className="pt-2 border-t border-blue-200 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
+                                         <p className="font-bold text-yellow-800 mb-1 text-xs uppercase flex items-center gap-1"><Icon name="history" size={12}/> ผลตรวจตาครั้งล่าสุด ({new Date(previousResult.createdAt).toLocaleDateString('th-TH')})</p>
+                                         <div className="flex justify-between items-center text-xs mb-1">
+                                             <span className="text-gray-600">ขวา (OD):</span>
+                                             <span className="font-bold text-gray-800">{previousResult.part2?.drStageR || '-'}</span>
+                                         </div>
+                                         <div className="flex justify-between items-center text-xs mb-2">
+                                             <span className="text-gray-600">ซ้าย (OS):</span>
+                                             <span className="font-bold text-gray-800">{previousResult.part2?.drStageL || '-'}</span>
+                                         </div>
+                                         
+                                         {/* [ADDED] Show detailed findings from history */}
+                                         <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
+                                            <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
+                                            <div className="mt-1">
+                                                {Object.entries(previousResult.findings || {}).map(([key, val]) => {
+                                                    const sides = [];
+                                                    if (val.L) sides.push('L');
+                                                    if (val.R) sides.push('R');
+                                                    if (sides.length > 0 && key !== 'Normal') {
+                                                        return (
+                                                            <div key={key} className="flex items-center gap-1 mb-0.5">
+                                                                <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
+                                                                <span>{key} ({sides.join(',')})</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })}
+                                                {/* If normal or no findings */}
+                                                {(!previousResult.findings || Object.entries(previousResult.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
+                                                    <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
+                                                }
+                                            </div>
+                                         </div>
+                                    </div>
+                                )}
+
                                 {patient.footExam && (
                                     <div className="pt-2 border-t border-blue-200 mt-2">
                                          <p className="font-bold text-pink-600 mb-1 text-xs uppercase flex items-center gap-1"><Icon name="footprints" size={12}/> ตรวจเท้า (Foot Risk)</p>
@@ -681,14 +726,54 @@
                     if (!lines[i].trim()) continue;
                     const values = lines[i].split(',').map(v => v.trim()); const patient = {};
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
-                    if (patient.idCard && patient.idCard.length === 13 && patient.name) { data.push({ part1: patient, status: 'Imported', isDeleted: false, createdAt: new Date() }); validCount++; }
+                    if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
+                        // Deterministic ID Logic for Import
+                        const examDate = patient.examDate ? new Date(patient.examDate) : new Date();
+                        const dateKey = examDate.toISOString().split('T')[0];
+                        
+                        // Create import object
+                        const importData = { 
+                            part1: patient, 
+                            referringAgencyCode: patient.agencyCode || 'IMPORT',
+                            status: (patient.drStageR || patient.drStageL) ? 'Completed' : 'Imported', 
+                            isDeleted: false, 
+                            createdAt: examDate 
+                        };
+                        
+                        if(importData.status === 'Completed') {
+                            importData.part2 = { drStageR: patient.drStageR || 'Incomplete', drStageL: patient.drStageL || 'Incomplete' };
+                            importData.findings = JSON.parse(JSON.stringify(defaultFindings));
+                        }
+
+                        data.push(importData); 
+                        validCount++; 
+                    }
                 }
                 setValidCount(validCount); return data;
             };
             const handleParse = () => { if (!file) return; setLoading(true); setUploadError(''); const reader = new FileReader(); reader.onload = (event) => { try { setCsvData(parseCSV(event.target.result)); setLoading(false); } catch (error) { setUploadError(error.message); setLoading(false); } }; reader.readAsText(file, 'UTF-8'); };
-            const uploadData = async () => { const collection = getCollection('patients_referrals'); setLoading(true); setUploadError(''); try { const batch = db.batch(); let count = 0; csvData.forEach(data => { if (data.part1.idCard.length === 13) { const newDocRef = collection.doc(); batch.set(newDocRef, data); count++; } }); if(count===0) { setUploadError('No valid data'); setLoading(false); return; } await batch.commit(); setModal({ visible: true, title: "สำเร็จ", message: `Imported ${count} records`, onConfirm: () => onBack('admin_home') }); } catch (e) { setUploadError(e.message); } finally { setLoading(false); } };
+            const uploadData = async () => { 
+                const collection = getCollection('patients_referrals'); 
+                setLoading(true); 
+                setUploadError(''); 
+                try { 
+                    const batch = db.batch(); 
+                    let count = 0; 
+                    csvData.forEach(data => { 
+                        // Deterministic ID to prevent duplication
+                        const dateStr = data.createdAt.toISOString().split('T')[0];
+                        const docId = `${data.part1.idCard}_${dateStr}`;
+                        const newDocRef = collection.doc(docId); 
+                        batch.set(newDocRef, data, { merge: true }); 
+                        count++; 
+                    }); 
+                    if(count===0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    await batch.commit(); 
+                    setModal({ visible: true, title: "สำเร็จ", message: `Imported/Updated ${count} records`, onConfirm: () => onBack('admin_home') }); 
+                } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
+            };
             return (
-                <div className="max-w-3xl mx-auto pb-20 animate-fade-in"><button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button><div className="bg-white p-6 rounded shadow"><h2 className="font-bold mb-4">Import CSV</h2><input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>{file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}{csvData && <div className="mt-4"><p>Found {validCount} valid records.</p><button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button></div>}{uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}</div></div>
+                <div className="max-w-3xl mx-auto pb-20 animate-fade-in"><button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button><div className="bg-white p-6 rounded shadow"><h2 className="font-bold mb-4">Import CSV (History Supported)</h2><input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>{file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}{csvData && <div className="mt-4"><p>Found {validCount} valid records.</p><button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button></div>}{uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}</div></div>
             );
         };
 
@@ -700,7 +785,7 @@
                 const waiting = validPatients.filter(p => p.status === 'Waiting').length;
                 const severityCounts = { 'No DR': 0, 'Mild NPDR': 0, 'Moderate NPDR': 0, 'Severe NPDR': 0, 'PDR': 0, 'Incomplete': 0 };
                 const footTotal = validPatients.filter(p => p.footExam).length;
-                const footRiskCounts = { 'Low Risk': 0, 'Moderate Risk': 0, 'High Risk': 0, 'Ulcer': 0 };
+                const footRiskCounts = { 'Low Risk': 0, 'Moderate Risk': 0, 'High Risk': 0, 'Very High Risk': 0, 'Active Ulcer': 0 };
                 const agencyStats = {};
 
                 validPatients.forEach(p => {
@@ -828,29 +913,23 @@
             );
         };
 
-        // [UPDATED] FootDashboard - รับ selectedDate และ setSelectedDate จาก App
         const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
-            // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
-            // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
-            // [UPDATED] Filter Logic
             const filtered = patients.filter(p => {
                 if (p.isDeleted) return false;
                 const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                 const matchesTerm = searchStr.includes(term);
                 const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
                 
-                // Date Match Logic
                 const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                 const offset = pDate.getTimezoneOffset() * 60000;
                 const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                 const matchesDate = pDateStr === selectedDate;
 
-                // Apply date filter strictly unless searching by term
                 return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
             });
 
@@ -864,7 +943,6 @@
                 <div className="space-y-6 animate-fade-in pb-20">
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
                         
-                        {/* [UPDATED] Date Picker for Foot */}
                         <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded p-1">
                             <span className="text-xs font-bold text-pink-600 px-2">วันที่:</span>
                             <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-pink-800 font-bold cursor-pointer"/>
@@ -937,42 +1015,25 @@
             
             const [saving, setSaving] = useState(false);
 
-            // [CRITICAL UPDATE] Risk Calculation Logic (Actual Criteria)
             useEffect(() => {
                 let risk = 'Low Risk (ความเสี่ยงต่ำ)';
-                
-                // 1. Check Factors
                 const hasActiveUlcer = form.ulcer;
                 const hasHistory = form.historyUlcer || form.amputation.toe || form.amputation.foot || form.amputation.leg;
-                
-                // LOPS (Loss of Protective Sensation)
                 const hasLOPS = form.monofilament.L === 'Abnormal' || form.monofilament.R === 'Abnormal';
-                
-                // PAD (Peripheral Arterial Disease) - Pulse Weak or Absent
                 const hasPAD = ['Absent', 'Weak'].includes(form.pulse.L) || ['Absent', 'Weak'].includes(form.pulse.R);
-                
-                // Deformity (Include Callus as a deformity/pressure sign)
                 const hasDeformity = form.deformity || form.callus;
 
-                // 2. Determine Level (Priority: Ulcer > Very High > High > Moderate > Low)
-                if (hasActiveUlcer) {
-                    risk = 'Active Ulcer (มีแผลขณะนี้)';
-                } else if (hasHistory) {
-                    risk = 'Very High Risk (ความเสี่ยงสูงมาก)';
-                } else {
-                    // Count Risk Factors (LOPS, PAD, Deformity)
+                if (hasActiveUlcer) risk = 'Active Ulcer (มีแผลขณะนี้)';
+                else if (hasHistory) risk = 'Very High Risk (ความเสี่ยงสูงมาก)';
+                else {
                     let factors = 0;
                     if (hasLOPS) factors++;
                     if (hasPAD) factors++;
                     if (hasDeformity) factors++;
 
-                    if (factors >= 2) {
-                        risk = 'High Risk (ความเสี่ยงสูง)'; // e.g., LOPS + Deformity
-                    } else if (factors === 1) {
-                        risk = 'Moderate Risk (ปานกลาง)'; // e.g., LOPS only
-                    } else {
-                        risk = 'Low Risk (ความเสี่ยงต่ำ)';
-                    }
+                    if (factors >= 2) risk = 'High Risk (ความเสี่ยงสูง)';
+                    else if (factors === 1) risk = 'Moderate Risk (ปานกลาง)';
+                    else risk = 'Low Risk (ความเสี่ยงต่ำ)';
                 }
                 
                 setForm(f => ({ ...f, riskLevel: risk }));
@@ -1055,7 +1116,6 @@
                                 <textarea value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="ระบุความเห็นเพิ่มเติม..."></textarea>
                             </div>
 
-                            {/* Display Result */}
                             <div className={`p-4 text-white rounded-xl text-center ${form.riskLevel.includes('Active') ? 'bg-red-800' : form.riskLevel.includes('Very') ? 'bg-red-600' : form.riskLevel.includes('High') ? 'bg-orange-500' : form.riskLevel.includes('Moderate') ? 'bg-yellow-500' : 'bg-green-500'}`}>
                                 <div className="text-xs text-white/80 mb-1">ผลการประเมิน (คำนวณอัตโนมัติ)</div>
                                 <div className="text-2xl font-bold">{form.riskLevel}</div>
@@ -1148,7 +1208,7 @@
                     <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
                     {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                     {view === 'pcu_form' && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={selectedPatient} agencyCode={agencyCode} />}
-                    {view === 'hospital' && <HospitalForm patient={selectedPatient} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
+                    {view === 'hospital' && <HospitalForm patient={selectedPatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} />}
                     {role === 'HOSPITAL' && view === 'manage_agencies' && <ManageAgencies onBack={setView} agenciesMap={agenciesMap} />}
                     {role === 'HOSPITAL' && view === 'import_csv' && <HospitalImport onBack={setView} setModal={setModal} />}
