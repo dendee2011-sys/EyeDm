@@ -93,7 +93,7 @@
             "21986": "ศูนย์บริการสาธารณสุข 4", "23954": "ศูนย์บริการสาธารณสุข 5", "77475": "ศุนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ"
         };
         const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount'];
-        const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Ulcer (มีแผล)"];
+        const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Very High Risk (ความเสี่ยงสูงมาก)", "Active Ulcer (มีแผลขณะนี้)"];
 
         // --- UTILS ---
         const getTodayStr = () => {
@@ -248,10 +248,11 @@
 
                     // Common Logic: Must match date and term
                     let matches = matchesDate;
-                    if (term.length > 0) matches = matches || matchesTerm; // Allow search to override date filter slightly if needed, or enforce date? 
-                    // Requirement: "Look at data only for current day" implies strict date filter unless searching specifically might be broad. 
-                    // Let's enforce date for the list view as per request.
-                    matches = matchesDate; // Strict date filter
+                    if (term.length > 0) matches = matches || matchesTerm; 
+                    
+                    // Strict date filter unless searching by term (and even then, usually date context is preferred)
+                    // For daily operations, we usually stick to the selected date view.
+                    matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
 
                     if (role === 'HOSPITAL') {
@@ -313,7 +314,12 @@
                                         <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
                                         <td className="p-3 align-top">
                                             <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
-                                            <div>{p.part1?.name || 'N/A'}</div>
+                                            <div className="flex items-center gap-2">
+                                                <span>{p.part1?.name || 'N/A'}</span>
+                                                {/* [ADDED] Show Gender Icon */}
+                                                {p.part1?.gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
+                                                {p.part1?.gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
+                                            </div>
                                             <div className="text-xs text-gray-500 mt-1">VA: {p.part1?.vaRight || '-'}/{p.part1?.vaLeft || '-'}</div>
                                             {getFootBadge(p)}
                                         </td>
@@ -344,7 +350,7 @@
 
         const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode }) => {
             const isEditing = !!patientToEdit;
-            const defaultForm = { idCard:'', name:'', age:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
+            const defaultForm = { idCard:'', name:'', gender:'', age:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             
             const [recordDate, setRecordDate] = useState(() => {
@@ -361,6 +367,17 @@
             const [saving, setSaving] = useState(false);
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
+
+            // [ADDED] Gender Detection Logic
+            const handleNameChange = (e) => {
+                const val = e.target.value;
+                let detectedGender = form.gender;
+                
+                if (val.startsWith('นาย') || val.startsWith('ด.ช.') || val.startsWith('พระ') || val.startsWith('สามเณร') || val.startsWith('พลฯ')) detectedGender = 'ชาย';
+                else if (val.startsWith('นาง') || val.startsWith('ด.ญ.') || val.startsWith('น.ส.') || val.startsWith('ดญ')) detectedGender = 'หญิง';
+                
+                setForm({ ...form, name: val, gender: detectedGender });
+            };
 
             useEffect(() => {
                 if (!isEditing && form.idCard.length === 13 && existingPatients) {
@@ -444,11 +461,30 @@
                                 <div className="relative"><input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
                                 {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}</div>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div><label className="text-xs text-gray-500 mb-1">ชื่อ-สกุล</label><input type="text" value={form.name || ''} onChange={e=>setForm({...form, name:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
-                                <div><label className="text-xs text-gray-500 mb-1">อายุ</label><input type="number" value={form.age || ''} onChange={e=>setForm({...form, age:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
-                                <div><label className="text-xs text-gray-500 mb-1">เป็น DM (ปี)</label><input type="number" value={form.dmYears || ''} onChange={e=>setForm({...form, dmYears:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                                <div className="sm:col-span-6">
+                                    <label className="text-xs text-gray-500 mb-1">ชื่อ-สกุล</label>
+                                    <input type="text" value={form.name || ''} onChange={handleNameChange} className="w-full p-2 border rounded-lg" placeholder="เช่น นายสมชาย ใจดี"/>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs text-gray-500 mb-1">เพศ</label>
+                                    <select value={form.gender} onChange={e=>setForm({...form, gender:e.target.value})} className="w-full p-2 border rounded-lg bg-white">
+                                        <option value="">-</option>
+                                        <option value="ชาย">ชาย</option>
+                                        <option value="หญิง">หญิง</option>
+                                    </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs text-gray-500 mb-1">อายุ</label>
+                                    <input type="number" value={form.age || ''} onChange={e=>setForm({...form, age:e.target.value})} className="w-full p-2 border rounded-lg"/>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs text-gray-500 mb-1">DM (ปี)</label>
+                                    <input type="number" value={form.dmYears || ''} onChange={e=>setForm({...form, dmYears:e.target.value})} className="w-full p-2 border rounded-lg"/>
+                                </div>
                             </div>
+
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div><label className="text-xs text-gray-500 mb-1">HbA1C (%)</label><input type="text" value={form.hba1c || ''} onChange={e=>setForm({...form, hba1c:e.target.value})} className="w-full p-2 border rounded-lg"/></div>
                                 <div><label className="text-xs text-gray-500 mb-1">BP (mmHg)</label><input type="text" value={form.bp || ''} onChange={e => { let val = e.target.value.replace(/[^0-9]/g, ''); if (val.length > 3) val = val.slice(0, 3) + '/' + val.slice(3); setForm({...form, bp: val}); }} className="w-full p-2 border rounded-lg" placeholder="120/80"/></div>
@@ -697,7 +733,8 @@
 
                     if (p.footExam && p.footExam.riskLevel) {
                         const r = p.footExam.riskLevel;
-                        if (r.includes('Ulcer')) footRiskCounts['Ulcer']++;
+                        if (r.includes('Ulcer')) footRiskCounts['Active Ulcer']++;
+                        else if (r.includes('Very High')) footRiskCounts['Very High Risk']++;
                         else if (r.includes('High')) footRiskCounts['High Risk']++;
                         else if (r.includes('Moderate')) footRiskCounts['Moderate Risk']++;
                         else footRiskCounts['Low Risk']++;
@@ -772,7 +809,8 @@
                                 <Bar label="Low Risk (ความเสี่ยงต่ำ)" count={stats.footRiskCounts['Low Risk']} total={stats.footTotal} color="bg-emerald-500" />
                                 <Bar label="Moderate Risk (ปานกลาง)" count={stats.footRiskCounts['Moderate Risk']} total={stats.footTotal} color="bg-yellow-500" />
                                 <Bar label="High Risk (ความเสี่ยงสูง)" count={stats.footRiskCounts['High Risk']} total={stats.footTotal} color="bg-orange-500" />
-                                <Bar label="Ulcer (มีแผล)" count={stats.footRiskCounts['Ulcer']} total={stats.footTotal} color="bg-red-600" />
+                                <Bar label="Very High Risk (สูงมาก/ประวัติเก่า)" count={stats.footRiskCounts['Very High Risk']} total={stats.footTotal} color="bg-red-500" />
+                                <Bar label="Active Ulcer (มีแผลขณะนี้)" count={stats.footRiskCounts['Active Ulcer']} total={stats.footTotal} color="bg-red-800" />
                             </div>
                             {stats.footTotal === 0 && <div className="text-center text-gray-400 py-4">ยังไม่มีข้อมูลการตรวจเท้า</div>}
                         </div>
@@ -899,15 +937,44 @@
             
             const [saving, setSaving] = useState(false);
 
+            // [CRITICAL UPDATE] Risk Calculation Logic (Actual Criteria)
             useEffect(() => {
                 let risk = 'Low Risk (ความเสี่ยงต่ำ)';
-                const lossSensation = form.monofilament.L === 'Abnormal' || form.monofilament.R === 'Abnormal';
-                const noPulse = ['Absent', 'Weak'].includes(form.pulse.L) || ['Absent', 'Weak'].includes(form.pulse.R);
                 
-                if (form.ulcer) risk = 'Ulcer (มีแผล)';
-                else if (form.historyUlcer || form.amputation.toe || form.amputation.foot || form.amputation.leg) risk = 'High Risk (ความเสี่ยงสูง)';
-                else if (lossSensation && (form.deformity || form.callus || noPulse)) risk = 'High Risk (ความเสี่ยงสูง)';
-                else if (lossSensation || noPulse || form.deformity || form.callus) risk = 'Moderate Risk (ปานกลาง)';
+                // 1. Check Factors
+                const hasActiveUlcer = form.ulcer;
+                const hasHistory = form.historyUlcer || form.amputation.toe || form.amputation.foot || form.amputation.leg;
+                
+                // LOPS (Loss of Protective Sensation)
+                const hasLOPS = form.monofilament.L === 'Abnormal' || form.monofilament.R === 'Abnormal';
+                
+                // PAD (Peripheral Arterial Disease) - Pulse Weak or Absent
+                const hasPAD = ['Absent', 'Weak'].includes(form.pulse.L) || ['Absent', 'Weak'].includes(form.pulse.R);
+                
+                // Deformity (Include Callus as a deformity/pressure sign)
+                const hasDeformity = form.deformity || form.callus;
+
+                // 2. Determine Level (Priority: Ulcer > Very High > High > Moderate > Low)
+                if (hasActiveUlcer) {
+                    risk = 'Active Ulcer (มีแผลขณะนี้)';
+                } else if (hasHistory) {
+                    risk = 'Very High Risk (ความเสี่ยงสูงมาก)';
+                } else {
+                    // Count Risk Factors (LOPS, PAD, Deformity)
+                    let factors = 0;
+                    if (hasLOPS) factors++;
+                    if (hasPAD) factors++;
+                    if (hasDeformity) factors++;
+
+                    if (factors >= 2) {
+                        risk = 'High Risk (ความเสี่ยงสูง)'; // e.g., LOPS + Deformity
+                    } else if (factors === 1) {
+                        risk = 'Moderate Risk (ปานกลาง)'; // e.g., LOPS only
+                    } else {
+                        risk = 'Low Risk (ความเสี่ยงต่ำ)';
+                    }
+                }
+                
                 setForm(f => ({ ...f, riskLevel: risk }));
             }, [form.monofilament, form.pulse, form.deformity, form.callus, form.ulcer, form.historyUlcer, form.amputation]);
 
@@ -985,15 +1052,15 @@
                             
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <h3 className="font-bold text-gray-800 mb-2 text-sm">การลงความเห็นอื่นๆ (Other Comments)</h3>
-                                <textarea 
-                                    value={form.remark} 
-                                    onChange={e => setForm({ ...form, remark: e.target.value })} 
-                                    className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none"
-                                    placeholder="ระบุความเห็นเพิ่มเติม..."
-                                ></textarea>
+                                <textarea value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="ระบุความเห็นเพิ่มเติม..."></textarea>
                             </div>
 
-                            <div className="p-4 bg-gray-800 text-white rounded-xl text-center"><div className="text-xs text-gray-400 mb-1">ผลการประเมิน (คำนวณอัตโนมัติ)</div><div className="text-xl font-bold">{form.riskLevel}</div></div>
+                            {/* Display Result */}
+                            <div className={`p-4 text-white rounded-xl text-center ${form.riskLevel.includes('Active') ? 'bg-red-800' : form.riskLevel.includes('Very') ? 'bg-red-600' : form.riskLevel.includes('High') ? 'bg-orange-500' : form.riskLevel.includes('Moderate') ? 'bg-yellow-500' : 'bg-green-500'}`}>
+                                <div className="text-xs text-white/80 mb-1">ผลการประเมิน (คำนวณอัตโนมัติ)</div>
+                                <div className="text-2xl font-bold">{form.riskLevel}</div>
+                            </div>
+
                             <button onClick={save} disabled={saving} className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg">{saving ? 'กำลังบันทึก...' : 'บันทึกผลการประเมิน'}</button>
                         </div>
                     </div>
@@ -1012,7 +1079,6 @@
             const [selectedPatient, setSelectedPatient] = useState(null);
             const [modal, setModal] = useState({ visible: false, title: '', message: '', onConfirm: null });
             
-            // [MOVED] Global Date State
             const [currentDate, setCurrentDate] = useState(getTodayStr());
 
             useEffect(() => {
@@ -1065,7 +1131,6 @@
                             <h1 className="font-bold text-gray-700 flex items-center gap-2"><Icon name="footprints" size={20} className="text-pink-600"/> EyeDM Foot Clinic</h1>
                             <button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button>
                         </nav>
-                        {/* [UPDATED] Pass global date state */}
                         <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
                         {view === 'foot_dashboard' && <FootDashboard patients={patients} agenciesMap={agenciesMap} onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                         {view === 'foot_form' && <FootForm patient={selectedPatient} onBack={()=>{setSelectedPatient(null);setView('foot_dashboard');}} setModal={setModal} />}
@@ -1080,7 +1145,6 @@
                         <h1 className="font-bold text-gray-700 flex items-center gap-2"><Icon name="activity" size={20} className="text-blue-600"/> EyeDM Connect ({role})</h1>
                         <div className="flex gap-2">{role === 'HOSPITAL' && <button onClick={() => setView('admin_home')} className="text-gray-500 hover:text-blue-600"><Icon name="settings" size={18}/></button>}<button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button></div>
                     </nav>
-                    {/* [UPDATED] Pass global date state */}
                     <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
                     {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                     {view === 'pcu_form' && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={selectedPatient} agencyCode={agencyCode} />}
