@@ -203,6 +203,15 @@
         const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap }) => {
             const [term, setTerm] = useState('');
             const [agencyFilter, setAgencyFilter] = useState('All');
+            
+            // [NEW] Date Filter (Default: Today)
+            const getTodayStr = () => {
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                return new Date(now.getTime() - offset).toISOString().split('T')[0];
+            };
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
+
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
             const getFootBadge = (p) => {
@@ -223,15 +232,24 @@
                     if (p.isDeleted === true) return false;
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
+                    
+                    // [ADDED] Date Match Logic
+                    const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
+                    const offset = pDate.getTimezoneOffset() * 60000;
+                    const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+                    const matchesDate = pDateStr === selectedDate;
+
                     if (role === 'HOSPITAL') {
                         const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
-                        if (term.length > 0) return matchesTerm && matchesAgency;
-                        return p.status !== 'Imported' && matchesAgency;
+                        // [MODIFIED] Apply Date Filter for Hospital, allowing text search to override OR work within date
+                        // Strictly filtering by date as requested for "Daily View"
+                        return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
                     }
+                    
                     if (term.length > 0) return matchesTerm;
                     return p.referringAgencyCode === agencyCode;
                 });
-            }, [patients, term, role, agencyCode, agencyFilter]);
+            }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
 
             const getStatusBadge = (status) => {
                 switch(status) {
@@ -255,6 +273,14 @@
                         {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
+                        {/* [ADDED] Date Picker for Hospital */}
+                        {role === 'HOSPITAL' && (
+                            <div className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded p-1">
+                                <span className="text-xs font-bold text-blue-600 px-2">วันที่:</span>
+                                <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-blue-800 font-bold"/>
+                            </div>
+                        )}
+
                         {role === 'HOSPITAL' && (
                             <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} className="w-full sm:w-auto p-2 border bg-gray-50 rounded text-sm">
                                 <option value="All">ทุกหน่วยงาน (All PCU)</option>
@@ -298,7 +324,7 @@
                                         </td>
                                     </tr>
                                 ))}
-                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูล</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูล{role === 'HOSPITAL' ? 'ในวันที่เลือก' : ''}</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -311,15 +337,12 @@
             const defaultForm = { idCard:'', name:'', age:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             
-            // [NEW] Date State - Initialized to today or existing record date
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
                     const d = new Date(patientToEdit.createdAt);
-                    // Handle timezone offset to ensure input date is correct
                     const offset = d.getTimezoneOffset() * 60000;
                     return new Date(d.getTime() - offset).toISOString().split('T')[0];
                 }
-                // Default to today (Local Time)
                 const now = new Date();
                 const offset = now.getTimezoneOffset() * 60000;
                 return new Date(now.getTime() - offset).toISOString().split('T')[0];
@@ -346,14 +369,11 @@
             const save = async () => {
                 if(!form.idCard || form.idCard.length !== 13 || !form.name) { setModal({visible:true, message: "กรุณากรอกข้อมูลให้ครบ"}); return; }
                 
-                // Construct Target Date from Input
                 const parts = recordDate.split('-');
                 const targetDate = new Date(parts[0], parts[1]-1, parts[2]); 
-                // Add current time to preserve order roughly
                 const now = new Date();
                 targetDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
 
-                // [UPDATED] Duplicate Check based on Selected Date
                 if (!isEditing && existingPatients) {
                     const duplicate = existingPatients.find(p => {
                         if (p.isDeleted) return false; 
@@ -377,7 +397,6 @@
                 setSaving(true);
                 try {
                     const collection = getCollection('patients_referrals');
-                    // [UPDATED] Use targetDate instead of new Date()
                     const data = { 
                         part1: form, 
                         referringAgencyCode: agencyCode, 
@@ -400,7 +419,6 @@
                         </div>
                         <div className="p-6 space-y-4">
                             
-                            {/* [NEW] Date Picker Input */}
                             <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
                                 <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center gap-2"><Icon name="calendar" size={16}/> วันที่ส่งตรวจ (Date)</label>
                                 <input 
@@ -767,6 +785,14 @@
             // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
+            // [NEW] Date Filter (Default: Today)
+            const getTodayStr = () => {
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                return new Date(now.getTime() - offset).toISOString().split('T')[0];
+            };
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
+
             // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
@@ -776,7 +802,15 @@
                 const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                 const matchesTerm = searchStr.includes(term);
                 const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
-                return matchesTerm && matchesAgency;
+                
+                // Date Match Logic
+                const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
+                const offset = pDate.getTimezoneOffset() * 60000;
+                const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+                const matchesDate = pDateStr === selectedDate;
+
+                // Apply date filter strictly unless searching by term
+                return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
             });
 
             const getFootStatus = (p) => {
@@ -788,6 +822,13 @@
             return (
                 <div className="space-y-6 animate-fade-in pb-20">
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
+                        
+                        {/* [ADDED] Date Picker */}
+                        <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded p-1">
+                            <span className="text-xs font-bold text-pink-600 px-2">วันที่:</span>
+                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-pink-800 font-bold"/>
+                        </div>
+
                         {/* [ADDED] Agency Select Dropdown */}
                         <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} className="w-full sm:w-auto p-2 border bg-gray-50 rounded text-sm">
                             <option value="All">ทุกหน่วยงาน (All PCU)</option>
@@ -821,7 +862,7 @@
                                             </td>
                                         </tr>
                                     ))}
-                                    {filtered.length===0 && <tr><td colSpan="4" className="p-6 text-center text-gray-400">ไม่พบข้อมูลตามเงื่อนไข</td></tr>}
+                                    {filtered.length===0 && <tr><td colSpan="4" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                                 </tbody>
                             </table>
                         </div>
