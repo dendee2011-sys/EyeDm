@@ -131,6 +131,9 @@
             const myPatients = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
+                    // [FIX] Hide Imported from Queue counts
+                    if (p.status === 'Imported') return false;
+
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
                     
                     // Filter by selected date
@@ -145,12 +148,9 @@
                 });
             }, [patients, role, agencyCode, selectedDate]);
 
-            // [FIX] Count only active patients (Waiting status) for queues, excluding Imports/History
             const totalPatients = myPatients.length;
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
-            
-            // Fix for Foot Queue: Must be 'Waiting' status AND no foot exam yet
-            const waitingFoot = myPatients.filter(p => p.status === 'Waiting' && !p.footExam).length;
+            const waitingFoot = myPatients.filter(p => !p.footExam).length;
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 animate-fade-in">
@@ -239,7 +239,10 @@
             
             const filtered = useMemo(() => {
                 return patients.filter(p => {
-                    if (p.isDeleted === true) return false;
+                    if (p.isDeleted) return false;
+                    // [FIX] Hide Imported Status from list
+                    if (p.status === 'Imported') return false;
+
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
                     
@@ -250,13 +253,12 @@
 
                     let matches = matchesDate;
                     if (term.length > 0) matches = matches || matchesTerm;
-                    
                     matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
 
                     if (role === 'HOSPITAL') {
                         const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
-                        return matches && matchesAgency && (p.status !== 'Imported' || term.length > 0);
+                        return matches && matchesAgency;
                     }
                     
                     return matches && p.referringAgencyCode === agencyCode;
@@ -656,7 +658,7 @@
             );
         };
 
-        // ... (AdminHome, ManageAgencies, HospitalImport, ReportsPage, FootDashboard, FootForm components unchanged) ...
+        // ... (AdminHome, ManageAgencies, HospitalImport, ReportsPage components unchanged) ...
         const AdminHome = ({ onNavigate }) => (
             <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                 <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
@@ -925,9 +927,11 @@
 
             const filtered = patients.filter(p => {
                 if (p.isDeleted) return false;
+                // [FIX] Hide Imported Status
+                if (p.status === 'Imported') return false;
+
                 const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                 const matchesTerm = searchStr.includes(term);
-                const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
                 
                 const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                 const offset = pDate.getTimezoneOffset() * 60000;
@@ -979,7 +983,9 @@
                                             <td className="p-3 text-gray-600 align-top">{p.part1?.age} ปี / DM {p.part1?.dmYears} ปี</td>
                                             <td className="p-3 text-center align-top">{getFootStatus(p)}</td>
                                             <td className="p-3 text-right align-top">
-                                                <button onClick={()=>onSelect(p)} className="bg-pink-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-pink-700 font-bold shadow-sm flex items-center gap-1 ml-auto"><Icon name="clipboard-check" size={14}/> ประเมิน</button>
+                                                <button onClick={()=>onSelect(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1 ml-auto ${p.footExam ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-pink-600 text-white hover:bg-pink-700'}`}>
+                                                    <Icon name={p.footExam ? "edit-2" : "clipboard-check"} size={14}/> {p.footExam ? 'แก้ไข' : 'ประเมิน'}
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
