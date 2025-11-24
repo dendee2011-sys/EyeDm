@@ -226,25 +226,21 @@
             const getFootBadge = (p) => {
                 if (!p.footExam) return null;
                 const risk = p.footExam.riskLevel || '';
-                
-                let color = 'text-green-600 bg-green-50 border-green-100';
-                if (risk.includes('Ulcer')) color = 'text-white bg-red-600 border-red-700';
-                else if (risk.includes('Very High')) color = 'text-red-700 bg-red-100 border-red-200';
-                else if (risk.includes('High')) color = 'text-orange-700 bg-orange-100 border-orange-200';
-                else if (risk.includes('Moderate')) color = 'text-yellow-700 bg-yellow-100 border-yellow-200';
-
+                const isHigh = risk.includes('High') || risk.includes('Ulcer');
+                const color = isHigh ? 'text-red-600 bg-red-50 border-red-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
                 return (
                     <div className={`text-[10px] px-1.5 py-0.5 rounded border ${color} inline-flex items-center gap-1 mt-1 w-fit`}>
                         <Icon name="footprints" size={10}/> 
-                        <span className="truncate max-w-[100px]">{risk.split(' ')[0]} {risk.includes('Very') ? 'High+' : ''}</span>
+                        <span className="truncate max-w-[80px]">{risk.split(' ')[0]}</span>
                     </div>
                 );
             };
             
             const filtered = useMemo(() => {
                 return patients.filter(p => {
-                    if (p.isDeleted) return false;
-                    if (p.status === 'Imported') return false; // Hide Imported
+                    if (p.isDeleted === true) return false;
+                    // [FIX] Hide Imported Status from list
+                    if (p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
@@ -255,7 +251,7 @@
                     const matchesDate = pDateStr === selectedDate;
 
                     let matches = matchesDate;
-                    if (term.length > 0) matches = matches || matchesTerm; 
+                    if (term.length > 0) matches = matches || matchesTerm;
                     
                     matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
@@ -671,7 +667,7 @@
                     <div className="space-y-4">
                         <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100"><div><h3 className="font-bold text-blue-900">จัดการรายชื่อ PCU</h3><p className="text-sm text-blue-700">เพิ่มหน่วยงาน PCU ใหม่ลงในระบบ Firebase</p></div><button onClick={()=>onNavigate('manage_agencies')} className="bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded hover:bg-blue-100 font-bold">จัดการ</button></div>
                         <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-100"><div><h3 className="font-bold text-yellow-900">นำเข้าข้อมูล (CSV / History)</h3><p className="text-sm text-yellow-700">อัปโหลดผู้ป่วยหรือผลตรวจเก่า</p></div><button onClick={()=>onNavigate('import_csv')} className="bg-white border border-yellow-200 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-100 font-bold">นำเข้า</button></div>
-                        <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-100"><div><h3 className="font-bold text-green-900">รายงานและสถิติ</h3><p className="text-sm text-green-700">ดูภาพรวมและส่งออกข้อมูล</p></div><button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded hover:bg-green-100 font-bold">ดูรายงาน</button></div>
+                        <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-100"><div><h3 className="font-bold text-green-900">รายงานและสถิติ เลือกได้</h3><p className="text-sm text-green-700">ดูภาพรวมและส่งออกข้อมูล</p></div><button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded hover:bg-green-100 font-bold">ดูรายงาน</button></div>
                     </div>
                 </div>
             </div>
@@ -787,24 +783,57 @@
             );
         };
 
+        // [UPDATED] ReportsPage Component - เพิ่มตัวกรองวันที่ และเลือกส่วนข้อมูล
         const ReportsPage = ({ onBack, patients, agenciesMap }) => {
+            // Filter States
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
+            const [options, setOptions] = useState({
+                general: true, // ข้อมูลทั่วไป (ชื่อ, อายุ, DM, BP)
+                eye: true,     // ผลตรวจตา (VA, DR Stage)
+                foot: true     // ผลตรวจเท้า (Risk, รายละเอียด)
+            });
+
+            // 1. Filter Patients based on Date Range
+            const filteredPatients = useMemo(() => {
+                return patients.filter(p => {
+                    if (p.isDeleted) return false;
+                    // ไม่นับ Imported (ข้อมูลดิบที่ยังไม่ได้ทำอะไร) ในรายงานสถิติผลงาน
+                    if (p.status === 'Imported') return false; 
+
+                    if (!startDate && !endDate) return true; // ไม่เลือกวันที่ = เอาทั้งหมด
+
+                    const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
+                    const offset = pDate.getTimezoneOffset() * 60000;
+                    const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+
+                    if (startDate && pDateStr < startDate) return false;
+                    if (endDate && pDateStr > endDate) return false;
+
+                    return true;
+                });
+            }, [patients, startDate, endDate]);
+
+            // 2. Calculate Statistics (From Filtered Data)
             const stats = useMemo(() => {
-                const validPatients = patients.filter(p => !p.isDeleted);
-                const total = validPatients.length;
-                const completed = validPatients.filter(p => p.status === 'Completed').length;
-                const waiting = validPatients.filter(p => p.status === 'Waiting').length;
+                const total = filteredPatients.length;
+                const completed = filteredPatients.filter(p => p.status === 'Completed').length;
+                const waiting = filteredPatients.filter(p => p.status === 'Waiting').length;
+                
                 const severityCounts = { 'No DR': 0, 'Mild NPDR': 0, 'Moderate NPDR': 0, 'Severe NPDR': 0, 'PDR': 0, 'Incomplete': 0 };
-                const footTotal = validPatients.filter(p => p.footExam).length;
+                const footTotal = filteredPatients.filter(p => p.footExam).length;
                 const footRiskCounts = { 'Low Risk': 0, 'Moderate Risk': 0, 'High Risk': 0, 'Very High Risk': 0, 'Active Ulcer': 0 };
                 const agencyStats = {};
 
-                validPatients.forEach(p => {
+                filteredPatients.forEach(p => {
+                    // Agency Logic
                     const code = p.referringAgencyCode || 'Unknown';
                     const name = agenciesMap[code] || code;
                     if (!agencyStats[code]) agencyStats[code] = { name, total: 0, completed: 0 };
                     agencyStats[code].total++;
                     if (p.status === 'Completed') agencyStats[code].completed++;
 
+                    // Eye Logic
                     if (p.status === 'Completed' && p.part2) {
                         const getScore = (s) => {
                             if (!s || s.includes('No DR')) return 0;
@@ -826,6 +855,7 @@
                         else severityCounts['Incomplete']++;
                     }
 
+                    // Foot Logic
                     if (p.footExam && p.footExam.riskLevel) {
                         const r = p.footExam.riskLevel;
                         if (r.includes('Ulcer')) footRiskCounts['Active Ulcer']++;
@@ -837,26 +867,70 @@
                 });
 
                 return { total, completed, waiting, severityCounts, agencyStats, footTotal, footRiskCounts };
-            }, [patients, agenciesMap]);
+            }, [filteredPatients, agenciesMap]);
 
+            // 3. Dynamic Export CSV
             const exportCSV = () => {
-                const headers = ["Date", "Agency", "ID Card", "Name", "Age", "VA (R)", "VA (L)", "DR Stage (R)", "DR Stage (L)", "Foot Risk", "Status"];
+                // Build Headers based on options
+                let headers = ["Date", "Agency"];
+                if (options.general) headers.push("ID Card", "Name", "Gender", "Age", "DM Years", "HbA1C", "BP", "Weight", "Height");
+                if (options.eye) headers.push("VA (R)", "VA (L)", "DR Stage (R)", "DR Stage (L)", "Eye Status");
+                if (options.foot) headers.push("Foot Risk", "Pulse", "Monofilament", "Deformity/Callus", "Footwear");
+
                 const BOM = "\uFEFF"; 
                 let csvContent = BOM + headers.join(",") + "\n";
-                patients.forEach(p => {
-                    if (p.isDeleted) return;
+                
+                filteredPatients.forEach(p => {
                     const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('th-TH') : '-';
                     const agency = agenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '-';
                     const safeStr = (s) => { if (s === null || s === undefined) return '""'; return `"${String(s).replace(/"/g, '""')}"`; };
-                    const footRisk = p.footExam ? p.footExam.riskLevel : '-';
-                    const row = [safeStr(date), safeStr(agency), safeStr(`'${p.part1?.idCard || ''}`), safeStr(p.part1?.name), safeStr(p.part1?.age), safeStr(p.part1?.vaRight), safeStr(p.part1?.vaLeft), safeStr(p.part2?.drStageR || '-'), safeStr(p.part2?.drStageL || '-'), safeStr(footRisk), safeStr(p.status)];
+
+                    let row = [safeStr(date), safeStr(agency)];
+
+                    if (options.general) {
+                        row.push(
+                            safeStr(`'${p.part1?.idCard || ''}`), 
+                            safeStr(p.part1?.name), 
+                            safeStr(p.part1?.gender),
+                            safeStr(p.part1?.age),
+                            safeStr(p.part1?.dmYears),
+                            safeStr(p.part1?.hba1c),
+                            safeStr(p.part1?.bp),
+                            safeStr(p.part1?.weight),
+                            safeStr(p.part1?.height)
+                        );
+                    }
+
+                    if (options.eye) {
+                        row.push(
+                            safeStr(p.part1?.vaRight),
+                            safeStr(p.part1?.vaLeft),
+                            safeStr(p.part2?.drStageR || '-'),
+                            safeStr(p.part2?.drStageL || '-'),
+                            safeStr(p.status)
+                        );
+                    }
+
+                    if (options.foot) {
+                        const f = p.footExam || {};
+                        const deformityStr = (f.deformity ? 'Deformity ' : '') + (f.callus ? 'Callus' : '');
+                        row.push(
+                            safeStr(f.riskLevel || '-'),
+                            safeStr(`L:${f.pulse?.L}/R:${f.pulse?.R}`),
+                            safeStr(`L:${f.monofilament?.L}/R:${f.monofilament?.R}`),
+                            safeStr(deformityStr),
+                            safeStr(f.footwear)
+                        );
+                    }
+
                     csvContent += row.join(",") + "\n";
                 });
+
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
                 link.setAttribute("href", url);
-                link.setAttribute("download", `eyedm_report_${new Date().toISOString().slice(0,10)}.csv`);
+                link.setAttribute("download", `eyedm_report_${startDate||'all'}_to_${endDate||'all'}.csv`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -875,17 +949,38 @@
             return (
                 <div className="max-w-5xl mx-auto pb-20 animate-fade-in">
                     <button onClick={onBack} className="mb-4 flex items-center gap-1 text-gray-500 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Admin Tools</button>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Icon name="bar-chart-2" className="text-green-600"/> รายงานและสถิติ</h2>
-                        <button onClick={exportCSV} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex items-center gap-2 hover:bg-green-700 text-sm font-bold"><Icon name="download" size={16}/> Export CSV</button>
+                    
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-4 rounded-xl shadow-sm border">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Icon name="bar-chart-2" className="text-green-600"/> รายงานและสถิติ</h2>
+                            <p className="text-sm text-gray-500">เลือกช่วงเวลาและข้อมูลที่ต้องการ</p>
+                        </div>
+                        <div className="flex flex-col gap-2 w-full md:w-auto">
+                            {/* Date Filter */}
+                            <div className="flex gap-2 items-center">
+                                <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="border rounded p-1 text-sm"/>
+                                <span className="text-gray-400">-</span>
+                                <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="border rounded p-1 text-sm"/>
+                            </div>
+                            {/* Section Toggles */}
+                            <div className="flex gap-3 text-sm">
+                                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.general} onChange={e=>setOptions({...options, general:e.target.checked})} className="accent-green-600"/> ข้อมูลทั่วไป</label>
+                                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.eye} onChange={e=>setOptions({...options, eye:e.target.checked})} className="accent-blue-600"/> ตรวจตา</label>
+                                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.foot} onChange={e=>setOptions({...options, foot:e.target.checked})} className="accent-pink-600"/> ตรวจเท้า</label>
+                            </div>
+                            <button onClick={exportCSV} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex items-center justify-center gap-2 hover:bg-green-700 text-sm font-bold mt-1"><Icon name="download" size={16}/> Export CSV</button>
+                        </div>
                     </div>
+
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ผู้ป่วยทั้งหมด</div><div className="text-3xl font-bold text-blue-600">{stats.total}</div></div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ผู้ป่วยในช่วงเวลา</div><div className="text-3xl font-bold text-blue-600">{stats.total}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจตาแล้ว</div><div className="text-3xl font-bold text-green-600">{stats.completed}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-pink-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจเท้าแล้ว</div><div className="text-3xl font-bold text-pink-600">{stats.footTotal}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">รอตรวจตา</div><div className="text-3xl font-bold text-orange-600">{stats.waiting}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตาผิดปกติ (Any DR)</div><div className="text-3xl font-bold text-red-600">{stats.completed - (stats.severityCounts['No DR'] || 0) - (stats.severityCounts['Incomplete'] || 0)}</div></div>
                     </div>
+                    
+                    {/* Charts */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <div className="bg-white p-6 rounded-xl shadow-sm border">
                             <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Icon name="eye" size={18}/> ความรุนแรงทางตา (DR Severity)</h3>
@@ -910,6 +1005,7 @@
                             {stats.footTotal === 0 && <div className="text-center text-gray-400 py-4">ยังไม่มีข้อมูลการตรวจเท้า</div>}
                         </div>
                     </div>
+
                     <div className="bg-white p-6 rounded-xl shadow-sm border flex flex-col h-[400px]">
                             <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Icon name="list" size={18}/> สถิติรายหน่วยงาน (PCU)</h3>
                             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar">
@@ -923,12 +1019,16 @@
             );
         };
 
+        // [UPDATED] FootDashboard - รับ selectedDate และ setSelectedDate จาก App
         const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
+            // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
+            // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
+            // [UPDATED] Filter Logic
             const filtered = patients.filter(p => {
                 if (p.isDeleted) return false;
                 // [FIX] Hide Imported Status
@@ -947,6 +1047,7 @@
                 return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
             });
 
+            // [UPDATED] getFootStatus with Safety Check and New Colors
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
                 
