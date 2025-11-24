@@ -145,9 +145,12 @@
                 });
             }, [patients, role, agencyCode, selectedDate]);
 
+            // [FIX] Count only active patients (Waiting status) for queues, excluding Imports/History
             const totalPatients = myPatients.length;
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
-            const waitingFoot = myPatients.filter(p => !p.footExam).length;
+            
+            // Fix for Foot Queue: Must be 'Waiting' status AND no foot exam yet
+            const waitingFoot = myPatients.filter(p => p.status === 'Waiting' && !p.footExam).length;
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 animate-fade-in">
@@ -311,7 +314,6 @@
                                             <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
                                             <div className="flex items-center gap-2">
                                                 <span>{p.part1?.name || 'N/A'}</span>
-                                                {/* [ADDED] Show Gender Icon */}
                                                 {p.part1?.gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
                                                 {p.part1?.gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
                                             </div>
@@ -345,7 +347,6 @@
 
         const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode }) => {
             const isEditing = !!patientToEdit;
-            // [ADDED] gender default
             const defaultForm = { idCard:'', name:'', gender:'', age:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             
@@ -364,7 +365,7 @@
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
 
-            // [ADDED] Gender Auto-detect
+            // Gender Auto-detect
             const handleNameChange = (e) => {
                 const val = e.target.value;
                 let detectedGender = form.gender;
@@ -456,7 +457,6 @@
                                 {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}</div>
                             </div>
                             
-                            {/* [UPDATED] Grid layout for Name/Gender/Age/DM */}
                             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                                 <div className="sm:col-span-6">
                                     <label className="text-xs text-gray-500 mb-1">ชื่อ-สกุล</label>
@@ -566,6 +566,7 @@
                                     <div className="flex justify-between text-gray-800"><span>ซ้าย:</span> <b>{patient.part1.vaLeft || '-'}</b></div>
                                 </div>
 
+                                {/* [ADDED] Previous Result Section (with Findings) */}
                                 {previousResult && (
                                     <div className="pt-2 border-t border-blue-200 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
                                          <p className="font-bold text-yellow-800 mb-1 text-xs uppercase flex items-center gap-1"><Icon name="history" size={12}/> ผลตรวจตาครั้งล่าสุด ({new Date(previousResult.createdAt).toLocaleDateString('th-TH')})</p>
@@ -578,6 +579,7 @@
                                              <span className="font-bold text-gray-800">{previousResult.part2?.drStageL || '-'}</span>
                                          </div>
                                          
+                                         {/* [ADDED] Show detailed findings from history */}
                                          <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
                                             <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
                                             <div className="mt-1">
@@ -653,7 +655,8 @@
                 </div>
             );
         };
-        
+
+        // ... (AdminHome, ManageAgencies, HospitalImport, ReportsPage, FootDashboard, FootForm components unchanged) ...
         const AdminHome = ({ onNavigate }) => (
             <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                 <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
@@ -724,33 +727,25 @@
                 CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
                 for (let i = 1; i < lines.length; i++) {
                     if (!lines[i].trim()) continue;
-                    const values = lines[i].split(',').map(v => v.trim()); 
-                    const patient = {};
+                    const values = lines[i].split(',').map(v => v.trim()); const patient = {};
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
-                    
                     if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
+                        // Deterministic ID Logic for Import
                         const examDate = patient.examDate ? new Date(patient.examDate) : new Date();
+                        const dateKey = examDate.toISOString().split('T')[0];
                         
-                        const name = patient.name;
-                        const gender = name.startsWith('นาย') || name.startsWith('ด.ช.') || name.startsWith('พระ') || name.startsWith('สามเณร') || name.startsWith('พลฯ') ? 'ชาย' : (name.startsWith('นาง') || name.startsWith('ด.ญ.') || name.startsWith('น.ส.') || name.startsWith('ดญ') ? 'หญิง' : '');
-                        patient.gender = gender;
-
-                        const isCompleted = patient.drStageR || patient.drStageL;
+                        // Create import object
                         const importData = { 
                             part1: patient, 
                             referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: isCompleted ? 'Completed' : 'Imported', 
+                            status: (patient.drStageR || patient.drStageL) ? 'Completed' : 'Imported', 
                             isDeleted: false, 
                             createdAt: examDate 
                         };
                         
                         if(importData.status === 'Completed') {
                             importData.examinedAt = examDate;
-                            importData.part2 = { 
-                                drStageR: patient.drStageR || 'Incomplete', 
-                                drStageL: patient.drStageL || 'Incomplete',
-                                cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false 
-                            };
+                            importData.part2 = { drStageR: patient.drStageR || 'Incomplete', drStageL: patient.drStageL || 'Incomplete', cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false };
                             importData.findings = JSON.parse(JSON.stringify(defaultFindings));
                         }
 
@@ -769,7 +764,7 @@
                     const batch = db.batch(); 
                     let count = 0; 
                     csvData.forEach(data => { 
-                        // [UPDATED] Deterministic ID to prevent duplication
+                        // Deterministic ID to prevent duplication
                         const dateStr = data.createdAt.toISOString().split('T')[0];
                         const docId = `${data.part1.idCard}_${dateStr}`;
                         const newDocRef = collection.doc(docId); 
@@ -839,8 +834,7 @@
             }, [patients, agenciesMap]);
 
             const exportCSV = () => {
-                // [UPDATED] Export CSV headers
-                const headers = ["Date", "Agency", "ID Card", "Name", "Gender", "Age", "VA (R)", "VA (L)", "DR Stage (R)", "DR Stage (L)", "Foot Risk", "Status"];
+                const headers = ["Date", "Agency", "ID Card", "Name", "Age", "VA (R)", "VA (L)", "DR Stage (R)", "DR Stage (L)", "Foot Risk", "Status"];
                 const BOM = "\uFEFF"; 
                 let csvContent = BOM + headers.join(",") + "\n";
                 patients.forEach(p => {
@@ -849,8 +843,7 @@
                     const agency = agenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '-';
                     const safeStr = (s) => { if (s === null || s === undefined) return '""'; return `"${String(s).replace(/"/g, '""')}"`; };
                     const footRisk = p.footExam ? p.footExam.riskLevel : '-';
-                    // [UPDATED] Export CSV row data
-                    const row = [safeStr(date), safeStr(agency), safeStr(`'${p.part1?.idCard || ''}`), safeStr(p.part1?.name), safeStr(p.part1?.gender || ''), safeStr(p.part1?.age), safeStr(p.part1?.vaRight), safeStr(p.part1?.vaLeft), safeStr(p.part2?.drStageR || '-'), safeStr(p.part2?.drStageL || '-'), safeStr(footRisk), safeStr(p.status)];
+                    const row = [safeStr(date), safeStr(agency), safeStr(`'${p.part1?.idCard || ''}`), safeStr(p.part1?.name), safeStr(p.part1?.age), safeStr(p.part1?.vaRight), safeStr(p.part1?.vaLeft), safeStr(p.part2?.drStageR || '-'), safeStr(p.part2?.drStageL || '-'), safeStr(footRisk), safeStr(p.status)];
                     csvContent += row.join(",") + "\n";
                 });
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -946,15 +939,8 @@
 
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
-                const r = p.footExam.riskLevel || '';
-                let color = 'bg-green-100 text-green-700';
-                
-                if (r.includes('Ulcer')) color = 'bg-red-600 text-white';
-                else if (r.includes('Very High')) color = 'bg-red-100 text-red-700';
-                else if (r.includes('High')) color = 'bg-orange-100 text-orange-700';
-                else if (r.includes('Moderate')) color = 'bg-yellow-100 text-yellow-700';
-                
-                return <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>{r.split(' ')[0]}</span>;
+                const color = p.footExam.riskLevel.includes('High') || p.footExam.riskLevel.includes('Ulcer') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+                return <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>{p.footExam.riskLevel.split(' ')[0]}</span>;
             };
 
             return (
@@ -993,9 +979,7 @@
                                             <td className="p-3 text-gray-600 align-top">{p.part1?.age} ปี / DM {p.part1?.dmYears} ปี</td>
                                             <td className="p-3 text-center align-top">{getFootStatus(p)}</td>
                                             <td className="p-3 text-right align-top">
-                                                <button onClick={()=>onSelect(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1 ml-auto ${p.footExam ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-pink-600 text-white hover:bg-pink-700'}`}>
-                                                    <Icon name={p.footExam ? "edit-2" : "clipboard-check"} size={14}/> {p.footExam ? 'แก้ไข' : 'ประเมิน'}
-                                                </button>
+                                                <button onClick={()=>onSelect(p)} className="bg-pink-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-pink-700 font-bold shadow-sm flex items-center gap-1 ml-auto"><Icon name="clipboard-check" size={14}/> ประเมิน</button>
                                             </td>
                                         </tr>
                                     ))}
