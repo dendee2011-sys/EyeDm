@@ -131,8 +131,7 @@
             const myPatients = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
-                    // [FIX] Hide Imported from Queue counts
-                    if (p.status === 'Imported') return false;
+                    if (p.status === 'Imported') return false; // Hide Imported from Queue counts
 
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
                     
@@ -227,21 +226,25 @@
             const getFootBadge = (p) => {
                 if (!p.footExam) return null;
                 const risk = p.footExam.riskLevel || '';
-                const isHigh = risk.includes('High') || risk.includes('Ulcer');
-                const color = isHigh ? 'text-red-600 bg-red-50 border-red-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
+                
+                let color = 'text-green-600 bg-green-50 border-green-100';
+                if (risk.includes('Ulcer')) color = 'text-white bg-red-600 border-red-700';
+                else if (risk.includes('Very High')) color = 'text-red-700 bg-red-100 border-red-200';
+                else if (risk.includes('High')) color = 'text-orange-700 bg-orange-100 border-orange-200';
+                else if (risk.includes('Moderate')) color = 'text-yellow-700 bg-yellow-100 border-yellow-200';
+
                 return (
                     <div className={`text-[10px] px-1.5 py-0.5 rounded border ${color} inline-flex items-center gap-1 mt-1 w-fit`}>
                         <Icon name="footprints" size={10}/> 
-                        <span className="truncate max-w-[80px]">{risk.split(' ')[0]}</span>
+                        <span className="truncate max-w-[100px]">{risk.split(' ')[0]} {risk.includes('Very') ? 'High+' : ''}</span>
                     </div>
                 );
             };
             
             const filtered = useMemo(() => {
                 return patients.filter(p => {
-                    if (p.isDeleted === true) return false;
-                    // [FIX] Hide Imported Status from list
-                    if (p.status === 'Imported') return false;
+                    if (p.isDeleted) return false;
+                    if (p.status === 'Imported') return false; // Hide Imported
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
@@ -252,7 +255,8 @@
                     const matchesDate = pDateStr === selectedDate;
 
                     let matches = matchesDate;
-                    if (term.length > 0) matches = matches || matchesTerm;
+                    if (term.length > 0) matches = matches || matchesTerm; 
+                    
                     matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
 
@@ -919,16 +923,12 @@
             );
         };
 
-        // [UPDATED] FootDashboard - รับ selectedDate และ setSelectedDate จาก App
         const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
-            // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
-            // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
-            // [UPDATED] Filter Logic
             const filtered = patients.filter(p => {
                 if (p.isDeleted) return false;
                 // [FIX] Hide Imported Status
@@ -944,11 +944,9 @@
                 const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                 const matchesDate = pDateStr === selectedDate;
 
-                // Apply date filter strictly unless searching by term
                 return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
             });
 
-            // [UPDATED] getFootStatus with Safety Check and New Colors
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
                 
