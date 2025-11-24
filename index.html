@@ -92,7 +92,8 @@
             "03293": "รพ.สต.บ้านหนองไผ่", "14422": "ศูนย์บริการสาธารณสุข 2", "15204": "ศูนย์บริการสาธารณสุข 3",
             "21986": "ศูนย์บริการสาธารณสุข 4", "23954": "ศูนย์บริการสาธารณสุข 5", "77475": "ศุนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ"
         };
-        const CSV_HEADERS = ['idCard', 'name', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount', 'agencyCode', 'examDate', 'drStageR', 'drStageL'];
+        // [UPDATED] Added 'dob' to CSV Headers
+        const CSV_HEADERS = ['idCard', 'name', 'dob', 'age', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount', 'agencyCode', 'examDate', 'drStageR', 'drStageL'];
         const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Very High Risk (ความเสี่ยงสูงมาก)", "Active Ulcer (มีแผลขณะนี้)"];
 
         // --- UTILS ---
@@ -729,25 +730,60 @@
                 CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
                 for (let i = 1; i < lines.length; i++) {
                     if (!lines[i].trim()) continue;
-                    const values = lines[i].split(',').map(v => v.trim()); const patient = {};
-                    CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
-                    if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
+                    const values = lines[i].split(',').map(v => v.trim()); 
+                    const row = {};
+                    CSV_HEADERS.forEach(h => {
+                        row[h] = headerMap[h] > -1 ? values[headerMap[h]] : '';
+                    });
+
+                    if (row.idCard && row.idCard.length === 13 && row.name) { 
                         // Deterministic ID Logic for Import
-                        const examDate = patient.examDate ? new Date(patient.examDate) : new Date();
-                        const dateKey = examDate.toISOString().split('T')[0];
+                        const examDate = row.examDate ? new Date(row.examDate) : new Date();
                         
-                        // Create import object
+                        // [ADDED] Age Calculation from DOB
+                        if (row.dob) {
+                            const dobDate = new Date(row.dob);
+                            if (!isNaN(dobDate)) {
+                                // Calculate age based on examDate (or today if no examDate)
+                                let age = examDate.getFullYear() - dobDate.getFullYear();
+                                const m = examDate.getMonth() - dobDate.getMonth();
+                                if (m < 0 || (m === 0 && examDate.getDate() < dobDate.getDate())) {
+                                    age--;
+                                }
+                                row.age = age.toString(); // Override age with calculated value
+                            }
+                        }
+
+                        const name = row.name;
+                        const gender = name.startsWith('นาย') || name.startsWith('ด.ช.') || name.startsWith('พระ') || name.startsWith('สามเณร') || name.startsWith('พลฯ') ? 'ชาย' : (name.startsWith('นาง') || name.startsWith('ด.ญ.') || name.startsWith('น.ส.') || name.startsWith('ดญ') ? 'หญิง' : '');
+                        
+                        const isCompleted = row.drStageR || row.drStageL;
                         const importData = { 
-                            part1: patient, 
-                            referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: (patient.drStageR || patient.drStageL) ? 'Completed' : 'Imported', 
+                            part1: {
+                                idCard: row.idCard,
+                                name: row.name,
+                                gender: gender, // Auto gender
+                                dob: row.dob || '', // Store DOB
+                                age: row.age,
+                                dmYears: row.dmYears,
+                                hba1c: row.hba1c,
+                                bp: row.bp,
+                                weight: row.weight,
+                                height: row.height,
+                                vaRight: row.vaRight,
+                                vaLeft: row.vaLeft,
+                                priorExam: row.priorExam,
+                                priorExamCount: row.priorExamCount
+                            },
+                            referringAgencyCode: row.agencyCode || 'IMPORT',
+                            status: isCompleted ? 'Completed' : 'Imported', 
                             isDeleted: false, 
                             createdAt: examDate 
                         };
                         
                         if(importData.status === 'Completed') {
                             importData.examinedAt = examDate;
-                            importData.part2 = { drStageR: patient.drStageR || 'Incomplete', drStageL: patient.drStageL || 'Incomplete', cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false };
+                            importData.part2 = { drStageR: row.drStageR || 'Incomplete', drStageL: row.drStageL || 'Incomplete', cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false };
                             importData.findings = JSON.parse(JSON.stringify(defaultFindings));
                         }
 
