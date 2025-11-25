@@ -160,24 +160,24 @@
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 animate-fade-in">
-                     <div className="bg-white border-l-4 border-emerald-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
+                      <div className="bg-white border-l-4 border-emerald-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><Icon name="users" size={20}/></div>
                             <div><div className="text-xs text-gray-500 font-bold">ผู้ป่วยทั้งหมด (Total)</div><div className="text-xl font-bold text-emerald-700 leading-none">{totalPatients} <span className="text-xs font-normal text-gray-400">คน</span></div></div>
                         </div>
-                     </div>
-                     <div className="bg-white border-l-4 border-blue-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
+                      </div>
+                      <div className="bg-white border-l-4 border-blue-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Icon name="eye" size={20}/></div>
                             <div><div className="text-xs text-gray-500 font-bold">รอตรวจตา (Eye Queue)</div><div className="text-xl font-bold text-blue-700 leading-none">{waitingEye} <span className="text-xs font-normal text-gray-400">คน</span></div></div>
                         </div>
-                     </div>
-                     <div className="bg-white border-l-4 border-pink-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
+                      </div>
+                      <div className="bg-white border-l-4 border-pink-500 shadow-sm rounded-r-xl p-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="bg-pink-100 p-2 rounded-full text-pink-600"><Icon name="footprints" size={20}/></div>
                             <div><div className="text-xs text-gray-500 font-bold">รอตรวจเท้า (Foot Queue)</div><div className="text-xl font-bold text-pink-700 leading-none">{waitingFoot} <span className="text-xs font-normal text-gray-400">คน</span></div></div>
                         </div>
-                     </div>
+                      </div>
                 </div>
             );
         };
@@ -316,35 +316,35 @@
                                     const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
                                     return (
                                     <tr key={p.id} className="hover:bg-gray-50">
-                                        <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
-                                        <td className="p-3 align-top">
-                                            <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
-                                            <div className="flex items-center gap-2">
-                                                <span>{p.part1?.name || 'N/A'}</span>
-                                                {gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
-                                                {gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-1 flex gap-2">
-                                                 <span>VA: {p.part1?.vaRight || '-'}/{p.part1?.vaLeft || '-'}</span>
-                                                 <span className="text-blue-600 font-semibold">HbA1c: {p.part1?.hba1c || '-'}</span>
-                                            </div>
-                                            {getFootBadge(p)}
-                                        </td>
-                                        <td className="p-3 align-top text-gray-500">{p.referringAgencyCode ? <div className="flex flex-col"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono w-fit mb-1">{p.referringAgencyCode}</span><span className="text-xs truncate max-w-[150px]">{allAgenciesMap[p.referringAgencyCode] || '-'}</span></div> : <span>-</span>}</td>
-                                        <td className="p-3 text-center align-top">{getStatusBadge(p.status)}</td>
-                                        <td className="p-3 text-right align-top">
-                                            <div className="flex justify-end gap-2">
-                                                {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
-                                                {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
-                                                {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
-                                                {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
-                                                    setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ?", onConfirm: async () => { 
-                                                        try { await getCollection('patients_referrals').doc(p.id).update({ isDeleted: true }); setModal({ visible: false }); } 
-                                                        catch(e) { alert(e.message); } 
-                                                    } }); 
-                                                }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>}
-                                            </div>
-                                        </td>
+                                            <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
+                                            <td className="p-3 align-top">
+                                                <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span>{p.part1?.name || 'N/A'}</span>
+                                                    {gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
+                                                    {gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                                                     <span>VA: {p.part1?.vaRight || '-'}/{p.part1?.vaLeft || '-'}</span>
+                                                     <span className="text-blue-600 font-semibold">HbA1c: {p.part1?.hba1c || '-'}</span>
+                                                </div>
+                                                {getFootBadge(p)}
+                                            </td>
+                                            <td className="p-3 align-top text-gray-500">{p.referringAgencyCode ? <div className="flex flex-col"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono w-fit mb-1">{p.referringAgencyCode}</span><span className="text-xs truncate max-w-[150px]">{allAgenciesMap[p.referringAgencyCode] || '-'}</span></div> : <span>-</span>}</td>
+                                            <td className="p-3 text-center align-top">{getStatusBadge(p.status)}</td>
+                                            <td className="p-3 text-right align-top">
+                                                <div className="flex justify-end gap-2">
+                                                    {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
+                                                    {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
+                                                    {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
+                                                    {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
+                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ?", onConfirm: async () => { 
+                                                            try { await getCollection('patients_referrals').doc(p.id).update({ isDeleted: true }); setModal({ visible: false }); } 
+                                                            catch(e) { alert(e.message); } 
+                                                        } }); 
+                                                    }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>}
+                                                </div>
+                                            </td>
                                     </tr>
                                 );})}
                                 {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
@@ -377,8 +377,17 @@
 
             const handleNameChange = (e) => {
                 const val = e.target.value;
-                const detectedGender = form.gender || getGenderFromName(val);
-                setForm({ ...form, name: val, gender: detectedGender });
+                // แก้ไข: ให้ตรวจสอบคำนำหน้าชื่อใหม่ทุกครั้งที่มีการเปลี่ยนแปลง (Real-time check)
+                const detectedGender = getGenderFromName(val);
+                
+                // Logic:
+                // 1. ถ้าตรวจเจอเพศจากคำนำหน้า (เช่น พิมพ์ 'นาง') -> บังคับใช้ค่าใหม่ทันที
+                // 2. ถ้าไม่เจอคำนำหน้า (เช่น พิมพ์ชื่อเล่น) -> ให้คงค่าเดิมที่ผู้ใช้เคยเลือกไว้
+                setForm(prev => ({ 
+                    ...prev, 
+                    name: val, 
+                    gender: detectedGender !== '' ? detectedGender : prev.gender 
+                }));
             };
 
             useEffect(() => {
@@ -425,7 +434,15 @@
                     const old = existingPatients.find(p => p.part1?.idCard === form.idCard);
                     if(old) { 
                         setFoundOld(true); 
-                        setForm(f => ({...f, ...old.part1})); 
+                        
+                        // แก้ไข: ถ้าข้อมูลเก่าไม่มีเพศระบุไว้ (เช่น นำเข้าจาก Excel หรือเป็นข้อมูลเก่า) 
+                        // ให้ลอง Auto-detect จากชื่อใหม่อีกครั้ง
+                        let loadedPart1 = { ...old.part1 };
+                        if (!loadedPart1.gender && loadedPart1.name) {
+                            loadedPart1.gender = getGenderFromName(loadedPart1.name);
+                        }
+
+                        setForm(f => ({...f, ...loadedPart1})); 
                         if (old.footExam) setFootStatus(old.footExam.riskLevel);
                     } else { 
                         setFoundOld(false); 
@@ -661,7 +678,7 @@
                                                 }
                                             </div>
                                          </div>
-                                    </div>
+                                     </div>
                                 )}
 
                                 {patient.footExam && (
@@ -694,15 +711,15 @@
                                     const [s, label, textColor, bgColor] = side.split(':');
                                     return (
                                     <div key={s} className="bg-white p-3 rounded border shadow-sm card-hover">
-                                        <h4 className={`font-bold text-center ${textColor} mb-3 ${bgColor} p-1 rounded`}>{label}</h4>
-                                        <div className="mb-4">
-                                            <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง</label>
-                                            <select value={p2[`drStage${s}`]} onChange={(e)=>updateP2(`drStage${s}`, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <p className="text-xs text-gray-400 border-b pb-1">Findings</p>
-                                            {Object.keys(defaultFindings).map(k => (<label key={`${s}-${k}`} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"><input type="checkbox" checked={findings[k]?.[s]} onChange={()=>toggle(k,s)} className="chk-lg"/><span className="text-sm">{k}</span></label>))}
-                                        </div>
+                                            <h4 className={`font-bold text-center ${textColor} mb-3 ${bgColor} p-1 rounded`}>{label}</h4>
+                                            <div className="mb-4">
+                                                <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง</label>
+                                                <select value={p2[`drStage${s}`]} onChange={(e)=>updateP2(`drStage${s}`, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-xs text-gray-400 border-b pb-1">Findings</p>
+                                                {Object.keys(defaultFindings).map(k => (<label key={`${s}-${k}`} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"><input type="checkbox" checked={findings[k]?.[s]} onChange={()=>toggle(k,s)} className="chk-lg"/><span className="text-sm">{k}</span></label>))}
+                                            </div>
                                     </div>
                                     );
                                 })}
@@ -813,10 +830,8 @@
                             }
                         }
 
-                        // Auto Gender
-                        const name = patient.name;
-                        const gender = name.startsWith('นาย') || name.startsWith('ด.ช.') || name.startsWith('พระ') || name.startsWith('สามเณร') || name.startsWith('พลฯ') ? 'ชาย' : (name.startsWith('นาง') || name.startsWith('ด.ญ.') || name.startsWith('น.ส.') || name.startsWith('ดญ')) ? 'หญิง' : '';
-                        patient.gender = gender;
+                        // Auto Gender: เรียกใช้ฟังก์ชันกลาง เพื่อรองรับชื่อติดกันและคำนำหน้าหลากหลาย
+                        patient.gender = getGenderFromName(patient.name);
 
                         // Create import object
                         const importData = { 
