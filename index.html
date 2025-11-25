@@ -102,6 +102,14 @@
             return new Date(now.getTime() - offset).toISOString().split('T')[0];
         };
 
+        const getGenderFromName = (name) => {
+            if (!name) return '';
+            const n = name.trim();
+            if (n.startsWith('นาย') || n.startsWith('ด.ช.') || n.startsWith('เด็กชาย') || n.startsWith('พระ') || n.startsWith('สามเณร') || n.startsWith('พลฯ')) return 'ชาย';
+            if (n.startsWith('นาง') || n.startsWith('ด.ญ.') || n.startsWith('เด็กหญิง') || n.startsWith('น.ส.') || n.startsWith('ดญ') || n.startsWith('นส.')) return 'หญิง';
+            return '';
+        };
+
         // --- COMPONENTS ---
         const Icon = ({ name, size = 20, className = "", color }) => {
             React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
@@ -249,8 +257,6 @@
                     const matchesDate = pDateStr === selectedDate;
 
                     let matches = matchesDate;
-                    if (term.length > 0) matches = matches || matchesTerm;
-                    matches = matchesDate;
                     if (term.length > 0) matches = matches && matchesTerm;
 
                     if (role === 'HOSPITAL') {
@@ -306,15 +312,17 @@
                                 <tr><th className="p-3">วันที่</th><th className="p-3">ผู้ป่วย / ID</th><th className="p-3">หน่วยงาน</th><th className="p-3 text-center">สถานะ</th><th className="p-3 text-right">Action</th></tr>
                             </thead>
                             <tbody className="divide-y">
-                                {filtered.map(p => (
+                                {filtered.map(p => {
+                                    const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
+                                    return (
                                     <tr key={p.id} className="hover:bg-gray-50">
                                         <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
                                         <td className="p-3 align-top">
                                             <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
                                             <div className="flex items-center gap-2">
                                                 <span>{p.part1?.name || 'N/A'}</span>
-                                                {(p.part1?.gender === 'ชาย' || (!p.part1?.gender && (p.part1?.name?.trim().startsWith('นาย') || p.part1?.name?.trim().startsWith('ด.ช.') || p.part1?.name?.trim().startsWith('พระ') || p.part1?.name?.trim().startsWith('สามเณร') || p.part1?.name?.trim().startsWith('พลฯ')))) && <Icon name="user" size={14} className="text-blue-500"/>}
-                                                {(p.part1?.gender === 'หญิง' || (!p.part1?.gender && (p.part1?.name?.trim().startsWith('นาง') || p.part1?.name?.trim().startsWith('น.ส.') || p.part1?.name?.trim().startsWith('ด.ญ.')))) && <Icon name="user" size={14} className="text-pink-500"/>}
+                                                {gender === 'ชาย' && <Icon name="user" size={14} className="text-blue-500"/>}
+                                                {gender === 'หญิง' && <Icon name="user" size={14} className="text-pink-500"/>}
                                             </div>
                                             <div className="text-xs text-gray-500 mt-1 flex gap-2">
                                                  <span>VA: {p.part1?.vaRight || '-'}/{p.part1?.vaLeft || '-'}</span>
@@ -338,7 +346,7 @@
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                );})}
                                 {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                             </tbody>
                         </table>
@@ -367,16 +375,12 @@
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
 
-            // Gender Auto-detect
             const handleNameChange = (e) => {
                 const val = e.target.value;
-                let detectedGender = form.gender;
-                if (val.startsWith('นาย') || val.startsWith('ด.ช.') || val.startsWith('พระ') || val.startsWith('สามเณร') || val.startsWith('พลฯ')) detectedGender = 'ชาย';
-                else if (val.startsWith('นาง') || val.startsWith('ด.ญ.') || val.startsWith('น.ส.') || val.startsWith('ดญ')) detectedGender = 'หญิง';
+                const detectedGender = form.gender || getGenderFromName(val);
                 setForm({ ...form, name: val, gender: detectedGender });
             };
 
-            // [FIXED] Real-time Calculation Logic
             useEffect(() => {
                 const refDate = new Date(recordDate);
                 let newAge = form.age;
@@ -390,7 +394,6 @@
                         const m = refDate.getMonth() - birthDate.getMonth();
                         if (m < 0 || (m === 0 && refDate.getDate() < birthDate.getDate())) a--;
                         const calculatedAge = Math.max(0, a);
-                        // Compare as number to avoid string mismatch issues
                         if (Number(calculatedAge) !== Number(form.age)) {
                             newAge = calculatedAge;
                             hasUpdates = true;
@@ -526,7 +529,7 @@
                                     <div className="flex gap-2">
                                         <div className="flex-1">
                                             <label className="text-xs text-gray-500 mb-1 text-blue-600">วันที่วินิจฉัย (Dx Date)</label>
-                                            <input type="date" value={form.dxDate || ''} onChange={e=>setForm({...form, dxDate: e.target.value})} className="w-full p-2 border rounded-lg text-xs"/>
+                                            <input type="date" value={form.dxDate || ''} onChange={e => setForm({...form, dxDate: e.target.value})} className="w-full p-2 border rounded-lg text-xs"/>
                                         </div>
                                         <div className="w-1/3">
                                             <label className="text-xs text-gray-500 mb-1">เป็น DM (ปี)</label>
@@ -712,7 +715,6 @@
             );
         };
 
-        // ... (AdminHome, ManageAgencies, HospitalImport, ReportsPage components unchanged) ...
         const AdminHome = ({ onNavigate }) => (
             <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                 <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
@@ -787,9 +789,35 @@
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
                     if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
                         // Deterministic ID Logic for Import
-                        const examDate = patient.examDate ? new Date(patient.examDate) : new Date();
-                        const dateKey = examDate.toISOString().split('T')[0];
+                        const examDate = patient.referralDate ? new Date(patient.referralDate) : new Date();
                         
+                        // Calculate Age
+                        if (patient.dob) {
+                            const dobDate = new Date(patient.dob);
+                            if (!isNaN(dobDate)) {
+                                let age = examDate.getFullYear() - dobDate.getFullYear();
+                                const m = examDate.getMonth() - dobDate.getMonth();
+                                if (m < 0 || (m === 0 && examDate.getDate() < dobDate.getDate())) age--;
+                                patient.age = age.toString();
+                            }
+                        }
+
+                        // Calculate DM Years
+                        if (patient.dxDate) {
+                            const dxDate = new Date(patient.dxDate);
+                            if (!isNaN(dxDate)) {
+                                let years = examDate.getFullYear() - dxDate.getFullYear();
+                                const m = examDate.getMonth() - dxDate.getMonth();
+                                if (m < 0 || (m === 0 && examDate.getDate() < dxDate.getDate())) years--;
+                                patient.dmYears = Math.max(0, years).toString();
+                            }
+                        }
+
+                        // Auto Gender
+                        const name = patient.name;
+                        const gender = name.startsWith('นาย') || name.startsWith('ด.ช.') || name.startsWith('พระ') || name.startsWith('สามเณร') || name.startsWith('พลฯ') ? 'ชาย' : (name.startsWith('นาง') || name.startsWith('ด.ญ.') || name.startsWith('น.ส.') || name.startsWith('ดญ')) ? 'หญิง' : '';
+                        patient.gender = gender;
+
                         // Create import object
                         const importData = { 
                             part1: {
@@ -800,7 +828,7 @@
                                 age: patient.age,
                                 dxDate: patient.dxDate || '',
                                 dmYears: patient.dmYears,
-                                hba1c: patient.hba1c, // Explicit map
+                                hba1c: patient.hba1c, 
                                 bp: patient.bp,
                                 weight: patient.weight,
                                 height: patient.height,
@@ -827,7 +855,9 @@
                 }
                 setValidCount(validCount); return data;
             };
+            
             const handleParse = () => { if (!file) return; setLoading(true); setUploadError(''); const reader = new FileReader(); reader.onload = (event) => { try { setCsvData(parseCSV(event.target.result)); setLoading(false); } catch (error) { setUploadError(error.message); setLoading(false); } }; reader.readAsText(file, 'UTF-8'); };
+            
             const uploadData = async () => { 
                 const collection = getCollection('patients_referrals'); 
                 setLoading(true); 
@@ -848,12 +878,26 @@
                     setModal({ visible: true, title: "สำเร็จ", message: `Imported/Updated ${count} records`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
+
             return (
-                <div className="max-w-3xl mx-auto pb-20 animate-fade-in"><button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button><div className="bg-white p-6 rounded shadow"><h2 className="font-bold mb-4">Import CSV (History Supported)</h2><input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>{file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}{csvData && <div className="mt-4"><p>Found {validCount} valid records.</p><button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button></div>}{uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}</div></div>
+                <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
+                    <button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button>
+                    <div className="bg-white p-6 rounded shadow">
+                        <h2 className="font-bold mb-4">Import CSV (History Supported)</h2>
+                        <input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>
+                        {file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}
+                        {csvData && (
+                            <div className="mt-4">
+                                <p>Found {validCount} valid records.</p>
+                                <button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button>
+                            </div>
+                        )}
+                        {uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}
+                    </div>
+                </div>
             );
         };
 
-        // [UPDATED] ReportsPage Component - เพิ่มตัวกรองวันที่ และเลือกส่วนข้อมูล
         const ReportsPage = ({ onBack, patients, agenciesMap }) => {
             // Filter States
             const [startDate, setStartDate] = useState('');
@@ -1091,45 +1135,37 @@
 
         const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
             const [term, setTerm] = useState('');
-            // [ADDED] State for Agency Filter
             const [agencyFilter, setAgencyFilter] = useState('All');
             
-            // Combine static and dynamic agencies for dropdown
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
-            // [UPDATED] Filter Logic
             const filtered = patients.filter(p => {
                 if (p.isDeleted) return false;
-                // [FIX] Hide Imported Status
                 if (p.status === 'Imported') return false;
 
                 const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                 const matchesTerm = searchStr.includes(term);
                 const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
                 
-                // Date Match Logic
                 const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                 const offset = pDate.getTimezoneOffset() * 60000;
                 const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                 const matchesDate = pDateStr === selectedDate;
 
-                // Apply date filter strictly unless searching by term
                 return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
             });
 
-            // [UPDATED] getFootStatus with Safety Check and New Colors
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
                 
-                // Safety check for riskLevel
                 const risk = p.footExam.riskLevel || 'Unknown';
                 
-                let color = 'bg-green-100 text-green-700'; // Low Risk / Default
+                let color = 'bg-green-100 text-green-700';
                 
-                if (risk.includes('Ulcer')) color = 'bg-red-800 text-white'; // Dark Red for Ulcer
-                else if (risk.includes('Very High')) color = 'bg-red-500 text-white'; // Red for Very High
-                else if (risk.includes('High')) color = 'bg-orange-100 text-orange-700'; // Orange for High
-                else if (risk.includes('Moderate')) color = 'bg-yellow-100 text-yellow-700'; // Yellow for Moderate
+                if (risk.includes('Ulcer')) color = 'bg-red-800 text-white';
+                else if (risk.includes('Very High')) color = 'bg-red-500 text-white';
+                else if (risk.includes('High')) color = 'bg-orange-100 text-orange-700';
+                else if (risk.includes('Moderate')) color = 'bg-yellow-100 text-yellow-700';
                 
                 return <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>{risk.split(' ')[0]}</span>;
             };
@@ -1138,7 +1174,6 @@
                 <div className="space-y-6 animate-fade-in pb-20">
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
                         
-                        {/* [UPDATED] Date Picker for Foot */}
                         <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded p-1">
                             <span className="text-xs font-bold text-pink-600 px-2">วันที่:</span>
                             <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-pink-800 font-bold cursor-pointer"/>
@@ -1161,14 +1196,15 @@
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500 border-b"><tr><th className="p-3">ชื่อ-สกุล / PCU</th><th className="p-3">อายุ/DM</th><th className="p-3 text-center">สถานะเท้า</th><th className="p-3 text-right">Action</th></tr></thead>
                                 <tbody className="divide-y">
-                                    {filtered.map(p => (
+                                    {filtered.map(p => {
+                                        const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
+                                        return (
                                         <tr key={p.id} className="hover:bg-gray-50">
                                             <td className="p-3">
                                                 <div className="font-bold text-gray-800">{p.part1?.name}</div>
                                                 <div className="flex items-center gap-1 mb-1">
-                                                    {/* [ADDED] Gender Icon for Consistency */}
-                                                    {p.part1?.gender === 'ชาย' && <Icon name="user" size={12} className="text-blue-500"/>}
-                                                    {p.part1?.gender === 'หญิง' && <Icon name="user" size={12} className="text-pink-500"/>}
+                                                    {gender === 'ชาย' && <Icon name="user" size={12} className="text-blue-500"/>}
+                                                    {gender === 'หญิง' && <Icon name="user" size={12} className="text-pink-500"/>}
                                                     <div className="text-xs text-gray-400 font-mono">{p.part1?.idCard}</div>
                                                 </div>
                                                 <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px] border">{allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode}</span>
@@ -1176,13 +1212,12 @@
                                             <td className="p-3 text-gray-600 align-top">{p.part1?.age} ปี / DM {p.part1?.dmYears} ปี</td>
                                             <td className="p-3 text-center align-top">{getFootStatus(p)}</td>
                                             <td className="p-3 text-right align-top">
-                                                {/* [UPDATED] Button Logic: Edit vs Assess */}
                                                 <button onClick={()=>onSelect(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1 ml-auto ${p.footExam ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200' : 'bg-pink-600 text-white hover:bg-pink-700'}`}>
                                                     <Icon name={p.footExam ? "edit-2" : "clipboard-check"} size={14}/> {p.footExam ? 'แก้ไข' : 'ประเมิน'}
                                                 </button>
                                             </td>
                                         </tr>
-                                    ))}
+                                    );})}
                                     {filtered.length===0 && <tr><td colSpan="4" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                                 </tbody>
                             </table>
