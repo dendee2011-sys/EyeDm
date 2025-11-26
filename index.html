@@ -77,9 +77,16 @@
             "20/70 (6/21)", "20/100 (6/30)", "20/200 (6/60)", "20/400 (6/120)", 
             "CF (นับนิ้ว)", "HM (โบกมือ)", "PL (เห็นแสง)", "NPL (ไม่เห็นแสง)"
         ];
+        
         const DR_STAGES = [
-            "No DR (ปกติ)", "Mild NPDR", "Moderate NPDR", "Severe NPDR", "PDR (Proliferative)", "Incomplete / ภาพไม่ชัด"
+            "No DR", 
+            "Mild DR", 
+            "Moderate DR", 
+            "Severe DR", 
+            "PDR", 
+            "ไม่พบจอประสาทตา"
         ];
+
         const defaultFindings = { 
             Normal:{L:true,R:true}, MicroAneurysm:{L:false,R:false}, Hemorrhage:{L:false,R:false}, 
             HardExudate:{L:false,R:false}, Other:{L:false,R:false} 
@@ -92,7 +99,13 @@
             "03293": "รพ.สต.บ้านหนองไผ่", "14422": "ศูนย์บริการสาธารณสุข 2", "15204": "ศูนย์บริการสาธารณสุข 3",
             "21986": "ศูนย์บริการสาธารณสุข 4", "23954": "ศูนย์บริการสาธารณสุข 5", "77475": "ศุนย์สุขภาพชุมชนเขตเมือง รพ.ศรีสะเกษ"
         };
-        const CSV_HEADERS = ['idCard', 'name', 'dob', 'age', 'dxDate', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 'vaRight', 'vaLeft', 'priorExam', 'priorExamCount', 'agencyCode', 'referralDate', 'drStageR', 'drStageL'];
+        // [MODIFIED] เพิ่ม Header สำหรับประวัติครบชุด (VA, HbA1c, BP)
+        const CSV_HEADERS = [
+            'idCard', 'name', 'dob', 'age', 'dxDate', 'dmYears', 'hba1c', 'bp', 'weight', 'height', 
+            'vaRight', 'vaLeft', 'priorExam', 'priorExamCount', 'agencyCode', 'referralDate', 'drStageR', 'drStageL', 
+            'lastExamDate', 'lastDrStageR', 'lastDrStageL', 
+            'lastVaRight', 'lastVaLeft', 'lastHba1c', 'lastBp' // เพิ่มฟิลด์เหล่านี้
+        ];
         const FOOT_RISKS = ["Low Risk (ความเสี่ยงต่ำ)", "Moderate Risk (ปานกลาง)", "High Risk (ความเสี่ยงสูง)", "Very High Risk (ความเสี่ยงสูงมาก)", "Active Ulcer (มีแผลขณะนี้)"];
 
         // --- UTILS ---
@@ -108,6 +121,14 @@
             if (n.startsWith('นาย') || n.startsWith('ด.ช.') || n.startsWith('เด็กชาย') || n.startsWith('พระ') || n.startsWith('สามเณร') || n.startsWith('พลฯ')) return 'ชาย';
             if (n.startsWith('นาง') || n.startsWith('ด.ญ.') || n.startsWith('เด็กหญิง') || n.startsWith('น.ส.') || n.startsWith('ดญ') || n.startsWith('นส.')) return 'หญิง';
             return '';
+        };
+
+        // [ADDED] ฟังก์ชันแปลงวันที่เป็นภาษาไทย (พ.ศ.) สำหรับแสดงผลคู่กับ Input
+        const formatDateTh = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         };
 
         // --- COMPONENTS ---
@@ -256,15 +277,22 @@
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                     const matchesDate = pDateStr === selectedDate;
 
-                    let matches = matchesDate;
-                    if (term.length > 0) matches = matches && matchesTerm;
-
+                    // ตรวจสอบหน่วยงาน (Agency Check)
+                    let matchesAgency = true;
                     if (role === 'HOSPITAL') {
-                        const matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
-                        return matches && matchesAgency;
+                        matchesAgency = agencyFilter === 'All' || p.referringAgencyCode === agencyFilter;
+                    } else {
+                        matchesAgency = p.referringAgencyCode === agencyCode;
                     }
                     
-                    return matches && p.referringAgencyCode === agencyCode;
+                    // Logic การแสดงผล:
+                    // 1. ถ้ามีการค้นหา (term) -> แสดงประวัติทั้งหมดของคนนั้น (History Mode) ไม่สนใจวันที่
+                    // 2. ถ้าไม่มีการค้นหา -> แสดงเฉพาะคิวของวันที่เลือก (Daily Queue Mode)
+                    if (term.length > 0) {
+                        return matchesAgency && matchesTerm;
+                    } else {
+                        return matchesAgency && matchesDate;
+                    }
                 });
             }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
 
@@ -290,9 +318,9 @@
                         {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
-                        <div className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded p-1">
+                        <div className={`flex items-center gap-1 border rounded p-1 transition-colors ${term ? 'bg-gray-100 border-gray-200 opacity-50' : 'bg-blue-50 border-blue-100'}`}>
                             <span className="text-xs font-bold text-blue-600 px-2">วันที่:</span>
-                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-white border rounded p-1 text-sm text-blue-800 font-bold cursor-pointer"/>
+                            <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="bg-transparent border-none rounded p-1 text-sm text-blue-800 font-bold cursor-pointer outline-none" disabled={!!term}/>
                         </div>
 
                         {role === 'HOSPITAL' && (
@@ -301,9 +329,10 @@
                                 {Object.keys(allAgenciesMap).sort().map(code => <option key={code} value={code}>{code} - {allAgenciesMap[code]}</option>)}
                             </select>
                         )}
-                        <div className="flex-1 flex items-center w-full border rounded px-2">
+                        <div className="flex-1 flex items-center w-full border rounded px-2 bg-white ring-1 ring-transparent focus-within:ring-blue-500">
                             <Icon name="search" className="text-gray-400"/>
-                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหา ID Card หรือ ชื่อ..." className="flex-1 p-2 outline-none text-sm w-full" />
+                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาชื่อ/เลขบัตร เพื่อดูประวัติทั้งหมด..." className="flex-1 p-2 outline-none text-sm w-full" />
+                            {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
@@ -536,6 +565,8 @@
                                 <div className="sm:col-span-2">
                                     <label className="text-xs text-gray-500 mb-1 text-blue-600">วันเกิด (DOB)</label>
                                     <input type="date" value={form.dob || ''} onChange={e=>setForm({...form, dob: e.target.value})} className="w-full p-2 border rounded-lg text-xs"/>
+                                    {/* [ADDED] แสดงวันที่แบบ พ.ศ. */}
+                                    {form.dob && <div className="text-[10px] text-blue-600 mt-1 text-right font-bold">{formatDateTh(form.dob)}</div>}
                                 </div>
                                 <div className="sm:col-span-2">
                                     <label className="text-xs text-gray-500 mb-1">อายุ (ปี)</label>
@@ -547,6 +578,8 @@
                                         <div className="flex-1">
                                             <label className="text-xs text-gray-500 mb-1 text-blue-600">วันที่วินิจฉัย (Dx Date)</label>
                                             <input type="date" value={form.dxDate || ''} onChange={e => setForm({...form, dxDate: e.target.value})} className="w-full p-2 border rounded-lg text-xs"/>
+                                            {/* [ADDED] แสดงวันที่แบบ พ.ศ. */}
+                                            {form.dxDate && <div className="text-[10px] text-blue-600 mt-1 text-right font-bold">{formatDateTh(form.dxDate)}</div>}
                                         </div>
                                         <div className="w-1/3">
                                             <label className="text-xs text-gray-500 mb-1">เป็น DM (ปี)</label>
@@ -592,16 +625,72 @@
             const [findings, setFindings] = useState(patient.findings || JSON.parse(JSON.stringify(defaultFindings)));
             const [saving, setSaving] = useState(false);
 
-            const previousResult = useMemo(() => {
+            // ดึงประวัติ: ถ้ามีใน DB (previousResult) ให้ใช้ก่อน ถ้าไม่มีให้ดูจากข้อมูลที่ Import มา (patient.history)
+            const historyData = useMemo(() => {
                 if (!patients || !patient.part1?.idCard) return null;
-                const history = patients.filter(p => 
+
+                // ค้นหาประวัติทั้งหมดของผู้ป่วยคนนี้ (ไม่รวมรายการปัจจุบันที่กำลังเปิดอยู่)
+                const allRecords = patients.filter(p => 
                     p.part1?.idCard === patient.part1.idCard && 
                     p.id !== patient.id && 
-                    p.status === 'Completed' && 
                     !p.isDeleted
                 );
-                history.sort((a, b) => b.createdAt - a.createdAt);
-                return history.length > 0 ? history[0] : null;
+                // เรียงจากล่าสุดไปเก่าสุด
+                allRecords.sort((a, b) => b.createdAt - a.createdAt);
+
+                // 1. หาจาก DB: รายการที่ตรวจเสร็จแล้ว (Status = Completed) - ถือเป็นข้อมูลที่น่าเชื่อถือสุด
+                const completedExam = allRecords.find(p => p.status === 'Completed');
+                if (completedExam) {
+                    return {
+                        type: 'DB',
+                        date: completedExam.createdAt,
+                        drStageR: completedExam.part2?.drStageR,
+                        drStageL: completedExam.part2?.drStageL,
+                        findings: completedExam.findings,
+                        // [ADDED] ดึงข้อมูลสุขภาพจากประวัติเก่ามาด้วย
+                        vaRight: completedExam.part1?.vaRight,
+                        vaLeft: completedExam.part1?.vaLeft,
+                        hba1c: completedExam.part1?.hba1c,
+                        bp: completedExam.part1?.bp
+                    };
+                }
+                
+                // 2. หาจาก CSV ในตัวมันเอง: ถ้าข้อมูลปัจจุบันมี history ติดมาจากการ Import
+                const curHist = patient.history;
+                if (curHist && (curHist.drStageR || curHist.drStageL || curHist.date)) {
+                    return {
+                        type: 'CSV',
+                        date: curHist.date ? new Date(curHist.date) : null,
+                        drStageR: curHist.drStageR || '-',
+                        drStageL: curHist.drStageL || '-',
+                        findings: null,
+                        // [ADDED] ดึงข้อมูลสุขภาพจาก CSV history
+                        vaRight: curHist.vaRight || '-',
+                        vaLeft: curHist.vaLeft || '-',
+                        hba1c: curHist.hba1c || '-',
+                        bp: curHist.bp || '-'
+                    };
+                }
+
+                // 3. หาจาก CSV ในรายการอื่น: เผื่อกรณี history ถูก Import เข้าไปไว้ในใบส่งตัวใบอื่น
+                const recordWithHistory = allRecords.find(p => p.history && (p.history.drStageR || p.history.drStageL || p.history.date));
+                if (recordWithHistory) {
+                    const h = recordWithHistory.history;
+                    return {
+                        type: 'CSV',
+                        date: h.date ? new Date(h.date) : null,
+                        drStageR: h.drStageR || '-',
+                        drStageL: h.drStageL || '-',
+                        findings: null,
+                        // [ADDED] ดึงข้อมูลสุขภาพจาก CSV history ของใบอื่น
+                        vaRight: h.vaRight || '-',
+                        vaLeft: h.vaLeft || '-',
+                        hba1c: h.hba1c || '-',
+                        bp: h.bp || '-'
+                    };
+                }
+
+                return null;
             }, [patient, patients]);
 
             const save = async () => {
@@ -633,51 +722,57 @@
                             <div className="mt-4 space-y-3 text-sm text-gray-600 bg-blue-50 p-4 rounded-lg border border-blue-100">
                                 <div className="font-bold text-blue-800 border-b border-blue-200 pb-1 mb-2">ประวัติจาก PCU</div>
                                 <div className="flex justify-between"><span>อายุ:</span> <span className="font-bold text-gray-900">{patient.part1.age || '-'} ปี</span></div>
-                                <div className="flex justify-between"><span>เป็นเบาหวาน:</span> <span className="font-bold text-gray-900">{patient.part1.dmYears || '-'} ปี</span></div>
-                                <div className="flex justify-between"><span>HbA1C:</span> <span className="font-bold text-gray-900">{patient.part1.hba1c || '-'}</span></div>
-                                <div className="flex justify-between"><span>BP:</span> <span className="font-bold text-gray-900">{patient.part1.bp || '-'}</span></div>
-                                <div className="pt-2 border-t border-blue-200 mt-2">
-                                    <p className="font-bold text-blue-800 mb-1 text-xs uppercase">ค่าสายตา (VA)</p>
-                                    <div className="flex justify-between text-gray-800"><span>ขวา:</span> <b>{patient.part1.vaRight || '-'}</b></div>
-                                    <div className="flex justify-between text-gray-800"><span>ซ้าย:</span> <b>{patient.part1.vaLeft || '-'}</b></div>
-                                </div>
-
-                                {/* [ADDED] Previous Result Section (with Findings) */}
-                                {previousResult && (
+                                {/* [MODIFIED] History Section to support both DB and CSV history with FULL DETAILS */}
+                                {historyData && (
                                     <div className="pt-2 border-t border-blue-200 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
-                                         <p className="font-bold text-yellow-800 mb-1 text-xs uppercase flex items-center gap-1"><Icon name="history" size={12}/> ผลตรวจตาครั้งล่าสุด ({new Date(previousResult.createdAt).toLocaleDateString('th-TH')})</p>
+                                         <p className="font-bold text-yellow-800 mb-2 text-xs uppercase flex items-center gap-1">
+                                            <Icon name="history" size={12}/> 
+                                            ผลตรวจตาปีที่แล้ว {historyData.date && `(${historyData.date.toLocaleDateString('th-TH')})`}
+                                            {historyData.type === 'CSV' && <span className="ml-auto text-[10px] bg-yellow-200 px-1 rounded text-yellow-800">CSV</span>}
+                                         </p>
+                                         
+                                         {/* [ADDED] แสดงข้อมูลสุขภาพย้อนหลัง (VA, HbA1c, BP) */}
+                                         <div className="grid grid-cols-2 gap-2 mb-2 text-[10px] text-gray-600 bg-white/50 p-1 rounded">
+                                            <div><span className="font-bold">VA(R):</span> {historyData.vaRight || '-'}</div>
+                                            <div><span className="font-bold">VA(L):</span> {historyData.vaLeft || '-'}</div>
+                                            <div><span className="font-bold">HbA1c:</span> {historyData.hba1c || '-'}</div>
+                                            <div><span className="font-bold">BP:</span> {historyData.bp || '-'}</div>
+                                         </div>
+
                                          <div className="flex justify-between items-center text-xs mb-1">
                                              <span className="text-gray-600">ขวา (OD):</span>
-                                             <span className="font-bold text-gray-800">{previousResult.part2?.drStageR || '-'}</span>
+                                             <span className="font-bold text-gray-800">{historyData.drStageR || '-'}</span>
                                          </div>
                                          <div className="flex justify-between items-center text-xs mb-2">
                                              <span className="text-gray-600">ซ้าย (OS):</span>
-                                             <span className="font-bold text-gray-800">{previousResult.part2?.drStageL || '-'}</span>
+                                             <span className="font-bold text-gray-800">{historyData.drStageL || '-'}</span>
                                          </div>
                                          
-                                         {/* [ADDED] Show detailed findings from history */}
-                                         <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
-                                            <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
-                                            <div className="mt-1">
-                                                {Object.entries(previousResult.findings || {}).map(([key, val]) => {
-                                                    const sides = [];
-                                                    if (val.L) sides.push('L');
-                                                    if (val.R) sides.push('R');
-                                                    if (sides.length > 0 && key !== 'Normal') {
-                                                        return (
-                                                            <div key={key} className="flex items-center gap-1 mb-0.5">
-                                                                <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
-                                                                <span>{key} ({sides.join(',')})</span>
-                                                            </div>
-                                                        );
+                                         {/* Show detailed findings ONLY if from DB */}
+                                         {historyData.findings && (
+                                             <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
+                                                <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
+                                                <div className="mt-1">
+                                                    {Object.entries(historyData.findings || {}).map(([key, val]) => {
+                                                        const sides = [];
+                                                        if (val.L) sides.push('L');
+                                                        if (val.R) sides.push('R');
+                                                        if (sides.length > 0 && key !== 'Normal') {
+                                                            return (
+                                                                <div key={key} className="flex items-center gap-1 mb-0.5">
+                                                                    <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
+                                                                    <span>{key} ({sides.join(',')})</span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })}
+                                                    {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
+                                                        <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
                                                     }
-                                                    return null;
-                                                })}
-                                                {(!previousResult.findings || Object.entries(previousResult.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
-                                                    <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
-                                                }
-                                            </div>
-                                         </div>
+                                                </div>
+                                             </div>
+                                         )}
                                      </div>
                                 )}
 
@@ -795,6 +890,43 @@
             const [uploadError, setUploadError] = useState('');
             const [validCount, setValidCount] = useState(0);
             
+            // [ADDED] ฟังก์ชันแปลงค่าผลตรวจจาก CSV ให้ตรงกับ Dropdown ของระบบ (Normalization)
+            const normalizeDR = (val) => {
+                if (!val) return '';
+                const v = val.toLowerCase().trim();
+                // จับคู่คำค้นหา (Keywords) เข้ากับค่ามาตรฐาน
+                if (v.includes('no') || v.includes('normal') || v.includes('ปกติ')) return "No DR";
+                if (v.includes('mild')) return "Mild DR";
+                if (v.includes('mod')) return "Moderate DR";
+                if (v.includes('sev')) return "Severe DR";
+                if (v.includes('pdr') || v.includes('proli')) return "PDR";
+                if (v.includes('incomp') || v.includes('ชัด') || v.includes('ไม่พบ') || v.includes('image') || v.includes('found')) return "ไม่พบจอประสาทตา";
+                return val; // ถ้าไม่ตรงเงื่อนไข ให้เก็บค่าเดิมไว้
+            };
+
+            // ฟังก์ชันช่วยสำหรับการรวมข้อมูล: เติมเฉพาะค่าที่ว่าง (Fill Missing)
+            const mergeFillMissing = (target, source) => {
+                const result = { ...target };
+                for (const key in source) {
+                    const sVal = source[key];
+                    const tVal = result[key];
+                    
+                    // ถ้าข้อมูลใหม่มีค่า (ไม่ว่าง)
+                    if (sVal !== undefined && sVal !== null && sVal !== '') {
+                        // ถ้าข้อมูลเดิมว่าง (undefined, null, empty string) -> ให้เติมค่าใหม่
+                        if (tVal === undefined || tVal === null || tVal === '') {
+                            result[key] = sVal;
+                        } 
+                        // ถ้าเป็น Object ทั้งคู่ (เช่น part1, history) ให้มุดเข้าไปเช็คข้างใน (Recursive)
+                        else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
+                            result[key] = mergeFillMissing(tVal, sVal);
+                        }
+                        // กรณีอื่น (ข้อมูลเดิมมีค่าอยู่แล้ว) -> ไม่ทำอะไร (รักษาค่าเดิมไว้)
+                    }
+                }
+                return result;
+            };
+
             const parseCSV = (text) => {
                 const lines = text.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
                 const headers = lines[0].split(',').map(h => h.trim());
@@ -833,6 +965,12 @@
                         // Auto Gender: เรียกใช้ฟังก์ชันกลาง เพื่อรองรับชื่อติดกันและคำนำหน้าหลากหลาย
                         patient.gender = getGenderFromName(patient.name);
 
+                        // [MODIFIED] แปลงค่า DR Stage ให้เป็นมาตรฐานก่อนสร้าง Object
+                        const normDrR = normalizeDR(patient.drStageR);
+                        const normDrL = normalizeDR(patient.drStageL);
+                        const normLastDrR = normalizeDR(patient.lastDrStageR);
+                        const normLastDrL = normalizeDR(patient.lastDrStageL);
+
                         // Create import object
                         const importData = { 
                             part1: {
@@ -853,14 +991,29 @@
                                 priorExamCount: patient.priorExamCount
                             },
                             referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: (patient.drStageR || patient.drStageL) ? 'Completed' : 'Imported', 
+                            status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
                             isDeleted: false, 
-                            createdAt: examDate 
+                            createdAt: examDate,
+                            // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
+                            history: {
+                                date: patient.lastExamDate || '',
+                                drStageR: normLastDrR, // ใช้ค่าที่แปลงแล้ว
+                                drStageL: normLastDrL,  // ใช้ค่าที่แปลงแล้ว
+                                // [ADDED] เก็บข้อมูลสุขภาพลง History
+                                vaRight: patient.lastVaRight || '',
+                                vaLeft: patient.lastVaLeft || '',
+                                hba1c: patient.lastHba1c || '',
+                                bp: patient.lastBp || ''
+                            }
                         };
                         
                         if(importData.status === 'Completed') {
                             importData.examinedAt = examDate;
-                            importData.part2 = { drStageR: patient.drStageR || 'Incomplete', drStageL: patient.drStageL || 'Incomplete', cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false };
+                            importData.part2 = { 
+                                drStageR: normDrR || 'ไม่พบจอประสาทตา', 
+                                drStageL: normDrL || 'ไม่พบจอประสาทตา', 
+                                cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false 
+                            };
                             importData.findings = JSON.parse(JSON.stringify(defaultFindings));
                         }
 
@@ -878,19 +1031,51 @@
                 setLoading(true); 
                 setUploadError(''); 
                 try { 
-                    const batch = db.batch(); 
-                    let count = 0; 
-                    csvData.forEach(data => { 
-                        // Deterministic ID to prevent duplication
+                    // 1. เตรียมการอ่านข้อมูลทั้งหมดเพื่อเช็คก่อนบันทึก
+                    const tasks = csvData.map(async (data) => {
                         const dateStr = data.createdAt.toISOString().split('T')[0];
                         const docId = `${data.part1.idCard}_${dateStr}`;
-                        const newDocRef = collection.doc(docId); 
-                        batch.set(newDocRef, data, { merge: true }); 
+                        const docRef = collection.doc(docId);
+                        // ดึงข้อมูลเก่ามาดูก่อน
+                        const snap = await docRef.get();
+                        // [IMPORTANT] Clone data เพื่อไม่ให้กระทบต้นฉบับเวลาลบ field
+                        return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
+                    });
+
+                    // รอให้ดึงข้อมูลครบทุกรายการ
+                    const results = await Promise.all(tasks);
+
+                    const batch = db.batch(); 
+                    let count = 0; 
+                    
+                    results.forEach(({ docRef, data, snap }) => { 
+                        if (snap.exists) {
+                            // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
+                            const existingData = snap.data();
+                            
+                            // [ADDED] กฎพิเศษ: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิมในฐานข้อมูล
+                            // ถ้าในฐานมีข้อมูลเหล่านี้อยู่แล้ว ให้ตัดข้อมูลจาก CSV ออกเลย เพื่อป้องกันการเติมข้อมูลที่ขัดแย้งกัน
+                            if (existingData.part1?.dob) {
+                                delete data.part1.dob;
+                                delete data.part1.age; // ตัดอายุจาก CSV ออกด้วย เพื่อไม่ให้ไปเติมในช่องว่างแล้วไม่ตรงกับวันเกิดเดิม
+                            }
+                            if (existingData.part1?.dxDate) {
+                                delete data.part1.dxDate;
+                                delete data.part1.dmYears; // ตัดปีที่เป็น DM จาก CSV ออกด้วย
+                            }
+
+                            const mergedData = mergeFillMissing(existingData, data);
+                            batch.set(docRef, mergedData); 
+                        } else {
+                            // กรณีไม่มีข้อมูล: สร้างใหม่เลย
+                            batch.set(docRef, data); 
+                        }
                         count++; 
                     }); 
+                    
                     if(count===0) { setUploadError('No valid data'); setLoading(false); return; } 
                     await batch.commit(); 
-                    setModal({ visible: true, title: "สำเร็จ", message: `Imported/Updated ${count} records`, onConfirm: () => onBack('admin_home') }); 
+                    setModal({ visible: true, title: "สำเร็จ", message: `ตรวจสอบและเติมข้อมูล ${count} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
 
@@ -949,7 +1134,7 @@
                 const completed = filteredPatients.filter(p => p.status === 'Completed').length;
                 const waiting = filteredPatients.filter(p => p.status === 'Waiting').length;
                 
-                const severityCounts = { 'No DR': 0, 'Mild NPDR': 0, 'Moderate NPDR': 0, 'Severe NPDR': 0, 'PDR': 0, 'Incomplete': 0 };
+                const severityCounts = { 'No DR': 0, 'Mild DR': 0, 'Moderate DR': 0, 'Severe DR': 0, 'PDR': 0, 'ไม่พบจอประสาทตา': 0 };
                 const footTotal = filteredPatients.filter(p => p.footExam).length;
                 const footRiskCounts = { 'Low Risk': 0, 'Moderate Risk': 0, 'High Risk': 0, 'Very High Risk': 0, 'Active Ulcer': 0 };
                 const agencyStats = {};
@@ -977,11 +1162,11 @@
                         const maxScore = Math.max(scoreL, scoreR);
                         
                         if (maxScore === 0) severityCounts['No DR']++;
-                        else if (maxScore === 1) severityCounts['Mild NPDR']++;
-                        else if (maxScore === 2) severityCounts['Moderate NPDR']++;
-                        else if (maxScore === 3) severityCounts['Severe NPDR']++;
+                        else if (maxScore === 1) severityCounts['Mild DR']++;
+                        else if (maxScore === 2) severityCounts['Moderate DR']++;
+                        else if (maxScore === 3) severityCounts['Severe DR']++;
                         else if (maxScore === 4) severityCounts['PDR']++;
-                        else severityCounts['Incomplete']++;
+                        else severityCounts['ไม่พบจอประสาทตา']++;
                     }
 
                     // Foot Logic
@@ -1106,7 +1291,7 @@
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจตาแล้ว</div><div className="text-3xl font-bold text-green-600">{stats.completed}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-pink-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจเท้าแล้ว</div><div className="text-3xl font-bold text-pink-600">{stats.footTotal}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">รอตรวจตา</div><div className="text-3xl font-bold text-orange-600">{stats.waiting}</div></div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตาผิดปกติ (Any DR)</div><div className="text-3xl font-bold text-red-600">{stats.completed - (stats.severityCounts['No DR'] || 0) - (stats.severityCounts['Incomplete'] || 0)}</div></div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตาผิดปกติ (Any DR)</div><div className="text-3xl font-bold text-red-600">{stats.completed - (stats.severityCounts['No DR'] || 0) - (stats.severityCounts['ไม่พบจอประสาทตา'] || 0)}</div></div>
                     </div>
                     
                     {/* Charts */}
@@ -1114,12 +1299,12 @@
                         <div className="bg-white p-6 rounded-xl shadow-sm border">
                             <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Icon name="eye" size={18}/> ความรุนแรงทางตา (DR Severity)</h3>
                             <div className="space-y-2">
-                                <Bar label="No DR (ปกติ)" count={stats.severityCounts['No DR']} total={stats.completed} color="bg-green-500" />
-                                <Bar label="Mild NPDR" count={stats.severityCounts['Mild NPDR']} total={stats.completed} color="bg-yellow-400" />
-                                <Bar label="Moderate NPDR" count={stats.severityCounts['Moderate NPDR']} total={stats.completed} color="bg-orange-500" />
-                                <Bar label="Severe NPDR" count={stats.severityCounts['Severe NPDR']} total={stats.completed} color="bg-red-500" />
-                                <Bar label="PDR (Proliferative)" count={stats.severityCounts['PDR']} total={stats.completed} color="bg-purple-600" />
-                                <Bar label="Incomplete" count={stats.severityCounts['Incomplete']} total={stats.completed} color="bg-gray-400" />
+                                <Bar label="No DR" count={stats.severityCounts['No DR']} total={stats.completed} color="bg-green-500" />
+                                <Bar label="Mild DR" count={stats.severityCounts['Mild DR']} total={stats.completed} color="bg-yellow-400" />
+                                <Bar label="Moderate DR" count={stats.severityCounts['Moderate DR']} total={stats.completed} color="bg-orange-500" />
+                                <Bar label="Severe DR" count={stats.severityCounts['Severe DR']} total={stats.completed} color="bg-red-500" />
+                                <Bar label="PDR" count={stats.severityCounts['PDR']} total={stats.completed} color="bg-purple-600" />
+                                <Bar label="ไม่พบจอประสาทตา" count={stats.severityCounts['ไม่พบจอประสาทตา']} total={stats.completed} color="bg-gray-400" />
                             </div>
                         </div>
                         <div className="bg-white p-6 rounded-xl shadow-sm border">
@@ -1395,6 +1580,12 @@
             
             const [currentDate, setCurrentDate] = useState(getTodayStr());
 
+            // [ADDED] ดึงข้อมูลผู้ป่วยแบบ Real-time จาก ID ที่เลือก เพื่อให้ได้ข้อมูลล่าสุดเสมอ (เช่น history ที่เพิ่ง import)
+            const activePatient = useMemo(() => {
+                if (!selectedPatient) return null;
+                return patients.find(p => p.id === selectedPatient.id) || selectedPatient;
+            }, [patients, selectedPatient]);
+
             useEffect(() => {
                 return auth.onAuthStateChanged(u => {
                     setUser(u);
@@ -1446,8 +1637,9 @@
                             <button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button>
                         </nav>
                         <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
+                        {/* ใช้ activePatient แทน selectedPatient */}
                         {view === 'foot_dashboard' && <FootDashboard patients={patients} agenciesMap={agenciesMap} onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
-                        {view === 'foot_form' && <FootForm patient={selectedPatient} onBack={()=>{setSelectedPatient(null);setView('foot_dashboard');}} setModal={setModal} />}
+                        {view === 'foot_form' && activePatient && <FootForm patient={activePatient} onBack={()=>{setSelectedPatient(null);setView('foot_dashboard');}} setModal={setModal} />}
                         <MessageModal modal={modal} setModal={setModal} />
                     </div>
                 );
@@ -1461,9 +1653,13 @@
                     </nav>
                     <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
                     {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
-                    {view === 'pcu_form' && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={selectedPatient} agencyCode={agencyCode} />}
-                    {/* Pass patients to HospitalForm for History Lookup */}
-                    {view === 'hospital' && <HospitalForm patient={selectedPatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
+                    
+                    {/* ใช้ activePatient แทน selectedPatient เพื่อให้ข้อมูล history อัปเดตทันที */}
+                    {view === 'pcu_form' && activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={activePatient} agencyCode={agencyCode} />}
+                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} />}
+                    
+                    {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
+                    
                     {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} />}
                     {role === 'HOSPITAL' && view === 'manage_agencies' && <ManageAgencies onBack={setView} agenciesMap={agenciesMap} />}
                     {role === 'HOSPITAL' && view === 'import_csv' && <HospitalImport onBack={setView} setModal={setModal} />}
