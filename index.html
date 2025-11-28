@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EyeDM Connect - ระบบข้อมูลจอประสาทตาผู้ป่วยเบาหวาน อำเภอเมืองศรีสะเกษ</title>
+    <title>EyeDM Connect - ระบบส่งต่อผู้ป่วยเบาหวาน</title>
     
     <!-- 1. Import Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,6 +11,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
+    <!-- [ADDED] Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
     <!-- Firebase Libraries (Compat versions) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -231,9 +234,8 @@
                     <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
                         <div className="text-center mb-8">
                             <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Icon name="lock" size={40} /></div>
-                            <h1 className="text-3xl font-bold text-gray-800">EyeDM Platform</h1>
-                            <p className="text-slate-500 mt-2">ระบบข้อมูลจอประสาทตาผู้ป่วยเบาหวาน</p>
-                            <p className="text-slate-500 mt-2">อำเภอเมืองศรีสะเกษ</p>
+                            <h1 className="text-3xl font-bold text-gray-800">EyeDM Connect</h1>
+                            <p className="text-slate-500 mt-2">ระบบส่งต่อผู้ป่วยเบาหวานเข้าจอประสาทตา</p>
                         </div>
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div><label className="block text-xs font-semibold text-gray-500 mb-1">รหัสหน่วยงาน (User ID)</label><input type="text" inputMode="numeric" maxLength="5" value={agencyCode} onChange={e=>setAgencyCode(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl text-lg font-mono" placeholder="เช่น 10700" required /></div>
@@ -384,6 +386,7 @@
             const isEditing = !!patientToEdit;
             const defaultForm = { idCard:'', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
+            const [showScanner, setShowScanner] = useState(false);
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -399,6 +402,38 @@
             const [saving, setSaving] = useState(false);
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
+
+            // [ADDED] Barcode Scanner Logic
+            useEffect(() => {
+                let scanner = null;
+                if (showScanner) {
+                    const startScanner = async () => {
+                        try {
+                            if (!window.Html5QrcodeScanner) return;
+                            scanner = new Html5QrcodeScanner(
+                                "reader", 
+                                { fps: 10, qrbox: { width: 250, height: 100 } }, 
+                                /* verbose= */ false
+                            );
+                            scanner.render((decodedText) => {
+                                // Thai ID is 13 digits
+                                const cleanId = decodedText.replace(/[^0-9]/g, '');
+                                if (cleanId.length === 13) {
+                                    setForm(prev => ({ ...prev, idCard: cleanId }));
+                                    scanner.clear();
+                                    setShowScanner(false);
+                                }
+                            }, (error) => {
+                                // console.warn(error); 
+                            });
+                        } catch (err) { console.error("Scanner Error", err); }
+                    };
+                    startScanner();
+                }
+                return () => {
+                    if (scanner) { try { scanner.clear(); } catch(e) {} }
+                };
+            }, [showScanner]);
 
             const handleNameChange = (e) => {
                 const val = e.target.value;
@@ -532,9 +567,25 @@
 
                             <div className={`p-4 rounded-xl border ${foundOld ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
                                 <label className="block text-xs font-bold text-gray-700 mb-1">เลขบัตรประชาชน 13 หลัก *</label>
-                                <div className="relative"><input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
-                                {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}</div>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
+                                        {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}
+                                    </div>
+                                    <button onClick={() => setShowScanner(true)} className="bg-blue-600 text-white px-3 rounded-lg flex items-center gap-1 text-sm whitespace-nowrap"><Icon name="camera" size={16}/> สแกน</button>
+                                </div>
                             </div>
+
+                            {/* [ADDED] Scanner Modal */}
+                            {showScanner && (
+                                <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex flex-col items-center justify-center p-4">
+                                    <div className="bg-white p-2 rounded-lg w-full max-w-sm">
+                                        <div id="reader" className="w-full"></div>
+                                        <p className="text-center text-xs text-gray-500 mt-2">วางบาร์โค้ดหน้าบัตรให้อยู่ในกรอบ</p>
+                                    </div>
+                                    <button onClick={() => setShowScanner(false)} className="mt-4 text-white bg-red-600 px-6 py-2 rounded-full font-bold">ปิดกล้อง</button>
+                                </div>
+                            )}
                             
                             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                                 <div className="sm:col-span-6">
