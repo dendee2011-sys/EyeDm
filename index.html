@@ -11,8 +11,8 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- [ADDED] Barcode Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- [MODIFIED] เปลี่ยนจาก html5-qrcode เป็น Tesseract.js สำหรับอ่านตัวเลข (OCR) -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
     <!-- Firebase Libraries (Compat versions) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -35,6 +35,18 @@
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        
+        /* Scanner Overlay */
+        .scanner-overlay {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%; height: 100px;
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -387,6 +399,8 @@
             const defaultForm = { idCard:'', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
+            // [ADDED] สถานะการสแกน
+            const [scanStatus, setScanStatus] = useState('กำลังเปิดกล้อง...');
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -402,75 +416,92 @@
             const [saving, setSaving] = useState(false);
             const [foundOld, setFoundOld] = useState(false);
             const [footStatus, setFootStatus] = useState(null);
+            
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
 
-            // [MODIFIED] ใช้ Html5Qrcode (Core) เพื่อเปิดกล้องอัตโนมัติทันที แก้ปัญหากล้องไม่ขึ้นหรือติดหน้าขออนุญาต
+            // [MODIFIED] ระบบสแกนอัตโนมัติ (Auto Loop)
             useEffect(() => {
                 if (!showScanner) return;
                 
-                let html5QrCode;
-                const elementId = "reader";
-                let isMounted = true;
+                let stream = null;
+                let scanInterval = null;
+                let isScanning = false; // ป้องกันการทำงานซ้อนกัน
 
-                const initScanner = async () => {
-                    // รอ Library โหลด
-                    if (!window.Html5Qrcode) { 
-                        await new Promise(r => setTimeout(r, 500));
-                        if (!window.Html5Qrcode && isMounted) {
-                            alert("ระบบสแกนยังโหลดไม่เสร็จ กรุณาลองใหม่"); 
-                            setShowScanner(false); 
-                            return; 
-                        }
-                    }
-
-                    // รอ DOM สร้างเสร็จ
-                    await new Promise(r => setTimeout(r, 300));
-                    if (!isMounted) return;
-                    
+                const startCamera = async () => {
                     try {
-                        html5QrCode = new window.Html5Qrcode(elementId);
+                        // ขออนุญาตใช้กล้องหลัง
+                        stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { facingMode: "environment" } 
+                        });
                         
-                        // สั่งเปิดกล้องหลัง (environment) ทันที
-                        await html5QrCode.start(
-                            { facingMode: "environment" }, 
-                            { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 1.0 },
-                            (decodedText) => {
-                                // เมื่ออ่านเจอ
-                                const cleanId = decodedText.replace(/[^0-9]/g, '');
-                                if (cleanId.length >= 13) {
-                                    setForm(prev => ({ ...prev, idCard: cleanId.substring(0, 13) }));
-                                    // ปิดกล้องและปิดหน้าต่าง
-                                    html5QrCode.stop().then(() => {
-                                        html5QrCode.clear();
-                                        if(isMounted) setShowScanner(false);
-                                    }).catch(() => {
-                                        if(isMounted) setShowScanner(false);
-                                    });
-                                }
-                            },
-                            (errorMessage) => { /* ละเว้น error แต่ละเฟรม */ }
-                        );
-                    } catch (err) {
-                        console.error("Start failed", err);
-                        if (isMounted) {
-                            alert("ไม่สามารถเริ่มกล้องได้: " + (err.message || "กรุณาอนุญาตการใช้กล้อง"));
-                            setShowScanner(false);
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                            // รอให้วิดีโอเริ่มเล่นก่อนค่อยเริ่มสแกน
+                            videoRef.current.onloadedmetadata = () => {
+                                videoRef.current.play();
+                                setScanStatus('วางบัตรในกรอบเพื่อสแกน...');
+                                startScanLoop();
+                            };
                         }
+                    } catch (err) {
+                        console.error("Camera Error", err);
+                        alert("ไม่สามารถเปิดกล้องได้: " + err.message);
+                        setShowScanner(false);
                     }
                 };
 
-                initScanner();
+                const startScanLoop = () => {
+                    // ตั้งเวลาสแกนทุกๆ 1.5 วินาที (ไม่ถี่เกินไปจนเครื่องค้าง)
+                    scanInterval = setInterval(async () => {
+                        if (isScanning || !videoRef.current || !canvasRef.current) return;
+                        
+                        isScanning = true;
+                        setScanStatus('กำลังอ่านตัวเลข... ถือนิ่งๆ');
 
-                return () => {
-                    isMounted = false;
-                    if (html5QrCode) {
-                        // พยายามหยุดกล้องเมื่อปิด component
                         try {
-                            if(html5QrCode.isScanning) {
-                                html5QrCode.stop().catch(err => console.log("Stop error", err));
+                            const video = videoRef.current;
+                            const canvas = canvasRef.current;
+                            
+                            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                                // วาดภาพจากวิดีโอลง Canvas เพื่อส่งให้ Tesseract อ่าน
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                
+                                // เริ่มกระบวนการ OCR
+                                const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+                                
+                                // กรองเอาเฉพาะตัวเลข
+                                const digits = text.replace(/[^0-9]/g, '');
+                                // ค้นหาชุดตัวเลข 13 หลัก
+                                const match = digits.match(/(\d{13})/);
+                                
+                                if (match) {
+                                    // เจอเลข 13 หลัก!
+                                    setForm(prev => ({ ...prev, idCard: match[0] }));
+                                    alert(`สแกนสำเร็จ: ${match[0]}`); // แจ้งเตือนเล็กน้อย
+                                    setShowScanner(false);
+                                } else {
+                                    setScanStatus('ยังไม่พบเลข 13 หลัก... ลองขยับเข้าใกล้');
+                                }
                             }
-                            html5QrCode.clear();
-                        } catch(e) {}
-                    }
+                        } catch (e) {
+                            console.error("OCR Error", e);
+                            setScanStatus('เกิดข้อผิดพลาดในการอ่านภาพ');
+                        } finally {
+                            isScanning = false;
+                        }
+                    }, 1500);
+                };
+
+                startCamera();
+
+                // Cleanup: ปิดกล้องและหยุดสแกนเมื่อปิดหน้าต่าง
+                return () => {
+                    if (scanInterval) clearInterval(scanInterval);
+                    if (stream) stream.getTracks().forEach(track => track.stop());
                 };
             }, [showScanner]);
 
@@ -611,18 +642,26 @@
                                         <input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
                                         {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}
                                     </div>
-                                    <button onClick={() => setShowScanner(true)} className="bg-blue-600 text-white px-3 rounded-lg flex items-center gap-1 text-sm whitespace-nowrap"><Icon name="camera" size={16}/> สแกน</button>
+                                    {/* ปุ่มเปิดสแกนเนอร์ */}
+                                    <button onClick={() => setShowScanner(true)} className="bg-blue-600 text-white px-3 rounded-lg flex items-center gap-1 text-sm whitespace-nowrap shadow hover:bg-blue-700 transition-all"><Icon name="camera" size={16}/> สแกนเลขบัตร</button>
                                 </div>
                             </div>
 
-                            {/* [ADDED] Scanner Modal */}
+                            {/* [MODIFIED] Scanner Modal: แบบ Auto Scan ไม่ต้องกดถ่าย */}
                             {showScanner && (
-                                <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex flex-col items-center justify-center p-4">
-                                    <div className="bg-white p-2 rounded-lg w-full max-w-sm">
-                                        <div id="reader" className="w-full"></div>
-                                        <p className="text-center text-xs text-gray-500 mt-2">วางบาร์โค้ดหน้าบัตรให้อยู่ในกรอบ</p>
+                                <div className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col items-center justify-center p-4">
+                                    <div className="relative w-full max-w-md rounded-xl overflow-hidden border-2 border-white/30 shadow-2xl">
+                                        <video ref={videoRef} autoPlay playsInline className="w-full h-64 object-cover bg-black"></video>
+                                        <canvas ref={canvasRef} className="hidden"></canvas>
+                                        
+                                        {/* Overlay เส้นกรอบแดง */}
+                                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-24 border-2 border-red-500 rounded-lg shadow-[0_0_0_999px_rgba(0,0,0,0.5)] pointer-events-none animate-pulse"></div>
+                                        <div className="absolute top-2 left-0 w-full text-center text-white text-xs bg-black/50 py-1">
+                                            {scanStatus}
+                                        </div>
                                     </div>
-                                    <button onClick={() => setShowScanner(false)} className="mt-4 text-white bg-red-600 px-6 py-2 rounded-full font-bold">ปิดกล้อง</button>
+                                    <p className="text-white text-sm mt-4 text-center">วางเลขบัตรประชาชน 13 หลัก ให้อยู่ในกรอบสีแดง<br/><span className="text-xs text-gray-400">ระบบจะสแกนอัตโนมัติ</span></p>
+                                    <button onClick={() => setShowScanner(false)} className="mt-6 text-white bg-red-600 px-8 py-2 rounded-full font-bold hover:bg-red-700 transition-all">ยกเลิก / ปิดกล้อง</button>
                                 </div>
                             )}
                             
