@@ -425,7 +425,18 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // [MODIFIED] ปรับปรุงระบบสแกน: เพิ่ม Image Processing (Crop + ขาวดำ) เพื่อให้อ่านเลขแม่นยำขึ้น
+            // [ADDED] ฟังก์ชันตรวจสอบความถูกต้องของเลขบัตรประชาชน (Checksum)
+            const validateThaiID = (id) => {
+                if (id.length !== 13) return false;
+                let sum = 0;
+                for (let i = 0; i < 12; i++) {
+                    sum += parseFloat(id.charAt(i)) * (13 - i);
+                }
+                const checkDigit = (11 - sum % 11) % 10;
+                return checkDigit === parseFloat(id.charAt(12));
+            };
+
+            // [MODIFIED] ปรับปรุงระบบสแกน: เพิ่ม Image Processing (Upscale) + Checksum Validation
             useEffect(() => {
                 if (!showScanner) return;
                 
@@ -435,16 +446,16 @@
 
                 const startCamera = async () => {
                     try {
-                        // ขอความละเอียดสูงขึ้นนิดหน่อย (HD) เพื่อความคมชัด
+                        // ขอความละเอียดสูง (HD/Full HD)
                         stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+                            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
                         });
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
                             videoRef.current.onloadedmetadata = () => {
                                 videoRef.current.play();
-                                setScanStatus('วางเลข 13 หลัก ในกรอบ...');
+                                setScanStatus('วางเลข 13 หลัก ในกรอบ (ถือนิ่งๆ)...');
                                 startScanLoop();
                             };
                         }
@@ -456,12 +467,12 @@
                 };
 
                 const startScanLoop = () => {
-                    // สแกนทุกๆ 0.5 วินาที (เร็วขึ้น)
+                    // สแกนทุกๆ 0.5 วินาที
                     scanInterval = setInterval(async () => {
                         if (isScanning || !videoRef.current || !canvasRef.current) return;
                         
                         isScanning = true;
-                        setScanStatus('กำลังวิเคราะห์ภาพ... ถือนิ่งๆ');
+                        // setScanStatus('..'); // ไม่เปลี่ยนข้อความบ่อยเพื่อลดการกะพริบ
 
                         try {
                             const video = videoRef.current;
@@ -471,77 +482,79 @@
                                 const w = video.videoWidth;
                                 const h = video.videoHeight;
                                 
-                                canvas.width = w;
-                                canvas.height = h;
-                                const ctx = canvas.getContext('2d');
-                                ctx.drawImage(video, 0, 0, w, h);
-                                
-                                // --- IMAGE PROCESSING ---
-                                // 1. Crop: ตัดเอาเฉพาะพื้นที่ตรงกลาง (Focus Area) ประมาณ 85% กว้าง x 15% สูง
-                                const cropW = w * 0.85; 
+                                // 1. Crop: ตัดเอาเฉพาะพื้นที่ตรงกลาง (Focus Area) 
+                                // ปรับกรอบให้แคบลงเพื่อให้โฟกัสเฉพาะบรรทัดตัวเลข
+                                const cropW = w * 0.80; 
                                 const cropH = h * 0.15; 
                                 const startX = (w - cropW) / 2;
                                 const startY = (h - cropH) / 2;
                                 
-                                const imageData = ctx.getImageData(startX, startY, cropW, cropH);
+                                // Upscale: ขยายภาพ 2 เท่าเพื่อให้ Tesseract อ่านง่ายขึ้น
+                                const scale = 2;
+                                canvas.width = cropW * scale;
+                                canvas.height = cropH * scale;
+                                const ctx = canvas.getContext('2d');
+                                
+                                // วาดภาพแบบขยาย
+                                ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+                                
+                                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                                 const data = imageData.data;
 
-                                // 2. Binarization: ทำภาพให้เป็น ขาว-ดำ (Thresholding) เพื่อลบลายน้ำ/พื้นหลัง
+                                // 2. Binarization (High Contrast): ทำภาพให้เป็น ขาว-ดำ ตัด Noise
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
                                     const g = data[i + 1];
                                     const b = data[i + 2];
-                                    // สูตร Grayscale
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    // Threshold: ใช้ค่า 128 (กลางๆ) ปรับให้ตัวหนังสือสีดำชัดขึ้น
-                                    const contrast = gray > 128 ? 255 : 0;
+                                    // Threshold: ปรับค่าให้เข้มงวดขึ้น (เช่น 110) เพื่อแยกตัวเลขสีดำออกจากพื้นหลัง
+                                    const contrast = gray > 110 ? 255 : 0;
                                     
                                     data[i] = contrast;     // R
                                     data[i + 1] = contrast; // G
                                     data[i + 2] = contrast; // B
                                 }
-                                
-                                // สร้าง Canvas ชั่วคราวสำหรับส่งให้ OCR
-                                const tempCanvas = document.createElement('canvas');
-                                tempCanvas.width = cropW;
-                                tempCanvas.height = cropH;
-                                tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+                                ctx.putImageData(imageData, 0, 0);
 
-                                // 3. OCR: อ่านตัวเลขเท่านั้น
+                                // 3. OCR
                                 const { data: { text } } = await Tesseract.recognize(
-                                    tempCanvas, 
+                                    canvas, 
                                     'eng',
                                     { 
-                                        tessedit_char_whitelist: '0123456789', // บังคับให้อ่านแค่ตัวเลข 0-9
-                                        tessedit_pageseg_mode: '7' // มองหาบรรทัดเดียว (Single Line)
+                                        tessedit_char_whitelist: '0123456789', 
+                                        tessedit_pageseg_mode: '6' // PSM 6: Assume a single uniform block of text (ดีกว่า 7 สำหรับตัวเลขยาวๆ)
                                     }
                                 );
                                 
                                 // กรองเอาเฉพาะตัวเลข
                                 const digits = text.replace(/[^0-9]/g, '');
-                                // ค้นหาเลข 13 หลัก
-                                const match = digits.match(/(\d{13})/);
                                 
-                                if (match) {
-                                    const id = match[0];
-                                    if (id.length === 13) {
-                                        if (navigator.vibrate) navigator.vibrate(200); // สั่นเตือน
-                                        setForm(prev => ({ ...prev, idCard: id }));
-                                        
-                                        clearInterval(scanInterval);
-                                        if (stream) stream.getTracks().forEach(track => track.stop());
-                                        setShowScanner(false);
-                                        isScanning = false;
-                                        return;
+                                // ค้นหาเลข 13 หลัก
+                                // พยายามหา pattern 13 หลักที่ถูกต้อง
+                                if (digits.length >= 13) {
+                                    // ลองหา Substring 13 ตัวที่ Valid
+                                    for (let i = 0; i <= digits.length - 13; i++) {
+                                        const potentialID = digits.substring(i, i + 13);
+                                        if (validateThaiID(potentialID)) {
+                                            if (navigator.vibrate) navigator.vibrate(200);
+                                            setForm(prev => ({ ...prev, idCard: potentialID }));
+                                            
+                                            clearInterval(scanInterval);
+                                            if (stream) stream.getTracks().forEach(track => track.stop());
+                                            setShowScanner(false);
+                                            isScanning = false;
+                                            // alert(`สแกนสำเร็จ: ${potentialID}`);
+                                            return;
+                                        }
                                     }
                                 }
                             }
                         } catch (e) {
-                            console.error("OCR Error", e);
+                            // console.error("OCR Error", e);
                         } finally {
                             isScanning = false;
                         }
-                    }, 500); 
+                    }, 400); 
                 };
 
                 startCamera();
