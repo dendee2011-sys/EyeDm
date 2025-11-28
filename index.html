@@ -41,7 +41,7 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 85%; height: 80px;
+            width: 90%; height: 100px; /* ขยายความสูงขึ้นเล็กน้อย */
             border: 2px solid rgba(255,255,255,0.8);
             border-radius: 8px;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
@@ -49,7 +49,7 @@
         }
         .scanner-line {
             position: absolute;
-            top: 50%; left: 10%; right: 10%;
+            top: 50%; left: 5%; right: 5%;
             height: 1px;
             background: rgba(255, 0, 0, 0.5);
         }
@@ -436,7 +436,7 @@
                 return checkDigit === parseFloat(id.charAt(12));
             };
 
-            // [MODIFIED] Scanner Effect: OCR Only (No Barcode logic)
+            // [MODIFIED] Scanner Effect: Adaptive OCR
             useEffect(() => {
                 if (!showScanner) return;
 
@@ -446,6 +446,7 @@
 
                 const startCamera = async () => {
                     try {
+                        // Use high res for better OCR
                         stream = await navigator.mediaDevices.getUserMedia({ 
                             video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
                         });
@@ -477,13 +478,13 @@
                                 const w = video.videoWidth;
                                 const h = video.videoHeight;
                                 
-                                // Crop & Upscale Logic same as before
-                                const cropW = w * 0.80; 
-                                const cropH = h * 0.15; 
+                                // Crop Logic: Expand to 90% width to handle variable distance/position
+                                const cropW = w * 0.90; 
+                                const cropH = h * 0.20; 
                                 const startX = (w - cropW) / 2;
                                 const startY = (h - cropH) / 2;
                                 
-                                const scale = 2;
+                                const scale = 2; // Upscale for clearer text
                                 canvas.width = cropW * scale;
                                 canvas.height = cropH * scale;
                                 const ctx = canvas.getContext('2d');
@@ -493,12 +494,26 @@
                                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                                 const data = imageData.data;
 
+                                // Adaptive Thresholding
+                                // 1. Calculate Average Brightness
+                                let totalBrightness = 0;
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
                                     const g = data[i + 1];
                                     const b = data[i + 2];
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    const contrast = gray > 110 ? 255 : 0;
+                                    totalBrightness += gray;
+                                }
+                                const avgBrightness = totalBrightness / (data.length / 4);
+                                const threshold = avgBrightness * 0.70; // Heuristic: text is generally darker than average card background
+
+                                // 2. Binarization
+                                for (let i = 0; i < data.length; i += 4) {
+                                    const r = data[i];
+                                    const g = data[i + 1];
+                                    const b = data[i + 2];
+                                    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                                    const contrast = gray > threshold ? 255 : 0; // If brighter than threshold -> white, else black
                                     data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
                                 }
                                 ctx.putImageData(imageData, 0, 0);
@@ -535,7 +550,7 @@
                         } finally {
                             isScanning = false;
                         }
-                    }, 400); 
+                    }, 500); 
                 };
 
                 const initScanner = async () => {
