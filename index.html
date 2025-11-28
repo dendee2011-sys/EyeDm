@@ -532,8 +532,14 @@
                         
                         try {
                             html5QrCode = new Html5Qrcode("reader");
-                            const config = { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 1.0 };
-                            setScanStatus('โหมดบาร์โค้ด: สแกนบาร์โค้ดหน้าบัตร...');
+                            // [MODIFIED] ปรับจูนค่า Config ให้สแกนง่ายขึ้น (เพิ่ม FPS, ขยายกรอบแนวนอน)
+                            const config = { 
+                                fps: 20, 
+                                qrbox: { width: 300, height: 100 }, 
+                                aspectRatio: 1.0,
+                                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+                            };
+                            setScanStatus('โหมดบาร์โค้ด: ถือกล้องนิ่งๆ ให้บาร์โค้ดอยู่ในกรอบ...');
                             
                             await html5QrCode.start(
                                 { facingMode: "environment" }, 
@@ -541,10 +547,9 @@
                                 (decodedText) => {
                                     const cleanId = decodedText.replace(/[^0-9]/g, '');
                                     if (cleanId.length >= 13) {
-                                        // Barcode usually contains just the ID, but let's be safe
-                                        // Code 39 often has start/stop chars, library handles some
                                         const match = cleanId.match(/(\d{13})/);
-                                        if (match) {
+                                        // [MODIFIED] เพิ่มการตรวจสอบเลขบัตร (Validate ID) เพื่อความชัวร์
+                                        if (match && validateThaiID(match[0])) {
                                              if (navigator.vibrate) navigator.vibrate(200);
                                              setForm(prev => ({ ...prev, idCard: match[0] }));
                                              setShowScanner(false);
@@ -555,7 +560,7 @@
                             );
                         } catch (err) {
                              console.error("Barcode start error", err);
-                             alert("ไม่สามารถเริ่มระบบบาร์โค้ดได้: " + err.message);
+                             // alert("ไม่สามารถเริ่มระบบบาร์โค้ดได้: " + err.message);
                         }
                     };
                     startBarcodeScanner();
