@@ -672,7 +672,9 @@
                     const collection = getCollection('patients_referrals');
                     const data = { 
                         part1: form, 
-                        referringAgencyCode: agencyCode, 
+                        // [MODIFIED] ถ้าเป็นการแก้ไข (isEditing) ให้ใช้รหัสหน่วยงานเดิม (patientToEdit.referringAgencyCode)
+                        // เพื่อป้องกันกรณี Hospital แก้ไขข้อมูลแล้วกลายเป็นของ Hospital เอง
+                        referringAgencyCode: isEditing ? patientToEdit.referringAgencyCode : agencyCode, 
                         createdAt: targetDate,
                         ...(isEditing ? {} : { status: 'Waiting', isDeleted: false }) 
                     };
