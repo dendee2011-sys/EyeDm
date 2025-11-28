@@ -42,17 +42,18 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 85%; height: 80px;
-            border: 2px solid rgba(255,255,255,0.8);
+            width: 90%; height: 80px;
+            border: 2px solid rgba(255,0,0,0.8);
             border-radius: 8px;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
             pointer-events: none;
         }
         .scanner-line {
             position: absolute;
-            top: 50%; left: 10%; right: 10%;
-            height: 1px;
-            background: rgba(255, 0, 0, 0.5);
+            top: 50%; left: 5%; right: 5%;
+            height: 2px;
+            background: rgba(255, 0, 0, 0.8);
+            box-shadow: 0 0 4px rgba(255, 0, 0, 0.8);
         }
     </style>
 </head>
@@ -407,7 +408,7 @@
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
             const [scanStatus, setScanStatus] = useState('');
-            const [scanMode, setScanMode] = useState('OCR'); // 'OCR' or 'BARCODE'
+            const [scanMode, setScanMode] = useState('BARCODE'); // [MODIFIED] Default เป็น Barcode เพราะใช้ง่ายกว่า
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -531,13 +532,20 @@
                         if (!document.getElementById("reader")) return;
                         
                         try {
-                            html5QrCode = new Html5Qrcode("reader");
+                            // [MODIFIED] ล็อคสเปกให้อ่านเฉพาะ Code 39 (บัตรปชช.) เพื่อความเร็วและความแม่นยำ
+                            html5QrCode = new Html5Qrcode("reader", { 
+                                verbose: false,
+                                formatsToSupport: [ 
+                                    Html5QrcodeSupportedFormats.CODE_39,
+                                    Html5QrcodeSupportedFormats.CODE_128 
+                                ]
+                            });
+                            
                             // [MODIFIED] ปรับจูนค่า Config ให้สแกนง่ายขึ้น (เพิ่ม FPS, ขยายกรอบแนวนอน)
                             const config = { 
-                                fps: 20, 
-                                qrbox: { width: 300, height: 100 }, 
-                                aspectRatio: 1.0,
-                                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+                                fps: 30, // เร่งความเร็ว
+                                qrbox: { width: 350, height: 80 }, // กรอบกว้างและเตี้ย เหมาะกับบาร์โค้ด
+                                aspectRatio: 1.0
                             };
                             setScanStatus('โหมดบาร์โค้ด: ถือกล้องนิ่งๆ ให้บาร์โค้ดอยู่ในกรอบ...');
                             
@@ -546,10 +554,12 @@
                                 config,
                                 (decodedText) => {
                                     const cleanId = decodedText.replace(/[^0-9]/g, '');
-                                    if (cleanId.length >= 13) {
-                                        const match = cleanId.match(/(\d{13})/);
-                                        // [MODIFIED] เพิ่มการตรวจสอบเลขบัตร (Validate ID) เพื่อความชัวร์
-                                        if (match && validateThaiID(match[0])) {
+                                    // บาร์โค้ดบัตรปชช. มักจะมีเลข 13 หลักชัดเจน
+                                    // บางทีอาจมีตัวอักษรนำหน้า/ตามหลัง (Start/Stop chars)
+                                    const match = cleanId.match(/(\d{13})/);
+                                    if (match) {
+                                        // ตรวจสอบ Checksum เพื่อความชัวร์
+                                        if (validateThaiID(match[0])) {
                                              if (navigator.vibrate) navigator.vibrate(200);
                                              setForm(prev => ({ ...prev, idCard: match[0] }));
                                              setShowScanner(false);
