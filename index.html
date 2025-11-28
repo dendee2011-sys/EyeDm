@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- [MODIFIED] เปลี่ยนจาก html5-qrcode เป็น Tesseract.js สำหรับอ่านตัวเลข (OCR) -->
+    <!-- [MODIFIED] ใช้ Tesseract.js สำหรับอ่านตัวเลข (OCR) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
     <!-- Firebase Libraries (Compat versions) -->
@@ -41,11 +41,17 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 80%; height: 100px;
+            width: 85%; height: 80px; /* ปรับให้เตี้ยลงเพื่อให้เหมาะกับแถวตัวเลข */
             border: 2px solid rgba(255,255,255,0.8);
-            border-radius: 12px;
-            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.6); /* พื้นหลังมืดลง */
             pointer-events: none;
+        }
+        .scanner-line {
+            position: absolute;
+            top: 50%; left: 10%; right: 10%;
+            height: 1px;
+            background: rgba(255, 0, 0, 0.5);
         }
     </style>
 </head>
@@ -399,7 +405,6 @@
             const defaultForm = { idCard:'', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
-            // [ADDED] สถานะการสแกน
             const [scanStatus, setScanStatus] = useState('กำลังเปิดกล้อง...');
             
             const [recordDate, setRecordDate] = useState(() => {
@@ -472,9 +477,9 @@
                                 ctx.drawImage(video, 0, 0, w, h);
                                 
                                 // --- IMAGE PROCESSING ---
-                                // 1. Crop: ตัดเอาเฉพาะพื้นที่ตรงกลาง (Focus Area) ประมาณ 70% กว้าง x 20% สูง
-                                const cropW = w * 0.70; 
-                                const cropH = h * 0.20; 
+                                // 1. Crop: ตัดเอาเฉพาะพื้นที่ตรงกลาง (Focus Area) ประมาณ 85% กว้าง x 15% สูง
+                                const cropW = w * 0.85; 
+                                const cropH = h * 0.15; 
                                 const startX = (w - cropW) / 2;
                                 const startY = (h - cropH) / 2;
                                 
@@ -488,27 +493,27 @@
                                     const b = data[i + 2];
                                     // สูตร Grayscale
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    // Threshold: ถ้าสว่างกว่าค่ากลาง ให้เป็นขาว(255) ถ้ามืดกว่าให้เป็นดำ(0)
-                                    // ค่า 100 เป็นค่ากลางๆ สำหรับตัวหนังสือสีดำบนบัตรประชาชน
-                                    const contrast = gray > 100 ? 255 : 0;
+                                    // Threshold: ใช้ค่า 128 (กลางๆ) ปรับให้ตัวหนังสือสีดำชัดขึ้น
+                                    const contrast = gray > 128 ? 255 : 0;
                                     
                                     data[i] = contrast;     // R
                                     data[i + 1] = contrast; // G
                                     data[i + 2] = contrast; // B
                                 }
                                 
-                                // สร้าง Canvas ชั่วคราวสำหรับส่งให้ OCR (เฉพาะส่วนที่ตัดและแต่งภาพแล้ว)
+                                // สร้าง Canvas ชั่วคราวสำหรับส่งให้ OCR
                                 const tempCanvas = document.createElement('canvas');
                                 tempCanvas.width = cropW;
                                 tempCanvas.height = cropH;
                                 tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
 
-                                // 3. OCR: อ่านตัวเลข
+                                // 3. OCR: อ่านตัวเลขเท่านั้น
                                 const { data: { text } } = await Tesseract.recognize(
                                     tempCanvas, 
                                     'eng',
                                     { 
-                                        tessedit_char_whitelist: '0123456789' // บังคับให้อ่านแค่ตัวเลข 0-9
+                                        tessedit_char_whitelist: '0123456789', // บังคับให้อ่านแค่ตัวเลข 0-9
+                                        tessedit_pageseg_mode: '7' // มองหาบรรทัดเดียว (Single Line)
                                     }
                                 );
                                 
@@ -519,20 +524,16 @@
                                 
                                 if (match) {
                                     const id = match[0];
-                                    // ตรวจสอบความยาว
                                     if (id.length === 13) {
-                                        if (navigator.vibrate) navigator.vibrate(200); // สั่นเตือนเมื่อเจอ
+                                        if (navigator.vibrate) navigator.vibrate(200); // สั่นเตือน
                                         setForm(prev => ({ ...prev, idCard: id }));
                                         
-                                        // หยุดการทำงาน
                                         clearInterval(scanInterval);
                                         if (stream) stream.getTracks().forEach(track => track.stop());
                                         setShowScanner(false);
                                         isScanning = false;
                                         return;
                                     }
-                                } else {
-                                    // ถ้ายังไม่เจอ ลองสแกนต่อ
                                 }
                             }
                         } catch (e) {
@@ -540,12 +541,11 @@
                         } finally {
                             isScanning = false;
                         }
-                    }, 500); // Loop ทุก 500ms
+                    }, 500); 
                 };
 
                 startCamera();
 
-                // Cleanup
                 return () => {
                     if (scanInterval) clearInterval(scanInterval);
                     if (stream) stream.getTracks().forEach(track => track.stop());
@@ -694,20 +694,23 @@
                                 </div>
                             </div>
 
-                            {/* [MODIFIED] Scanner Modal: แบบ Auto Scan ไม่ต้องกดถ่าย */}
+                            {/* [MODIFIED] OCR Camera Modal: Auto Scan + Image Processing */}
                             {showScanner && (
                                 <div className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col items-center justify-center p-4">
                                     <div className="relative w-full max-w-md rounded-xl overflow-hidden border-2 border-white/30 shadow-2xl">
                                         <video ref={videoRef} autoPlay playsInline className="w-full h-64 object-cover bg-black"></video>
                                         <canvas ref={canvasRef} className="hidden"></canvas>
                                         
-                                        {/* Overlay เส้นกรอบแดง */}
-                                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-24 border-2 border-red-500 rounded-lg shadow-[0_0_0_999px_rgba(0,0,0,0.5)] pointer-events-none animate-pulse"></div>
+                                        {/* Overlay Frame Guide */}
+                                        <div className="scanner-overlay">
+                                            <div className="scanner-line"></div>
+                                        </div>
+
                                         <div className="absolute top-2 left-0 w-full text-center text-white text-xs bg-black/50 py-1">
                                             {scanStatus}
                                         </div>
                                     </div>
-                                    <p className="text-white text-sm mt-4 text-center">วางเลขบัตรประชาชน 13 หลัก ให้อยู่ในกรอบสีแดง<br/><span className="text-xs text-gray-400">ระบบจะสแกนอัตโนมัติ</span></p>
+                                    <p className="text-white text-sm mt-4 text-center">วางเฉพาะตัวเลข 13 หลัก ให้อยู่ในกรอบ<br/><span className="text-xs text-gray-400">ระบบจะอ่านเฉพาะตัวเลขเท่านั้น</span></p>
                                     <button onClick={() => setShowScanner(false)} className="mt-6 text-white bg-red-600 px-8 py-2 rounded-full font-bold hover:bg-red-700 transition-all">ยกเลิก / ปิดกล้อง</button>
                                 </div>
                             )}
