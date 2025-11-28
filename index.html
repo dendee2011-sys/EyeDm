@@ -11,9 +11,8 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- [MODIFIED] ใช้ Tesseract.js สำหรับ OCR และ html5-qrcode สำหรับ Barcode -->
+    <!-- [MODIFIED] ใช้ Tesseract.js สำหรับ OCR เท่านั้น (เอา html5-qrcode ออก) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
     <!-- Firebase Libraries (Compat versions) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -42,18 +41,17 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 90%; height: 80px;
-            border: 2px solid rgba(255,0,0,0.8);
+            width: 85%; height: 80px;
+            border: 2px solid rgba(255,255,255,0.8);
             border-radius: 8px;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
             pointer-events: none;
         }
         .scanner-line {
             position: absolute;
-            top: 50%; left: 5%; right: 5%;
-            height: 2px;
-            background: rgba(255, 0, 0, 0.8);
-            box-shadow: 0 0 4px rgba(255, 0, 0, 0.8);
+            top: 50%; left: 10%; right: 10%;
+            height: 1px;
+            background: rgba(255, 0, 0, 0.5);
         }
     </style>
 </head>
@@ -408,7 +406,7 @@
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
             const [scanStatus, setScanStatus] = useState('');
-            const [scanMode, setScanMode] = useState('BARCODE'); // [MODIFIED] Default เป็น Barcode เพราะใช้ง่ายกว่า
+            // [REMOVED] scanMode state, assume always OCR
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -438,146 +436,126 @@
                 return checkDigit === parseFloat(id.charAt(12));
             };
 
-            // Scanner Effect (Hybrid: OCR or Barcode)
+            // [MODIFIED] Scanner Effect: OCR Only (No Barcode logic)
             useEffect(() => {
                 if (!showScanner) return;
 
                 let stream = null;
                 let scanInterval = null;
-                let isScanning = false;
-                let html5QrCode = null;
+                let isScanning = false; 
 
-                const cleanup = () => {
-                    if (scanInterval) clearInterval(scanInterval);
-                    if (stream) stream.getTracks().forEach(track => track.stop());
-                    if (html5QrCode) {
-                        try {
-                            if(html5QrCode.isScanning) html5QrCode.stop().catch(e=>console.log(e));
-                            html5QrCode.clear().catch(e=>console.log(e));
-                        } catch(e){}
+                const startCamera = async () => {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                        });
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                            videoRef.current.onloadedmetadata = () => {
+                                videoRef.current.play();
+                                setScanStatus('วางเลข 13 หลัก ในกรอบ (ถือนิ่งๆ)...');
+                                startScanLoop();
+                            };
+                        }
+                    } catch (err) {
+                        console.error("Camera Error", err);
+                        alert("ไม่สามารถเปิดกล้องได้: " + err.message);
+                        setShowScanner(false);
                     }
                 };
 
-                if (scanMode === 'OCR') {
-                    // --- OCR Logic (Tesseract) ---
-                    const startOCRCamera = async () => {
-                        try {
-                            stream = await navigator.mediaDevices.getUserMedia({ 
-                                video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
-                            });
-                            if (videoRef.current) {
-                                videoRef.current.srcObject = stream;
-                                videoRef.current.onloadedmetadata = () => {
-                                    videoRef.current.play();
-                                    setScanStatus('โหมดอ่านตัวเลข: วางเลข 13 หลักในกรอบ...');
-                                    startOCRScanLoop();
-                                };
-                            }
-                        } catch (err) {
-                            console.error("Camera Error", err);
-                            alert("ไม่สามารถเปิดกล้องได้: " + err.message);
-                            setShowScanner(false);
-                        }
-                    };
+                const startScanLoop = () => {
+                    scanInterval = setInterval(async () => {
+                        if (isScanning || !videoRef.current || !canvasRef.current) return;
+                        isScanning = true;
 
-                    const startOCRScanLoop = () => {
-                        scanInterval = setInterval(async () => {
-                            if (isScanning || !videoRef.current || !canvasRef.current) return;
-                            isScanning = true;
-                            try {
-                                const video = videoRef.current;
-                                const canvas = canvasRef.current;
-                                if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                                    const w = video.videoWidth;
-                                    const h = video.videoHeight;
-                                    const cropW = w * 0.80; const cropH = h * 0.15; 
-                                    const startX = (w - cropW) / 2; const startY = (h - cropH) / 2;
-                                    const scale = 2;
-                                    canvas.width = cropW * scale; canvas.height = cropH * scale;
-                                    const ctx = canvas.getContext('2d');
-                                    ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-                                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                                    const data = imageData.data;
-                                    for (let i = 0; i < data.length; i += 4) {
-                                        const r = data[i]; const g = data[i + 1]; const b = data[i + 2];
-                                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                        const contrast = gray > 110 ? 255 : 0;
-                                        data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
+                        try {
+                            const video = videoRef.current;
+                            const canvas = canvasRef.current;
+                            
+                            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                                const w = video.videoWidth;
+                                const h = video.videoHeight;
+                                
+                                // Crop & Upscale Logic same as before
+                                const cropW = w * 0.80; 
+                                const cropH = h * 0.15; 
+                                const startX = (w - cropW) / 2;
+                                const startY = (h - cropH) / 2;
+                                
+                                const scale = 2;
+                                canvas.width = cropW * scale;
+                                canvas.height = cropH * scale;
+                                const ctx = canvas.getContext('2d');
+                                
+                                ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+                                
+                                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                const data = imageData.data;
+
+                                for (let i = 0; i < data.length; i += 4) {
+                                    const r = data[i];
+                                    const g = data[i + 1];
+                                    const b = data[i + 2];
+                                    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                                    const contrast = gray > 110 ? 255 : 0;
+                                    data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
+                                }
+                                ctx.putImageData(imageData, 0, 0);
+
+                                const { data: { text } } = await Tesseract.recognize(
+                                    canvas, 
+                                    'eng',
+                                    { 
+                                        tessedit_char_whitelist: '0123456789', 
+                                        tessedit_pageseg_mode: '6' 
                                     }
-                                    ctx.putImageData(imageData, 0, 0);
-                                    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '6' });
-                                    const digits = text.replace(/[^0-9]/g, '');
-                                    if (digits.length >= 13) {
-                                        for (let i = 0; i <= digits.length - 13; i++) {
-                                            const potentialID = digits.substring(i, i + 13);
-                                            if (validateThaiID(potentialID)) {
-                                                if (navigator.vibrate) navigator.vibrate(200);
-                                                setForm(prev => ({ ...prev, idCard: potentialID }));
-                                                setShowScanner(false);
-                                                return;
-                                            }
+                                );
+                                
+                                const digits = text.replace(/[^0-9]/g, '');
+                                
+                                if (digits.length >= 13) {
+                                    for (let i = 0; i <= digits.length - 13; i++) {
+                                        const potentialID = digits.substring(i, i + 13);
+                                        if (validateThaiID(potentialID)) {
+                                            if (navigator.vibrate) navigator.vibrate(200);
+                                            setForm(prev => ({ ...prev, idCard: potentialID }));
+                                            
+                                            clearInterval(scanInterval);
+                                            if (stream) stream.getTracks().forEach(track => track.stop());
+                                            setShowScanner(false);
+                                            isScanning = false;
+                                            return;
                                         }
                                     }
                                 }
-                            } catch (e) {} finally { isScanning = false; }
-                        }, 400);
-                    };
-                    startOCRCamera();
-
-                } else {
-                    // --- Barcode Logic (Html5Qrcode) ---
-                    const startBarcodeScanner = async () => {
-                         // Wait a bit for DOM
-                        await new Promise(r => setTimeout(r, 100));
-                        if (!document.getElementById("reader")) return;
-                        
-                        try {
-                            // [MODIFIED] ล็อคสเปกให้อ่านเฉพาะ Code 39 (บัตรปชช.) เพื่อความเร็วและความแม่นยำ
-                            html5QrCode = new Html5Qrcode("reader", { 
-                                verbose: false,
-                                formatsToSupport: [ 
-                                    Html5QrcodeSupportedFormats.CODE_39,
-                                    Html5QrcodeSupportedFormats.CODE_128 
-                                ]
-                            });
-                            
-                            // [MODIFIED] ปรับจูนค่า Config ให้สแกนง่ายขึ้น (เพิ่ม FPS, ขยายกรอบแนวนอน)
-                            const config = { 
-                                fps: 30, // เร่งความเร็ว
-                                qrbox: { width: 350, height: 80 }, // กรอบกว้างและเตี้ย เหมาะกับบาร์โค้ด
-                                aspectRatio: 1.0
-                            };
-                            setScanStatus('โหมดบาร์โค้ด: ถือกล้องนิ่งๆ ให้บาร์โค้ดอยู่ในกรอบ...');
-                            
-                            await html5QrCode.start(
-                                { facingMode: "environment" }, 
-                                config,
-                                (decodedText) => {
-                                    const cleanId = decodedText.replace(/[^0-9]/g, '');
-                                    // บาร์โค้ดบัตรปชช. มักจะมีเลข 13 หลักชัดเจน
-                                    // บางทีอาจมีตัวอักษรนำหน้า/ตามหลัง (Start/Stop chars)
-                                    const match = cleanId.match(/(\d{13})/);
-                                    if (match) {
-                                        // ตรวจสอบ Checksum เพื่อความชัวร์
-                                        if (validateThaiID(match[0])) {
-                                             if (navigator.vibrate) navigator.vibrate(200);
-                                             setForm(prev => ({ ...prev, idCard: match[0] }));
-                                             setShowScanner(false);
-                                        }
-                                    }
-                                },
-                                (error) => {}
-                            );
-                        } catch (err) {
-                             console.error("Barcode start error", err);
-                             // alert("ไม่สามารถเริ่มระบบบาร์โค้ดได้: " + err.message);
+                            }
+                        } catch (e) {
+                            // console.error("OCR Error", e);
+                        } finally {
+                            isScanning = false;
                         }
-                    };
-                    startBarcodeScanner();
-                }
+                    }, 400); 
+                };
 
-                return cleanup;
-            }, [showScanner, scanMode]);
+                const initScanner = async () => {
+                     if (!window.Tesseract) { 
+                        await new Promise(r => setTimeout(r, 500));
+                        if (!window.Tesseract) {
+                            alert("ระบบสแกนยังโหลดไม่เสร็จ"); 
+                            setShowScanner(false); 
+                            return; 
+                        }
+                    }
+                    startCamera();
+                };
+                initScanner();
+
+                return () => {
+                    if (scanInterval) clearInterval(scanInterval);
+                    if (stream) stream.getTracks().forEach(track => track.stop());
+                };
+            }, [showScanner]);
 
             const handleNameChange = (e) => {
                 const val = e.target.value;
@@ -721,36 +699,20 @@
                                 </div>
                             </div>
 
-                            {/* [MODIFIED] Dual Mode Scanner Modal */}
+                            {/* [MODIFIED] Only OCR Camera Modal */}
                             {showScanner && (
                                 <div className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col items-center justify-center p-4">
-                                    {/* Header with Toggle */}
-                                    <div className="w-full max-w-md flex justify-between mb-4 bg-gray-800 p-2 rounded-lg">
-                                        <button onClick={() => setScanMode('OCR')} className={`flex-1 text-sm py-2 rounded transition-all ${scanMode==='OCR'?'bg-blue-600 text-white':'text-gray-400 hover:text-white'}`}>อ่านตัวเลข (OCR)</button>
-                                        <button onClick={() => setScanMode('BARCODE')} className={`flex-1 text-sm py-2 rounded transition-all ${scanMode==='BARCODE'?'bg-blue-600 text-white':'text-gray-400 hover:text-white'}`}>อ่านบาร์โค้ด</button>
-                                    </div>
-
                                     <div className="relative w-full max-w-md rounded-xl overflow-hidden border-2 border-white/30 shadow-2xl bg-black h-64">
-                                        {/* OCR VIEW */}
-                                        {scanMode === 'OCR' && (
-                                            <>
-                                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
-                                                <canvas ref={canvasRef} className="hidden"></canvas>
-                                                <div className="scanner-overlay"><div className="scanner-line"></div></div>
-                                            </>
-                                        )}
-
-                                        {/* BARCODE VIEW (Html5Qrcode injects here) */}
-                                        {scanMode === 'BARCODE' && (
-                                            <div id="reader" className="w-full h-full"></div>
-                                        )}
+                                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
+                                        <canvas ref={canvasRef} className="hidden"></canvas>
+                                        <div className="scanner-overlay"><div className="scanner-line"></div></div>
                                         
                                         <div className="absolute top-2 left-0 w-full text-center text-white text-xs bg-black/50 py-1 z-10">
                                             {scanStatus}
                                         </div>
                                     </div>
                                     <p className="text-white text-sm mt-4 text-center">
-                                        {scanMode==='OCR' ? 'วางเฉพาะตัวเลข 13 หลัก ให้อยู่ในกรอบ' : 'วางแถบบาร์โค้ดให้อยู่ในกรอบ'}
+                                        วางเฉพาะตัวเลข 13 หลัก ให้อยู่ในกรอบ<br/><span className="text-xs text-gray-400">ระบบจะอ่านเฉพาะตัวเลขเท่านั้น</span>
                                     </p>
                                     <button onClick={() => setShowScanner(false)} className="mt-6 text-white bg-red-600 px-8 py-2 rounded-full font-bold hover:bg-red-700 transition-all">ปิดกล้อง</button>
                                 </div>
