@@ -947,6 +947,27 @@
             const updateP2 = (field, value) => { if(!isReadOnly) setP2(prev => ({...prev, [field]: value})); };
             const toggleP2 = (field) => { if(!isReadOnly) setP2(prev => ({...prev, [field]: !prev[field]})); };
 
+            // [ADDED] ฟังก์ชันพิเศษ: อัปเดต DR Stage พร้อมจัดการ Findings ตามเงื่อนไข (No DR -> Normal)
+            const updateDrStage = (side, value) => {
+                if(isReadOnly) return;
+                
+                // 1. อัปเดตค่า DR Stage
+                setP2(prev => ({...prev, [`drStage${side}`]: value}));
+                
+                // 2. อัปเดต Findings อัตโนมัติ
+                setFindings(prev => {
+                    const n = JSON.parse(JSON.stringify(prev));
+                    if (value === "No DR") {
+                        // ถ้าเป็น No DR -> ให้ติ๊ก Normal และเอาอันอื่นออก
+                        Object.keys(n).forEach(k => { if(n[k]) n[k][side] = (k === 'Normal'); });
+                    } else if (value !== "ไม่พบจอประสาทตา") {
+                        // ถ้าเป็นความรุนแรงอื่นๆ (Mild, Mod, Sev, PDR) -> เอา Normal ออก เพื่อให้หมอติ๊ก Findings เอง
+                        if(n.Normal) n.Normal[side] = false;
+                    }
+                    return n;
+                });
+            };
+
             return (
                 <div className="flex flex-col lg:flex-row gap-6 pb-20 animate-fade-in">
                       <div className="w-full lg:w-1/3 space-y-4">
@@ -1067,7 +1088,8 @@
                                             <h4 className={`font-bold text-center ${textColor} mb-3 ${bgColor} p-1 rounded`}>{label}</h4>
                                             <div className="mb-4">
                                                 <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง</label>
-                                                <select value={p2[`drStage${s}`]} onChange={(e)=>updateP2(`drStage${s}`, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
+                                                {/* [MODIFIED] ใช้ updateDrStage แทน updateP2 */}
+                                                <select value={p2[`drStage${s}`]} onChange={(e)=>updateDrStage(s, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
                                             </div>
                                             <div className="space-y-2">
                                                 <p className="text-xs text-gray-400 border-b pb-1">Findings</p>
