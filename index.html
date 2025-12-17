@@ -368,9 +368,14 @@
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Icon name={role==='PCU'?'home':'building'} className={role==='PCU'?'text-green-600':'text-blue-600'} />{role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}</h2>
                             {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {/* [MODIFIED] ย้ายปุ่ม Export ออกจากตรงนี้ เหลือแค่ปุ่มเพิ่มผู้ป่วย */}
+                        {/* [MODIFIED] ปรับปุ่มเพิ่มผู้ป่วยให้ใหญ่ เด่นชัด และกดง่ายขึ้น */}
                         {role === 'PCU' && (
-                            <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
+                            <button 
+                                onClick={onNew} 
+                                className="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 font-bold text-base hover:bg-green-700 hover:scale-105 transition-all active:scale-95"
+                            >
+                                <Icon name="plus-circle" size={20}/> เพิ่มผู้ป่วยใหม่
+                            </button>
                         )}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
