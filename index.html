@@ -404,13 +404,24 @@
                     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
                         <table className="w-full text-sm text-left whitespace-nowrap">
                             <thead className="bg-gray-50 border-b text-gray-500">
-                                <tr><th className="p-3">วันที่</th><th className="p-3">ผู้ป่วย / ID</th><th className="p-3">หน่วยงาน</th><th className="p-3 text-center">สถานะ</th><th className="p-3 text-right">Action</th></tr>
+                                <tr>
+                                    {/* [ADDED] เพิ่มหัวตารางลำดับ */}
+                                    <th className="p-3 text-center w-10">#</th>
+                                    <th className="p-3">วันที่</th>
+                                    <th className="p-3">ผู้ป่วย / ID</th>
+                                    <th className="p-3">หน่วยงาน</th>
+                                    <th className="p-3 text-center">สถานะ</th>
+                                    <th className="p-3 text-right">Action</th>
+                                </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {filtered.map(p => {
+                                {filtered.map((p, index) => {
                                     const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
                                     return (
                                     <tr key={p.id} className="hover:bg-gray-50">
+                                            {/* [ADDED] แสดงลำดับที่ (index + 1) */}
+                                            <td className="p-3 text-center align-top text-gray-400 font-bold">{index + 1}</td>
+                                            
                                             <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
                                             <td className="p-3 align-top">
                                                 <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
@@ -442,7 +453,7 @@
                                             </td>
                                     </tr>
                                 );})}
-                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                             </tbody>
                         </table>
                     </div>
