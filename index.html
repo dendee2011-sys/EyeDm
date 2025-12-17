@@ -443,9 +443,18 @@
                                                     {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
                                                     {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
+                                                    
+                                                    {/* [MODIFIED] ปุ่มลบแบบ Soft Delete: ไม่ลบข้อมูลจริง แต่ทำเครื่องหมายว่าลบ และบันทึกว่าใครลบ/ลบเมื่อไหร่ */}
                                                     {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
-                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ?", onConfirm: async () => { 
-                                                            try { await getCollection('patients_referrals').doc(p.id).update({ isDeleted: true }); setModal({ visible: false }); } 
+                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ? (ข้อมูลจะถูกเก็บไว้ในฐานข้อมูล แต่ซ่อนจากหน้านี้)", onConfirm: async () => { 
+                                                            try { 
+                                                                await getCollection('patients_referrals').doc(p.id).update({ 
+                                                                    isDeleted: true,
+                                                                    deletedAt: new Date(), // บันทึกเวลาที่ลบ
+                                                                    deletedBy: agencyCode  // บันทึกรหัสหน่วยงานคนที่ลบ
+                                                                }); 
+                                                                setModal({ visible: false }); 
+                                                            } 
                                                             catch(e) { alert(e.message); } 
                                                         } }); 
                                                     }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>}
