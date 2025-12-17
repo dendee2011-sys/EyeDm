@@ -368,12 +368,9 @@
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Icon name={role==='PCU'?'home':'building'} className={role==='PCU'?'text-green-600':'text-blue-600'} />{role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}</h2>
                             {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {/* [MODIFIED] เพิ่มปุ่ม Export สำหรับ PCU */}
+                        {/* [MODIFIED] ย้ายปุ่ม Export ออกจากตรงนี้ เหลือแค่ปุ่มเพิ่มผู้ป่วย */}
                         {role === 'PCU' && (
-                            <div className="flex gap-2">
-                                <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-blue-700"><Icon name="download" size={16}/> Export</button>
-                                <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
-                            </div>
+                            <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
                         )}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
@@ -393,6 +390,11 @@
                             <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาชื่อ/เลขบัตร เพื่อดูประวัติทั้งหมด..." className="flex-1 p-2 outline-none text-sm w-full" />
                             {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
+                        
+                        {/* [MOVED] ย้ายปุ่ม Export มาไว้ตรงนี้ เพื่อให้เห็นสัดส่วนแยกจากปุ่มเพิ่มผู้ป่วย */}
+                        {role === 'PCU' && (
+                            <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-blue-700 whitespace-nowrap"><Icon name="download" size={16}/> Export</button>
+                        )}
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
                         <table className="w-full text-sm text-left whitespace-nowrap">
