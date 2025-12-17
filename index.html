@@ -691,17 +691,32 @@
                 }
             }, [recordDate, form.dob, form.dxDate]);
 
+            // [MODIFIED] Logic การดึงข้อมูลเก่า: ค้นหาจากเลข 13 หลัก (รวมที่ถูกลบ) และเลือกข้อมูลล่าสุดเสมอ
             useEffect(() => {
-                if (!isEditing && form.idCard.length === 13 && existingPatients) {
-                    const old = existingPatients.find(p => p.part1?.idCard === form.idCard);
-                    if(old) { 
+                if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
+                    // 1. ค้นหาทุกรายการที่มีเลขบัตรตรงกัน (ไม่สน status หรือ isDeleted เพราะต้องการดึงประวัติมาเติม)
+                    const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
+                    
+                    if(historyMatches.length > 0) { 
                         setFoundOld(true); 
-                        let loadedPart1 = { ...old.part1 };
+                        
+                        // 2. เรียงลำดับจาก ใหม่ -> เก่า (createdAt มาก -> น้อย) เพื่อเอาข้อมูลล่าสุด
+                        historyMatches.sort((a, b) => b.createdAt - a.createdAt);
+                        const latestRecord = historyMatches[0];
+
+                        // 3. เตรียมข้อมูลที่จะเติม
+                        let loadedPart1 = { ...latestRecord.part1 };
+                        
+                        // ถ้าข้อมูลเก่าไม่มีเพศ ให้ลอง Auto-detect จากชื่อใหม่
                         if (!loadedPart1.gender && loadedPart1.name) {
                             loadedPart1.gender = getGenderFromName(loadedPart1.name);
                         }
-                        setForm(f => ({...f, ...loadedPart1})); 
-                        if (old.footExam) setFootStatus(old.footExam.riskLevel);
+
+                        // 4. เติมข้อมูลลงฟอร์ม (คงเลขบัตรที่พิมพ์ไว้)
+                        setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
+                        
+                        // ดึงความเสี่ยงเท้าล่าสุดมาแสดง
+                        if (latestRecord.footExam) setFootStatus(latestRecord.footExam.riskLevel);
                     } else { 
                         setFoundOld(false); 
                         setFootStatus(null);
