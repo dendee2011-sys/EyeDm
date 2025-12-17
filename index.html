@@ -406,7 +406,7 @@
                             <thead className="bg-gray-50 border-b text-gray-500">
                                 <tr>
                                     {/* [ADDED] เพิ่มหัวตารางลำดับ */}
-                                    <th className="p-3 text-center w-10">#</th>
+                                    <th className="p-3 text-center w-10">ลำดับ</th>
                                     <th className="p-3">วันที่</th>
                                     <th className="p-3">ผู้ป่วย / ID</th>
                                     <th className="p-3">หน่วยงาน</th>
@@ -794,7 +794,7 @@
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
                                         <input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
-                                        {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}
+                                        {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">พบข้อมูล</span>}
                                     </div>
                                     {/* ปุ่มเปิดสแกนเนอร์ */}
                                     <button onClick={() => setShowScanner(true)} className="bg-blue-600 text-white px-3 rounded-lg flex items-center gap-1 text-sm whitespace-nowrap shadow hover:bg-blue-700 transition-all"><Icon name="camera" size={16}/> สแกน/ถ่าย</button>
