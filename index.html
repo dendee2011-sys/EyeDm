@@ -271,6 +271,43 @@
             const [agencyFilter, setAgencyFilter] = useState('All');
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
+            // [ADDED] ฟังก์ชัน Export CSV สำหรับ PCU
+            const exportData = () => {
+                const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
+                const BOM = "\uFEFF"; 
+                let csv = BOM + headers.join(",") + "\n";
+                
+                filtered.forEach(p => {
+                    const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('th-TH') : '-';
+                    const safe = (s) => `"${String(s || '').replace(/"/g, '""')}"`;
+                    const risk = p.footExam?.riskLevel?.split(' ')[0] || '-';
+                    
+                    csv += [
+                        safe(date),
+                        safe(`'${p.part1?.idCard}`), // ใส่ ' นำหน้าเพื่อป้องกัน Excel แปลงเป็นวิทยาศาสตร์
+                        safe(p.part1?.name),
+                        safe(p.part1?.gender),
+                        safe(p.part1?.age),
+                        safe(p.part1?.dmYears),
+                        safe(p.part1?.vaRight),
+                        safe(p.part1?.vaLeft),
+                        safe(p.part1?.hba1c),
+                        safe(risk),
+                        safe(p.status),
+                        safe(p.part2?.drStageR || '-'),
+                        safe(p.part2?.drStageL || '-')
+                    ].join(",") + "\n";
+                });
+                
+                const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `pcu_export_${selectedDate}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
             const getFootBadge = (p) => {
                 if (!p.footExam) return null;
                 const risk = p.footExam.riskLevel || '';
@@ -331,7 +368,13 @@
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Icon name={role==='PCU'?'home':'building'} className={role==='PCU'?'text-green-600':'text-blue-600'} />{role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}</h2>
                             {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
+                        {/* [MODIFIED] เพิ่มปุ่ม Export สำหรับ PCU */}
+                        {role === 'PCU' && (
+                            <div className="flex gap-2">
+                                <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-blue-700"><Icon name="download" size={16}/> Export</button>
+                                <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
+                            </div>
+                        )}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
                         <div className={`flex items-center gap-1 border rounded p-1 transition-colors ${term ? 'bg-gray-100 border-gray-200 opacity-50' : 'bg-blue-50 border-blue-100'}`}>
