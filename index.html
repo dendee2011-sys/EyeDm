@@ -1422,6 +1422,9 @@
                             totalProcessed += countInBatch;
                             // [ADDED] อัปเดต Progress
                             setProgress({ current: totalProcessed, total: csvData.length });
+                            
+                            // [ADDED] หยุดรอ 50ms เพื่อให้ UI อัปเดตและป้องกันหน้าค้าง
+                            await new Promise(resolve => setTimeout(resolve, 50));
                         }
                     }
                     
