@@ -1375,15 +1375,25 @@
                             // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
                             const existingData = snap.data();
                             
-                            // [ADDED] กฎพิเศษ: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิมในฐานข้อมูล
-                            // ถ้าในฐานมีข้อมูลเหล่านี้อยู่แล้ว ให้ตัดข้อมูลจาก CSV ออกเลย เพื่อป้องกันการเติมข้อมูลที่ขัดแย้งกัน
+                            // [MODIFIED] กฎพิเศษ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ห้าม CSV ทับ)
                             if (existingData.part1?.dob) {
                                 delete data.part1.dob;
-                                delete data.part1.age; // ตัดอายุจาก CSV ออกด้วย เพื่อไม่ให้ไปเติมในช่องว่างแล้วไม่ตรงกับวันเกิดเดิม
+                                delete data.part1.age; 
                             }
                             if (existingData.part1?.dxDate) {
                                 delete data.part1.dxDate;
-                                delete data.part1.dmYears; // ตัดปีที่เป็น DM จาก CSV ออกด้วย
+                                delete data.part1.dmYears; 
+                            }
+
+                            // [MODIFIED] กฎพิเศษ 2: บังคับอัปเดต ชื่อ และ เลขบัตร จาก CSV เสมอ (แก้ชื่อผิด/เลขผิด)
+                            // เราจะอัปเดตข้อมูลใน existingData ก่อนส่งไปรวม เพื่อให้ mergeFillMissing ยึดค่าใหม่นี้
+                            if (data.part1?.name) {
+                                if (!existingData.part1) existingData.part1 = {};
+                                existingData.part1.name = data.part1.name;
+                            }
+                            if (data.part1?.idCard) {
+                                if (!existingData.part1) existingData.part1 = {};
+                                existingData.part1.idCard = data.part1.idCard;
                             }
 
                             const mergedData = mergeFillMissing(existingData, data);
