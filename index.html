@@ -1394,10 +1394,14 @@
 
                                 const mergedData = mergeFillMissing(existingData, data);
 
-                                // [MODIFIED] บังคับอัปเดตชื่อถ้ามีการระบุมาใหม่ (แก้ชื่อผิด)
-                                // อนุญาตให้แก้ชื่อได้ แม้จะมีข้อมูลเดิมอยู่แล้ว โดยไม่กระทบข้อมูลอื่นที่ mergeFillMissing จัดการไว้
+                                // [MODIFIED] แก้ไขตาม requirement: บังคับอัปเดตชื่อและเพศเสมอ หากมีการนำเข้าไฟล์ใหม่
+                                // ยึดเลข 13 หลักเป็นหลัก หากชื่อในไฟล์ไม่ตรงกับในระบบ ให้ใช้ชื่อจากไฟล์ทับได้เลย
                                 if (data.part1?.name) {
                                     mergedData.part1.name = data.part1.name;
+                                    // อัปเดตเพศด้วยเพื่อให้สอดคล้องกับชื่อใหม่ (เช่น แก้จาก นาย เป็น นาง)
+                                    if (data.part1.gender) {
+                                        mergedData.part1.gender = data.part1.gender;
+                                    }
                                 }
 
                                 batch.set(docRef, mergedData); 
