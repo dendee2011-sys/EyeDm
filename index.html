@@ -1262,6 +1262,12 @@
                     if (!lines[i].trim()) continue;
                     const values = lines[i].split(',').map(v => v.trim()); const patient = {};
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
+                    
+                    // [MODIFIED] ทำความสะอาดเลขบัตร (ลบขีด/วรรค) ก่อนตรวจสอบ
+                    if (patient.idCard) {
+                        patient.idCard = patient.idCard.replace(/[^0-9]/g, '');
+                    }
+
                     if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
                         // Deterministic ID Logic for Import
                         const examDate = patient.referralDate ? new Date(patient.referralDate) : new Date();
@@ -1392,6 +1398,10 @@
                         let countInBatch = 0;
 
                         results.forEach(({ docRef, data, snap }) => { 
+                            // [CRITICAL FIX] Restore Date objects after JSON.stringify/parse which converts them to strings
+                            if (typeof data.createdAt === 'string') data.createdAt = new Date(data.createdAt);
+                            if (data.examinedAt && typeof data.examinedAt === 'string') data.examinedAt = new Date(data.examinedAt);
+                            
                             if (snap.exists) {
                                 // กรณีมีข้อมูลอยู่แล้ว -> เติมเฉพาะช่องว่าง
                                 const existingData = snap.data();
