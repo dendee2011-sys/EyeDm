@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Tesseract.js สำหรับ OCR -->
+    <!-- [MODIFIED] ใช้ Tesseract.js สำหรับ OCR เท่านั้น (เอา html5-qrcode ออก) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
     <!-- Firebase Libraries (Compat versions) -->
@@ -41,7 +41,7 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 90%; height: 100px;
+            width: 90%; height: 100px; /* ขยายความสูงขึ้นเล็กน้อย */
             border: 2px solid rgba(255,255,255,0.8);
             border-radius: 8px;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
@@ -253,7 +253,7 @@
                         <div className="text-center mb-8">
                             <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Icon name="lock" size={40} /></div>
                             <h1 className="text-3xl font-bold text-gray-800">EyeDM Connect</h1>
-                            <p className="text-slate-500 mt-2">ระบบส่งต่อผู้ป่วยเบาหวานเข้าจอประสาทตา</p>
+                            <p className="text-slate-500 mt-2">ระบบคัดกรองผู้ป่วยเบาหวานเข้าจอประสาทตา อำเภอเมืองศรีสะเกษ</p>
                         </div>
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div><label className="block text-xs font-semibold text-gray-500 mb-1">รหัสหน่วยงาน (User ID)</label><input type="text" inputMode="numeric" maxLength="5" value={agencyCode} onChange={e=>setAgencyCode(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl text-lg font-mono" placeholder="เช่น 10700" required /></div>
@@ -324,10 +324,7 @@
             const filtered = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
-                    
-                    // [MODIFIED] ปรับเงื่อนไข: ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported/ประวัติเก่าได้ทั้งหมด
-                    // แต่ถ้าไม่ได้ค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported ไว้ตามเดิมเพื่อไม่ให้รก
-                    if (term.length === 0 && p.status === 'Imported') return false;
+                    if (p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
@@ -374,10 +371,10 @@
                         {/* [MODIFIED] ปรับปุ่มเพิ่มผู้ป่วยให้ใหญ่ เด่นชัด และกดง่ายขึ้น */}
                         {role === 'PCU' && (
                             <button 
-                                onClick={() => onNew()} 
+                                onClick={onNew} 
                                 className="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 font-bold text-base hover:bg-green-700 hover:scale-105 transition-all active:scale-95"
                             >
-                                <Icon name="plus-circle" size={20}/> เพิ่มผู้ป่วยใหม่
+                                <Icon name="plus-circle" size={20}/> ลงทะเบียนผู้มารับบริการ
                             </button>
                         )}
                     </div>
@@ -395,17 +392,13 @@
                         )}
                         <div className="flex-1 flex items-center w-full border rounded px-2 bg-white ring-1 ring-transparent focus-within:ring-blue-500">
                             <Icon name="search" className="text-gray-400"/>
-                            {/* [MODIFIED] ปรับข้อความ Placeholder ให้สื่อถึงการค้นหาประวัติเดิม */}
-                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาประวัติ/ชื่อ/เลขบัตร..." className="flex-1 p-2 outline-none text-sm w-full" />
+                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาชื่อ/เลขบัตร เพื่อดูประวัติทั้งหมด..." className="flex-1 p-2 outline-none text-sm w-full" />
                             {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
                         
-                        {/* [MODIFIED] เพิ่มปุ่มเพิ่มผู้ป่วยใหม่ในแถบค้นหา (Quick Add) - ส่ง term ไปด้วย */}
+                        {/* [MOVED] ย้ายปุ่ม Export มาไว้ตรงนี้ เพื่อให้เห็นสัดส่วนแยกจากปุ่มเพิ่มผู้ป่วย */}
                         {role === 'PCU' && (
-                            <div className="flex gap-2">
-                                <button onClick={() => onNew(term)} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-green-700 whitespace-nowrap"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
-                                <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-blue-700 whitespace-nowrap"><Icon name="download" size={16}/> Export</button>
-                            </div>
+                            <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-blue-700 whitespace-nowrap"><Icon name="download" size={16}/> Export</button>
                         )}
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
@@ -413,7 +406,7 @@
                             <thead className="bg-gray-50 border-b text-gray-500">
                                 <tr>
                                     {/* [ADDED] เพิ่มหัวตารางลำดับ */}
-                                    <th className="p-3 text-center w-10">#</th>
+                                    <th className="p-3 text-center w-10">ลำดับ</th>
                                     <th className="p-3">วันที่</th>
                                     <th className="p-3">ผู้ป่วย / ID</th>
                                     <th className="p-3">หน่วยงาน</th>
@@ -477,12 +470,13 @@
             );
         };
 
-        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode, initialId }) => {
+        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode }) => {
             const isEditing = !!patientToEdit;
-            const defaultForm = { idCard: initialId || '', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
+            const defaultForm = { idCard:'', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
             const [scanStatus, setScanStatus] = useState('');
+            // [REMOVED] scanMode state, assume always OCR
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -571,6 +565,7 @@
                                 const data = imageData.data;
 
                                 // Adaptive Thresholding
+                                // 1. Calculate Average Brightness
                                 let totalBrightness = 0;
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
@@ -580,15 +575,15 @@
                                     totalBrightness += gray;
                                 }
                                 const avgBrightness = totalBrightness / (data.length / 4);
-                                const threshold = avgBrightness * 0.70; 
+                                const threshold = avgBrightness * 0.70; // Heuristic: text is generally darker than average card background
 
-                                // Binarization
+                                // 2. Binarization
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
                                     const g = data[i + 1];
                                     const b = data[i + 2];
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    const contrast = gray > threshold ? 255 : 0; 
+                                    const contrast = gray > threshold ? 255 : 0; // If brighter than threshold -> white, else black
                                     data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
                                 }
                                 ctx.putImageData(imageData, 0, 0);
@@ -696,16 +691,16 @@
                 }
             }, [recordDate, form.dob, form.dxDate]);
 
-            // [MODIFIED] Logic กลับมาเติมข้อมูลอัตโนมัติทันทีเมื่อครบ 13 หลัก (ไม่ต้องถาม)
+            // [MODIFIED] Logic การดึงข้อมูลเก่า: ค้นหาจากเลข 13 หลัก (รวมที่ถูกลบ) และเลือกข้อมูลล่าสุดเสมอ
             useEffect(() => {
                 if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
-                    // 1. ค้นหาประวัติทั้งหมด
+                    // 1. ค้นหาทุกรายการที่มีเลขบัตรตรงกัน (ไม่สน status หรือ isDeleted เพราะต้องการดึงประวัติมาเติม)
                     const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
                     
                     if(historyMatches.length > 0) { 
                         setFoundOld(true); 
                         
-                        // 2. เรียงลำดับจาก ใหม่ -> เก่า
+                        // 2. เรียงลำดับจาก ใหม่ -> เก่า (createdAt มาก -> น้อย) เพื่อเอาข้อมูลล่าสุด
                         historyMatches.sort((a, b) => b.createdAt - a.createdAt);
                         const latestRecord = historyMatches[0];
 
@@ -717,7 +712,7 @@
                             loadedPart1.gender = getGenderFromName(loadedPart1.name);
                         }
 
-                        // 4. เติมข้อมูลลงฟอร์มทันที (คงเลขบัตรที่พิมพ์ไว้)
+                        // 4. เติมข้อมูลลงฟอร์ม (คงเลขบัตรที่พิมพ์ไว้)
                         setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
                         
                         // ดึงความเสี่ยงเท้าล่าสุดมาแสดง
@@ -799,7 +794,7 @@
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
                                         <input type="text" inputMode="numeric" maxLength="13" value={form.idCard} onChange={e=>setForm({...form, idCard:e.target.value})} className="w-full p-2 border rounded-lg text-lg font-mono" disabled={isEditing}/>
-                                        {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">มีประวัติเก่า</span>}
+                                        {foundOld && !isEditing && <span className="absolute right-2 top-2 text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">พบข้อมูล</span>}
                                     </div>
                                     {/* ปุ่มเปิดสแกนเนอร์ */}
                                     <button onClick={() => setShowScanner(true)} className="bg-blue-600 text-white px-3 rounded-lg flex items-center gap-1 text-sm whitespace-nowrap shadow hover:bg-blue-700 transition-all"><Icon name="camera" size={16}/> สแกน/ถ่าย</button>
@@ -1049,12 +1044,12 @@
                                          </div>
 
                                          <div className="flex justify-between items-center text-xs mb-1">
-                                              <span className="text-gray-600">ขวา (OD):</span>
-                                              <span className="font-bold text-gray-800">{historyData.drStageR || '-'}</span>
+                                             <span className="text-gray-600">ขวา (OD):</span>
+                                             <span className="font-bold text-gray-800">{historyData.drStageR || '-'}</span>
                                          </div>
                                          <div className="flex justify-between items-center text-xs mb-2">
-                                              <span className="text-gray-600">ซ้าย (OS):</span>
-                                              <span className="font-bold text-gray-800">{historyData.drStageL || '-'}</span>
+                                             <span className="text-gray-600">ซ้าย (OS):</span>
+                                             <span className="font-bold text-gray-800">{historyData.drStageL || '-'}</span>
                                          </div>
                                          
                                          {historyData.findings && (
@@ -1088,8 +1083,8 @@
                                     <div className="pt-2 border-t border-blue-200 mt-2">
                                          <p className="font-bold text-pink-600 mb-1 text-xs uppercase flex items-center gap-1"><Icon name="footprints" size={12}/> ตรวจเท้า (Foot Risk)</p>
                                          <div className="flex items-center justify-between">
-                                              <span className="text-gray-600 text-xs">ระดับความเสี่ยง:</span>
-                                              <span className={`font-bold text-sm ${patient.footExam.riskLevel?.includes('High') || patient.footExam.riskLevel?.includes('Ulcer') ? 'text-red-600' : 'text-green-600'}`}>{patient.footExam.riskLevel ? patient.footExam.riskLevel.split(' ')[0] : '-'}</span>
+                                             <span className="text-gray-600 text-xs">ระดับความเสี่ยง:</span>
+                                             <span className={`font-bold text-sm ${patient.footExam.riskLevel?.includes('High') || patient.footExam.riskLevel?.includes('Ulcer') ? 'text-red-600' : 'text-green-600'}`}>{patient.footExam.riskLevel ? patient.footExam.riskLevel.split(' ')[0] : '-'}</span>
                                          </div>
                                     </div>
                                 )}
@@ -1211,19 +1206,6 @@
                 if (v.includes('pdr') || v.includes('proli')) return "PDR";
                 if (v.includes('incomp') || v.includes('ชัด') || v.includes('ไม่พบ') || v.includes('image') || v.includes('found')) return "ไม่พบจอประสาทตา";
                 return val; // ถ้าไม่ตรงเงื่อนไข ให้เก็บค่าเดิมไว้
-            };
-            
-            const downloadTemplate = () => {
-                const BOM = "\uFEFF"; 
-                const csvContent = BOM + CSV_HEADERS.join(",") + "\n";
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = "eyedm_import_template.csv";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
             };
 
             // ฟังก์ชันช่วยสำหรับการรวมข้อมูล: เติมเฉพาะค่าที่ว่าง (Fill Missing)
@@ -1352,76 +1334,52 @@
                 const collection = getCollection('patients_referrals'); 
                 setLoading(true); 
                 setUploadError(''); 
-                
                 try { 
-                    // [MODIFIED] รองรับการนำเข้าข้อมูลจำนวนมาก (Batch Processing)
-                    // Firestore จำกัด batch ละ 500 operation -> เราจะแบ่งทำทีละ 400 เพื่อความปลอดภัย
-                    const BATCH_SIZE = 400; 
-                    let totalProcessed = 0;
+                    // 1. เตรียมการอ่านข้อมูลทั้งหมดเพื่อเช็คก่อนบันทึก
+                    const tasks = csvData.map(async (data) => {
+                        const dateStr = data.createdAt.toISOString().split('T')[0];
+                        const docId = `${data.part1.idCard}_${dateStr}`;
+                        const docRef = collection.doc(docId);
+                        // ดึงข้อมูลเก่ามาดูก่อน
+                        const snap = await docRef.get();
+                        // [IMPORTANT] Clone data เพื่อไม่ให้กระทบต้นฉบับเวลาลบ field
+                        return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
+                    });
+
+                    // รอให้ดึงข้อมูลครบทุกรายการ
+                    const results = await Promise.all(tasks);
+
+                    const batch = db.batch(); 
+                    let count = 0; 
                     
-                    // วนลูปทำทีละ Batch
-                    for (let i = 0; i < csvData.length; i += BATCH_SIZE) {
-                        const chunk = csvData.slice(i, i + BATCH_SIZE);
-                        
-                        // 1. อ่านข้อมูลเดิมของ Batch นี้มาเช็คก่อน
-                        const tasks = chunk.map(async (data) => {
-                            const dateStr = data.createdAt.toISOString().split('T')[0];
-                            const docId = `${data.part1.idCard}_${dateStr}`;
-                            const docRef = collection.doc(docId);
-                            const snap = await docRef.get();
-                            // Clone data เพื่อไม่ให้กระทบตัวแปรหลัก
-                            return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
-                        });
-
-                        const results = await Promise.all(tasks);
-                        const batch = db.batch(); 
-                        let countInBatch = 0;
-
-                        results.forEach(({ docRef, data, snap }) => { 
-                            if (snap.exists) {
-                                // กรณีมีข้อมูลอยู่แล้ว -> เติมเฉพาะช่องว่าง
-                                const existingData = snap.data();
-                                
-                                // กฎพิเศษ: ไม่ทับวันเกิด/วันวินิจฉัยเดิม
-                                if (existingData.part1?.dob) {
-                                    delete data.part1.dob;
-                                    delete data.part1.age;
-                                }
-                                if (existingData.part1?.dxDate) {
-                                    delete data.part1.dxDate;
-                                    delete data.part1.dmYears;
-                                }
-
-                                const mergedData = mergeFillMissing(existingData, data);
-
-                                // [MODIFIED] แก้ไขตาม requirement: บังคับอัปเดตชื่อและเพศเสมอ หากมีการนำเข้าไฟล์ใหม่
-                                // ยึดเลข 13 หลักเป็นหลัก หากชื่อในไฟล์ไม่ตรงกับในระบบ ให้ใช้ชื่อจากไฟล์ทับได้เลย
-                                if (data.part1?.name) {
-                                    mergedData.part1.name = data.part1.name;
-                                    // อัปเดตเพศด้วยเพื่อให้สอดคล้องกับชื่อใหม่ (เช่น แก้จาก นาย เป็น นาง)
-                                    if (data.part1.gender) {
-                                        mergedData.part1.gender = data.part1.gender;
-                                    }
-                                }
-
-                                batch.set(docRef, mergedData); 
-                            } else {
-                                // กรณีไม่มีข้อมูล -> สร้างใหม่
-                                batch.set(docRef, data); 
+                    results.forEach(({ docRef, data, snap }) => { 
+                        if (snap.exists) {
+                            // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
+                            const existingData = snap.data();
+                            
+                            // [ADDED] กฎพิเศษ: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิมในฐานข้อมูล
+                            // ถ้าในฐานมีข้อมูลเหล่านี้อยู่แล้ว ให้ตัดข้อมูลจาก CSV ออกเลย เพื่อป้องกันการเติมข้อมูลที่ขัดแย้งกัน
+                            if (existingData.part1?.dob) {
+                                delete data.part1.dob;
+                                delete data.part1.age; // ตัดอายุจาก CSV ออกด้วย เพื่อไม่ให้ไปเติมในช่องว่างแล้วไม่ตรงกับวันเกิดเดิม
                             }
-                            countInBatch++; 
-                        });
+                            if (existingData.part1?.dxDate) {
+                                delete data.part1.dxDate;
+                                delete data.part1.dmYears; // ตัดปีที่เป็น DM จาก CSV ออกด้วย
+                            }
 
-                        // Commit Batch นี้
-                        if (countInBatch > 0) {
-                            await batch.commit();
-                            totalProcessed += countInBatch;
+                            const mergedData = mergeFillMissing(existingData, data);
+                            batch.set(docRef, mergedData); 
+                        } else {
+                            // กรณีไม่มีข้อมูล: สร้างใหม่เลย
+                            batch.set(docRef, data); 
                         }
-                    }
+                        count++; 
+                    }); 
                     
-                    if(totalProcessed === 0) { setUploadError('No valid data'); setLoading(false); return; } 
-                    
-                    setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูล ${totalProcessed} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
+                    if(count===0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    await batch.commit(); 
+                    setModal({ visible: true, title: "สำเร็จ", message: `ตรวจสอบและเติมข้อมูล ${count} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
 
@@ -1429,10 +1387,7 @@
                 <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                     <button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button>
                     <div className="bg-white p-6 rounded shadow">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="font-bold">Import CSV (History Supported)</h2>
-                            <button onClick={downloadTemplate} className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"><Icon name="download" size={14}/> โหลดแบบฟอร์ม</button>
-                        </div>
+                        <h2 className="font-bold mb-4">Import CSV (History Supported)</h2>
                         <input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>
                         {file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}
                         {csvData && (
@@ -1929,9 +1884,6 @@
             
             const [currentDate, setCurrentDate] = useState(getTodayStr());
 
-            // [ADDED] Quick Add State for passing search term
-            const [quickAddId, setQuickAddId] = useState('');
-
             // [ADDED] ดึงข้อมูลผู้ป่วยแบบ Real-time จาก ID ที่เลือก เพื่อให้ได้ข้อมูลล่าสุดเสมอ (เช่น history ที่เพิ่ง import)
             const activePatient = useMemo(() => {
                 if (!selectedPatient) return null;
@@ -2006,37 +1958,11 @@
                         <div className="flex gap-2">{role === 'HOSPITAL' && <button onClick={() => setView('admin_home')} className="text-gray-500 hover:text-blue-600"><Icon name="settings" size={18}/></button>}<button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button></div>
                     </nav>
                     <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
-                    {view === 'dashboard' && <Dashboard 
-                        role={role} 
-                        agencyCode={agencyCode} 
-                        agencyName={agencyName} 
-                        agenciesMap={agenciesMap} 
-                        patients={patients} 
-                        onNew={(searchTerm) => {
-                            // [MODIFIED] รับค่า search term จาก dashboard เพื่อ pre-fill
-                            if (typeof searchTerm === 'string' && /^\d{13}$/.test(searchTerm)) {
-                                setQuickAddId(searchTerm);
-                            } else {
-                                setQuickAddId('');
-                            }
-                            setView('pcu_form');
-                            setSelectedPatient(null);
-                        }} 
-                        onEdit={(p)=>{
-                            setQuickAddId(''); // Clear quick add ID when editing
-                            setSelectedPatient(p);
-                            setView('pcu_form');
-                        }} 
-                        onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} 
-                        setModal={setModal} 
-                        selectedDate={currentDate} 
-                        setSelectedDate={setCurrentDate} 
-                    />}
+                    {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
                     
                     {/* ใช้ activePatient แทน selectedPatient เพื่อให้ข้อมูล history อัปเดตทันที */}
-                    {/* [MODIFIED] Pass quickAddId as initialId */}
                     {view === 'pcu_form' && activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={activePatient} agencyCode={agencyCode} />}
-                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} initialId={quickAddId} />}
+                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} />}
                     
                     {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     
