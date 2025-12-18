@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- [MODIFIED] ใช้ Tesseract.js สำหรับ OCR เท่านั้น (เอา html5-qrcode ออก) -->
+    <!-- Tesseract.js สำหรับ OCR -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
     <!-- Firebase Libraries (Compat versions) -->
@@ -41,7 +41,7 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 90%; height: 100px; /* ขยายความสูงขึ้นเล็กน้อย */
+            width: 90%; height: 100px;
             border: 2px solid rgba(255,255,255,0.8);
             border-radius: 8px;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
@@ -271,6 +271,43 @@
             const [agencyFilter, setAgencyFilter] = useState('All');
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
+            // [ADDED] ฟังก์ชัน Export CSV สำหรับ PCU
+            const exportData = () => {
+                const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
+                const BOM = "\uFEFF"; 
+                let csv = BOM + headers.join(",") + "\n";
+                
+                filtered.forEach(p => {
+                    const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('th-TH') : '-';
+                    const safe = (s) => `"${String(s || '').replace(/"/g, '""')}"`;
+                    const risk = p.footExam?.riskLevel?.split(' ')[0] || '-';
+                    
+                    csv += [
+                        safe(date),
+                        safe(`'${p.part1?.idCard}`), // ใส่ ' นำหน้าเพื่อป้องกัน Excel แปลงเป็นวิทยาศาสตร์
+                        safe(p.part1?.name),
+                        safe(p.part1?.gender),
+                        safe(p.part1?.age),
+                        safe(p.part1?.dmYears),
+                        safe(p.part1?.vaRight),
+                        safe(p.part1?.vaLeft),
+                        safe(p.part1?.hba1c),
+                        safe(risk),
+                        safe(p.status),
+                        safe(p.part2?.drStageR || '-'),
+                        safe(p.part2?.drStageL || '-')
+                    ].join(",") + "\n";
+                });
+                
+                const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `pcu_export_${selectedDate}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
             const getFootBadge = (p) => {
                 if (!p.footExam) return null;
                 const risk = p.footExam.riskLevel || '';
@@ -287,7 +324,10 @@
             const filtered = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
-                    if (p.status === 'Imported') return false;
+                    
+                    // [MODIFIED] ปรับเงื่อนไข: ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported/ประวัติเก่าได้ทั้งหมด
+                    // แต่ถ้าไม่ได้ค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported ไว้ตามเดิมเพื่อไม่ให้รก
+                    if (term.length === 0 && p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
@@ -331,7 +371,15 @@
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Icon name={role==='PCU'?'home':'building'} className={role==='PCU'?'text-green-600':'text-blue-600'} />{role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}</h2>
                             {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {role === 'PCU' && <button onClick={onNew} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm hover:bg-green-700"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>}
+                        {/* [MODIFIED] ปรับปุ่มเพิ่มผู้ป่วยให้ใหญ่ เด่นชัด และกดง่ายขึ้น */}
+                        {role === 'PCU' && (
+                            <button 
+                                onClick={() => onNew()} 
+                                className="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 font-bold text-base hover:bg-green-700 hover:scale-105 transition-all active:scale-95"
+                            >
+                                <Icon name="plus-circle" size={20}/> เพิ่มผู้ป่วยใหม่
+                            </button>
+                        )}
                     </div>
                     <div className="bg-white p-2 rounded-xl shadow-sm border flex flex-col sm:flex-row items-center gap-2">
                         <div className={`flex items-center gap-1 border rounded p-1 transition-colors ${term ? 'bg-gray-100 border-gray-200 opacity-50' : 'bg-blue-50 border-blue-100'}`}>
@@ -347,20 +395,40 @@
                         )}
                         <div className="flex-1 flex items-center w-full border rounded px-2 bg-white ring-1 ring-transparent focus-within:ring-blue-500">
                             <Icon name="search" className="text-gray-400"/>
-                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาชื่อ/เลขบัตร เพื่อดูประวัติทั้งหมด..." className="flex-1 p-2 outline-none text-sm w-full" />
+                            {/* [MODIFIED] ปรับข้อความ Placeholder ให้สื่อถึงการค้นหาประวัติเดิม */}
+                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาประวัติ/ชื่อ/เลขบัตร..." className="flex-1 p-2 outline-none text-sm w-full" />
                             {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
+                        
+                        {/* [MODIFIED] เพิ่มปุ่มเพิ่มผู้ป่วยใหม่ในแถบค้นหา (Quick Add) - ส่ง term ไปด้วย */}
+                        {role === 'PCU' && (
+                            <div className="flex gap-2">
+                                <button onClick={() => onNew(term)} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-green-700 whitespace-nowrap"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
+                                <button onClick={exportData} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-blue-700 whitespace-nowrap"><Icon name="download" size={16}/> Export</button>
+                            </div>
+                        )}
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
                         <table className="w-full text-sm text-left whitespace-nowrap">
                             <thead className="bg-gray-50 border-b text-gray-500">
-                                <tr><th className="p-3">วันที่</th><th className="p-3">ผู้ป่วย / ID</th><th className="p-3">หน่วยงาน</th><th className="p-3 text-center">สถานะ</th><th className="p-3 text-right">Action</th></tr>
+                                <tr>
+                                    {/* [ADDED] เพิ่มหัวตารางลำดับ */}
+                                    <th className="p-3 text-center w-10">#</th>
+                                    <th className="p-3">วันที่</th>
+                                    <th className="p-3">ผู้ป่วย / ID</th>
+                                    <th className="p-3">หน่วยงาน</th>
+                                    <th className="p-3 text-center">สถานะ</th>
+                                    <th className="p-3 text-right">Action</th>
+                                </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {filtered.map(p => {
+                                {filtered.map((p, index) => {
                                     const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
                                     return (
                                     <tr key={p.id} className="hover:bg-gray-50">
+                                            {/* [ADDED] แสดงลำดับที่ (index + 1) */}
+                                            <td className="p-3 text-center align-top text-gray-400 font-bold">{index + 1}</td>
+                                            
                                             <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
                                             <td className="p-3 align-top">
                                                 <div className="font-mono text-blue-600 font-bold">{p.part1?.idCard || 'N/A'}</div>
@@ -382,9 +450,18 @@
                                                     {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
                                                     {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
+                                                    
+                                                    {/* [MODIFIED] ปุ่มลบแบบ Soft Delete: ไม่ลบข้อมูลจริง แต่ทำเครื่องหมายว่าลบ และบันทึกว่าใครลบ/ลบเมื่อไหร่ */}
                                                     {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
-                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ?", onConfirm: async () => { 
-                                                            try { await getCollection('patients_referrals').doc(p.id).update({ isDeleted: true }); setModal({ visible: false }); } 
+                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ? (ข้อมูลจะถูกเก็บไว้ในฐานข้อมูล แต่ซ่อนจากหน้านี้)", onConfirm: async () => { 
+                                                            try { 
+                                                                await getCollection('patients_referrals').doc(p.id).update({ 
+                                                                    isDeleted: true,
+                                                                    deletedAt: new Date(), // บันทึกเวลาที่ลบ
+                                                                    deletedBy: agencyCode  // บันทึกรหัสหน่วยงานคนที่ลบ
+                                                                }); 
+                                                                setModal({ visible: false }); 
+                                                            } 
                                                             catch(e) { alert(e.message); } 
                                                         } }); 
                                                     }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>}
@@ -392,7 +469,7 @@
                                             </td>
                                     </tr>
                                 );})}
-                                {filtered.length===0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -400,13 +477,12 @@
             );
         };
 
-        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode }) => {
+        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode, initialId }) => {
             const isEditing = !!patientToEdit;
-            const defaultForm = { idCard:'', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
+            const defaultForm = { idCard: initialId || '', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
             const [showScanner, setShowScanner] = useState(false);
             const [scanStatus, setScanStatus] = useState('');
-            // [REMOVED] scanMode state, assume always OCR
             
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
@@ -495,7 +571,6 @@
                                 const data = imageData.data;
 
                                 // Adaptive Thresholding
-                                // 1. Calculate Average Brightness
                                 let totalBrightness = 0;
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
@@ -505,15 +580,15 @@
                                     totalBrightness += gray;
                                 }
                                 const avgBrightness = totalBrightness / (data.length / 4);
-                                const threshold = avgBrightness * 0.70; // Heuristic: text is generally darker than average card background
+                                const threshold = avgBrightness * 0.70; 
 
-                                // 2. Binarization
+                                // Binarization
                                 for (let i = 0; i < data.length; i += 4) {
                                     const r = data[i];
                                     const g = data[i + 1];
                                     const b = data[i + 2];
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    const contrast = gray > threshold ? 255 : 0; // If brighter than threshold -> white, else black
+                                    const contrast = gray > threshold ? 255 : 0; 
                                     data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
                                 }
                                 ctx.putImageData(imageData, 0, 0);
@@ -621,17 +696,32 @@
                 }
             }, [recordDate, form.dob, form.dxDate]);
 
+            // [MODIFIED] Logic กลับมาเติมข้อมูลอัตโนมัติทันทีเมื่อครบ 13 หลัก (ไม่ต้องถาม)
             useEffect(() => {
-                if (!isEditing && form.idCard.length === 13 && existingPatients) {
-                    const old = existingPatients.find(p => p.part1?.idCard === form.idCard);
-                    if(old) { 
+                if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
+                    // 1. ค้นหาประวัติทั้งหมด
+                    const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
+                    
+                    if(historyMatches.length > 0) { 
                         setFoundOld(true); 
-                        let loadedPart1 = { ...old.part1 };
+                        
+                        // 2. เรียงลำดับจาก ใหม่ -> เก่า
+                        historyMatches.sort((a, b) => b.createdAt - a.createdAt);
+                        const latestRecord = historyMatches[0];
+
+                        // 3. เตรียมข้อมูลที่จะเติม
+                        let loadedPart1 = { ...latestRecord.part1 };
+                        
+                        // ถ้าข้อมูลเก่าไม่มีเพศ ให้ลอง Auto-detect จากชื่อใหม่
                         if (!loadedPart1.gender && loadedPart1.name) {
                             loadedPart1.gender = getGenderFromName(loadedPart1.name);
                         }
-                        setForm(f => ({...f, ...loadedPart1})); 
-                        if (old.footExam) setFootStatus(old.footExam.riskLevel);
+
+                        // 4. เติมข้อมูลลงฟอร์มทันที (คงเลขบัตรที่พิมพ์ไว้)
+                        setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
+                        
+                        // ดึงความเสี่ยงเท้าล่าสุดมาแสดง
+                        if (latestRecord.footExam) setFootStatus(latestRecord.footExam.riskLevel);
                     } else { 
                         setFoundOld(false); 
                         setFootStatus(null);
@@ -886,6 +976,27 @@
             const updateP2 = (field, value) => { if(!isReadOnly) setP2(prev => ({...prev, [field]: value})); };
             const toggleP2 = (field) => { if(!isReadOnly) setP2(prev => ({...prev, [field]: !prev[field]})); };
 
+            // [ADDED] ฟังก์ชันพิเศษ: อัปเดต DR Stage พร้อมจัดการ Findings ตามเงื่อนไข (No DR -> Normal)
+            const updateDrStage = (side, value) => {
+                if(isReadOnly) return;
+                
+                // 1. อัปเดตค่า DR Stage
+                setP2(prev => ({...prev, [`drStage${side}`]: value}));
+                
+                // 2. อัปเดต Findings อัตโนมัติ
+                setFindings(prev => {
+                    const n = JSON.parse(JSON.stringify(prev));
+                    if (value === "No DR") {
+                        // ถ้าเป็น No DR -> ให้ติ๊ก Normal และเอาอันอื่นออก
+                        Object.keys(n).forEach(k => { if(n[k]) n[k][side] = (k === 'Normal'); });
+                    } else if (value !== "ไม่พบจอประสาทตา") {
+                        // ถ้าเป็นความรุนแรงอื่นๆ (Mild, Mod, Sev, PDR) -> เอา Normal ออก เพื่อให้หมอติ๊ก Findings เอง
+                        if(n.Normal) n.Normal[side] = false;
+                    }
+                    return n;
+                });
+            };
+
             return (
                 <div className="flex flex-col lg:flex-row gap-6 pb-20 animate-fade-in">
                       <div className="w-full lg:w-1/3 space-y-4">
@@ -1006,7 +1117,8 @@
                                             <h4 className={`font-bold text-center ${textColor} mb-3 ${bgColor} p-1 rounded`}>{label}</h4>
                                             <div className="mb-4">
                                                 <label className="text-xs text-gray-500 block mb-1">ระดับความรุนแรง</label>
-                                                <select value={p2[`drStage${s}`]} onChange={(e)=>updateP2(`drStage${s}`, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
+                                                {/* [MODIFIED] ใช้ updateDrStage แทน updateP2 */}
+                                                <select value={p2[`drStage${s}`]} onChange={(e)=>updateDrStage(s, e.target.value)} className="w-full p-2 border rounded text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50">{DR_STAGES.map(st=><option key={st}>{st}</option>)}</select>
                                             </div>
                                             <div className="space-y-2">
                                                 <p className="text-xs text-gray-400 border-b pb-1">Findings</p>
@@ -1099,6 +1211,19 @@
                 if (v.includes('pdr') || v.includes('proli')) return "PDR";
                 if (v.includes('incomp') || v.includes('ชัด') || v.includes('ไม่พบ') || v.includes('image') || v.includes('found')) return "ไม่พบจอประสาทตา";
                 return val; // ถ้าไม่ตรงเงื่อนไข ให้เก็บค่าเดิมไว้
+            };
+            
+            const downloadTemplate = () => {
+                const BOM = "\uFEFF"; 
+                const csvContent = BOM + CSV_HEADERS.join(",") + "\n";
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "eyedm_import_template.csv";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             };
 
             // ฟังก์ชันช่วยสำหรับการรวมข้อมูล: เติมเฉพาะค่าที่ว่าง (Fill Missing)
@@ -1250,15 +1375,25 @@
                             // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
                             const existingData = snap.data();
                             
-                            // [ADDED] กฎพิเศษ: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิมในฐานข้อมูล
-                            // ถ้าในฐานมีข้อมูลเหล่านี้อยู่แล้ว ให้ตัดข้อมูลจาก CSV ออกเลย เพื่อป้องกันการเติมข้อมูลที่ขัดแย้งกัน
+                            // [MODIFIED] กฎพิเศษ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ห้าม CSV ทับ)
                             if (existingData.part1?.dob) {
                                 delete data.part1.dob;
-                                delete data.part1.age; // ตัดอายุจาก CSV ออกด้วย เพื่อไม่ให้ไปเติมในช่องว่างแล้วไม่ตรงกับวันเกิดเดิม
+                                delete data.part1.age; 
                             }
                             if (existingData.part1?.dxDate) {
                                 delete data.part1.dxDate;
-                                delete data.part1.dmYears; // ตัดปีที่เป็น DM จาก CSV ออกด้วย
+                                delete data.part1.dmYears; 
+                            }
+
+                            // [MODIFIED] กฎพิเศษ 2: บังคับอัปเดต ชื่อ และ เลขบัตร จาก CSV เสมอ (แก้ชื่อผิด/เลขผิด)
+                            // เราจะอัปเดตข้อมูลใน existingData ก่อนส่งไปรวม เพื่อให้ mergeFillMissing ยึดค่าใหม่นี้
+                            if (data.part1?.name) {
+                                if (!existingData.part1) existingData.part1 = {};
+                                existingData.part1.name = data.part1.name;
+                            }
+                            if (data.part1?.idCard) {
+                                if (!existingData.part1) existingData.part1 = {};
+                                existingData.part1.idCard = data.part1.idCard;
                             }
 
                             const mergedData = mergeFillMissing(existingData, data);
@@ -1280,7 +1415,10 @@
                 <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
                     <button onClick={() => onBack('admin_home')} className="mb-4 flex items-center gap-1 text-gray-500"><Icon name="arrow-left" size={16}/> กลับ</button>
                     <div className="bg-white p-6 rounded shadow">
-                        <h2 className="font-bold mb-4">Import CSV (History Supported)</h2>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="font-bold">Import CSV (History Supported)</h2>
+                            <button onClick={downloadTemplate} className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"><Icon name="download" size={14}/> โหลดแบบฟอร์ม</button>
+                        </div>
                         <input type="file" onChange={e=>{setFile(e.target.files[0]);setCsvData(null);}} className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700"/>
                         {file && !csvData && <button onClick={handleParse} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">{loading?'Reading...':'Parse File'}</button>}
                         {csvData && (
@@ -1777,6 +1915,9 @@
             
             const [currentDate, setCurrentDate] = useState(getTodayStr());
 
+            // [ADDED] Quick Add State for passing search term
+            const [quickAddId, setQuickAddId] = useState('');
+
             // [ADDED] ดึงข้อมูลผู้ป่วยแบบ Real-time จาก ID ที่เลือก เพื่อให้ได้ข้อมูลล่าสุดเสมอ (เช่น history ที่เพิ่ง import)
             const activePatient = useMemo(() => {
                 if (!selectedPatient) return null;
@@ -1808,7 +1949,9 @@
                         const data = d.data(); 
                         return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
                     });
-                    newPatients.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+                    // [MODIFIED] เรียงลำดับจาก "เก่าไปใหม่" (ใครมาก่อนอยู่อันดับ 1, 2, 3...)
+                    // ใช้ a - b แทน b - a
+                    newPatients.sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
                     setPatients(newPatients);
                 });
                 return () => unsub();
@@ -1849,11 +1992,37 @@
                         <div className="flex gap-2">{role === 'HOSPITAL' && <button onClick={() => setView('admin_home')} className="text-gray-500 hover:text-blue-600"><Icon name="settings" size={18}/></button>}<button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button></div>
                     </nav>
                     <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
-                    {view === 'dashboard' && <Dashboard role={role} agencyCode={agencyCode} agencyName={agencyName} agenciesMap={agenciesMap} patients={patients} onNew={()=>setView('pcu_form')} onEdit={(p)=>{setSelectedPatient(p);setView('pcu_form');}} onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} setModal={setModal} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
+                    {view === 'dashboard' && <Dashboard 
+                        role={role} 
+                        agencyCode={agencyCode} 
+                        agencyName={agencyName} 
+                        agenciesMap={agenciesMap} 
+                        patients={patients} 
+                        onNew={(searchTerm) => {
+                            // [MODIFIED] รับค่า search term จาก dashboard เพื่อ pre-fill
+                            if (typeof searchTerm === 'string' && /^\d{13}$/.test(searchTerm)) {
+                                setQuickAddId(searchTerm);
+                            } else {
+                                setQuickAddId('');
+                            }
+                            setView('pcu_form');
+                            setSelectedPatient(null);
+                        }} 
+                        onEdit={(p)=>{
+                            setQuickAddId(''); // Clear quick add ID when editing
+                            setSelectedPatient(p);
+                            setView('pcu_form');
+                        }} 
+                        onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} 
+                        setModal={setModal} 
+                        selectedDate={currentDate} 
+                        setSelectedDate={setCurrentDate} 
+                    />}
                     
                     {/* ใช้ activePatient แทน selectedPatient เพื่อให้ข้อมูล history อัปเดตทันที */}
+                    {/* [MODIFIED] Pass quickAddId as initialId */}
                     {view === 'pcu_form' && activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={activePatient} agencyCode={agencyCode} />}
-                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} />}
+                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} initialId={quickAddId} />}
                     
                     {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     
