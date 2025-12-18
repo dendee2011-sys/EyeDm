@@ -1198,6 +1198,8 @@
             const [loading, setLoading] = useState(false);
             const [uploadError, setUploadError] = useState('');
             const [validCount, setValidCount] = useState(0);
+            // [ADDED] State สำหรับแสดงความคืบหน้า
+            const [progress, setProgress] = useState({ current: 0, total: 0 });
             
             // [ADDED] ฟังก์ชันแปลงค่าผลตรวจจาก CSV ให้ตรงกับ Dropdown ของระบบ (Normalization)
             const normalizeDR = (val) => {
@@ -1352,6 +1354,8 @@
                 const collection = getCollection('patients_referrals'); 
                 setLoading(true); 
                 setUploadError(''); 
+                // [ADDED] ตั้งค่าเริ่มต้น Progress
+                setProgress({ current: 0, total: csvData.length });
                 
                 try { 
                     // [MODIFIED] รองรับการนำเข้าข้อมูลจำนวนมาก (Batch Processing)
@@ -1416,6 +1420,8 @@
                         if (countInBatch > 0) {
                             await batch.commit();
                             totalProcessed += countInBatch;
+                            // [ADDED] อัปเดต Progress
+                            setProgress({ current: totalProcessed, total: csvData.length });
                         }
                     }
                     
@@ -1438,7 +1444,15 @@
                         {csvData && (
                             <div className="mt-4">
                                 <p>Found {validCount} valid records.</p>
-                                <button onClick={uploadData} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded mt-2">{loading?'Uploading...':'Confirm Upload'}</button>
+                                <button onClick={uploadData} disabled={loading} className={`text-white px-4 py-2 rounded mt-2 w-full font-bold transition-all ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>
+                                    {loading ? `กำลังบันทึก... (${progress.current} / ${progress.total})` : 'Confirm Upload'}
+                                </button>
+                                {/* [ADDED] Progress Bar */}
+                                {loading && progress.total > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                                        <div className="bg-green-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {uploadError && <p className="text-red-500 mt-2">{uploadError}</p>}
