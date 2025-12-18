@@ -1352,62 +1352,65 @@
                 const collection = getCollection('patients_referrals'); 
                 setLoading(true); 
                 setUploadError(''); 
+                
                 try { 
-                    // 1. เตรียมการอ่านข้อมูลทั้งหมดเพื่อเช็คก่อนบันทึก
-                    const tasks = csvData.map(async (data) => {
-                        const dateStr = data.createdAt.toISOString().split('T')[0];
-                        const docId = `${data.part1.idCard}_${dateStr}`;
-                        const docRef = collection.doc(docId);
-                        // ดึงข้อมูลเก่ามาดูก่อน
-                        const snap = await docRef.get();
-                        // [IMPORTANT] Clone data เพื่อไม่ให้กระทบต้นฉบับเวลาลบ field
-                        return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
-                    });
-
-                    // รอให้ดึงข้อมูลครบทุกรายการ
-                    const results = await Promise.all(tasks);
-
-                    const batch = db.batch(); 
-                    let count = 0; 
+                    // [MODIFIED] รองรับการนำเข้าข้อมูลจำนวนมาก (Batch Processing)
+                    // Firestore จำกัด batch ละ 500 operation -> เราจะแบ่งทำทีละ 400 เพื่อความปลอดภัย
+                    const BATCH_SIZE = 400; 
+                    let totalProcessed = 0;
                     
-                    results.forEach(({ docRef, data, snap }) => { 
-                        if (snap.exists) {
-                            // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
-                            const existingData = snap.data();
-                            
-                            // [MODIFIED] กฎพิเศษ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ห้าม CSV ทับ)
-                            if (existingData.part1?.dob) {
-                                delete data.part1.dob;
-                                delete data.part1.age; 
-                            }
-                            if (existingData.part1?.dxDate) {
-                                delete data.part1.dxDate;
-                                delete data.part1.dmYears; 
-                            }
+                    // วนลูปทำทีละ Batch
+                    for (let i = 0; i < csvData.length; i += BATCH_SIZE) {
+                        const chunk = csvData.slice(i, i + BATCH_SIZE);
+                        
+                        // 1. อ่านข้อมูลเดิมของ Batch นี้มาเช็คก่อน
+                        const tasks = chunk.map(async (data) => {
+                            const dateStr = data.createdAt.toISOString().split('T')[0];
+                            const docId = `${data.part1.idCard}_${dateStr}`;
+                            const docRef = collection.doc(docId);
+                            const snap = await docRef.get();
+                            // Clone data เพื่อไม่ให้กระทบตัวแปรหลัก
+                            return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
+                        });
 
-                            // [MODIFIED] กฎพิเศษ 2: บังคับอัปเดต ชื่อ และ เลขบัตร จาก CSV เสมอ (แก้ชื่อผิด/เลขผิด)
-                            // เราจะอัปเดตข้อมูลใน existingData ก่อนส่งไปรวม เพื่อให้ mergeFillMissing ยึดค่าใหม่นี้
-                            if (data.part1?.name) {
-                                if (!existingData.part1) existingData.part1 = {};
-                                existingData.part1.name = data.part1.name;
-                            }
-                            if (data.part1?.idCard) {
-                                if (!existingData.part1) existingData.part1 = {};
-                                existingData.part1.idCard = data.part1.idCard;
-                            }
+                        const results = await Promise.all(tasks);
+                        const batch = db.batch(); 
+                        let countInBatch = 0;
 
-                            const mergedData = mergeFillMissing(existingData, data);
-                            batch.set(docRef, mergedData); 
-                        } else {
-                            // กรณีไม่มีข้อมูล: สร้างใหม่เลย
-                            batch.set(docRef, data); 
+                        results.forEach(({ docRef, data, snap }) => { 
+                            if (snap.exists) {
+                                // กรณีมีข้อมูลอยู่แล้ว -> เติมเฉพาะช่องว่าง
+                                const existingData = snap.data();
+                                
+                                // กฎพิเศษ: ไม่ทับวันเกิด/วันวินิจฉัยเดิม
+                                if (existingData.part1?.dob) {
+                                    delete data.part1.dob;
+                                    delete data.part1.age;
+                                }
+                                if (existingData.part1?.dxDate) {
+                                    delete data.part1.dxDate;
+                                    delete data.part1.dmYears;
+                                }
+
+                                const mergedData = mergeFillMissing(existingData, data);
+                                batch.set(docRef, mergedData); 
+                            } else {
+                                // กรณีไม่มีข้อมูล -> สร้างใหม่
+                                batch.set(docRef, data); 
+                            }
+                            countInBatch++; 
+                        });
+
+                        // Commit Batch นี้
+                        if (countInBatch > 0) {
+                            await batch.commit();
+                            totalProcessed += countInBatch;
                         }
-                        count++; 
-                    }); 
+                    }
                     
-                    if(count===0) { setUploadError('No valid data'); setLoading(false); return; } 
-                    await batch.commit(); 
-                    setModal({ visible: true, title: "สำเร็จ", message: `ตรวจสอบและเติมข้อมูล ${count} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
+                    if(totalProcessed === 0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    
+                    setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูล ${totalProcessed} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
 
