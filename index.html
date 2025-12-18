@@ -1252,7 +1252,9 @@
             };
 
             const parseCSV = (text) => {
-                const lines = text.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
+                // [MODIFIED] ลบอักขระ BOM (Byte Order Mark) ที่อาจติดมากับไฟล์ Excel/Notepad เพื่อให้อ่าน Header ได้ถูกต้อง
+                const cleanText = text.replace(/^\uFEFF/, '');
+                const lines = cleanText.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
                 const headers = lines[0].split(',').map(h => h.trim());
                 const data = []; let validCount = 0; const headerMap = {};
                 CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
@@ -1358,9 +1360,8 @@
                 setProgress({ current: 0, total: csvData.length });
                 
                 try { 
-                    // [MODIFIED] รองรับการนำเข้าข้อมูลจำนวนมาก (Batch Processing)
-                    // Firestore จำกัด batch ละ 500 operation -> เราจะแบ่งทำทีละ 400 เพื่อความปลอดภัย
-                    const BATCH_SIZE = 400; 
+                    // [MODIFIED] ปรับขนาด Batch ลงเหลือ 100 เพื่อความเสถียรและป้องกันการค้าง
+                    const BATCH_SIZE = 100; 
                     let totalProcessed = 0;
                     
                     // วนลูปทำทีละ Batch
@@ -1369,15 +1370,24 @@
                         
                         // 1. อ่านข้อมูลเดิมของ Batch นี้มาเช็คก่อน
                         const tasks = chunk.map(async (data) => {
-                            const dateStr = data.createdAt.toISOString().split('T')[0];
-                            const docId = `${data.part1.idCard}_${dateStr}`;
-                            const docRef = collection.doc(docId);
-                            const snap = await docRef.get();
-                            // Clone data เพื่อไม่ให้กระทบตัวแปรหลัก
-                            return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
+                            // ป้องกันกรณี Date ไม่ถูกต้อง
+                            try {
+                                if (!(data.createdAt instanceof Date) || isNaN(data.createdAt)) {
+                                    data.createdAt = new Date();
+                                }
+                                const dateStr = data.createdAt.toISOString().split('T')[0];
+                                const docId = `${data.part1.idCard}_${dateStr}`;
+                                const docRef = collection.doc(docId);
+                                const snap = await docRef.get();
+                                // Clone data เพื่อไม่ให้กระทบตัวแปรหลัก
+                                return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
+                            } catch (err) {
+                                console.error("Error processing row:", err);
+                                return null;
+                            }
                         });
 
-                        const results = await Promise.all(tasks);
+                        const results = (await Promise.all(tasks)).filter(item => item !== null);
                         const batch = db.batch(); 
                         let countInBatch = 0;
 
@@ -1423,8 +1433,8 @@
                             // [ADDED] อัปเดต Progress
                             setProgress({ current: totalProcessed, total: csvData.length });
                             
-                            // [ADDED] หยุดรอ 50ms เพื่อให้ UI อัปเดตและป้องกันหน้าค้าง
-                            await new Promise(resolve => setTimeout(resolve, 50));
+                            // [ADDED] หยุดรอ 100ms เพื่อให้ UI อัปเดตและป้องกันหน้าค้าง (เพิ่มเวลาพักให้นานขึ้นเล็กน้อย)
+                            await new Promise(resolve => setTimeout(resolve, 100));
                         }
                     }
                     
