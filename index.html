@@ -1201,6 +1201,30 @@
             // [ADDED] State สำหรับแสดงความคืบหน้า
             const [progress, setProgress] = useState({ current: 0, total: 0 });
             
+            // [ADDED] ฟังก์ชันแปลงวันที่ให้รองรับทั้ง DD/MM/YYYY (พ.ศ./ค.ศ.) และ YYYY-MM-DD
+            const parseDateStr = (dateStr) => {
+                if (!dateStr) return null;
+                const s = dateStr.trim();
+                
+                // กรณี YYYY-MM-DD (ISO)
+                if (s.match(/^\d{4}-\d{2}-\d{2}/)) return new Date(s);
+                
+                // กรณี DD/MM/YYYY หรือ DD-MM-YYYY
+                const parts = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                if (parts) {
+                    let y = parseInt(parts[3]);
+                    const m = parseInt(parts[2]) - 1;
+                    const d = parseInt(parts[1]);
+                    // ถ้าปีมากกว่า 2400 สันนิษฐานว่าเป็น พ.ศ. ให้ลบ 543
+                    if (y > 2400) y -= 543;
+                    return new Date(y, m, d);
+                }
+                
+                // ลองให้ Date parse เองเป็นทางเลือกสุดท้าย
+                const d = new Date(s);
+                return isNaN(d) ? null : d;
+            };
+
             // [ADDED] ฟังก์ชันแปลงค่าผลตรวจจาก CSV ให้ตรงกับ Dropdown ของระบบ (Normalization)
             const normalizeDR = (val) => {
                 if (!val) return '';
@@ -1252,52 +1276,96 @@
             };
 
             const parseCSV = (text) => {
-                // [MODIFIED] ลบอักขระ BOM (Byte Order Mark) ที่อาจติดมากับไฟล์ Excel/Notepad เพื่อให้อ่าน Header ได้ถูกต้อง
-                const cleanText = text.replace(/^\uFEFF/, '');
-                const lines = cleanText.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
-                const headers = lines[0].split(',').map(h => h.trim());
-                const data = []; let validCount = 0; const headerMap = {};
-                CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
+                // 1. Clean BOM & Whitespace
+                let cleanText = text.replace(/^\uFEFF/, '').trim();
+                if (!cleanText) throw new Error('ไฟล์ว่างเปล่า');
+
+                // 2. Detect Line Break
+                const lines = cleanText.split(/\r\n|\n|\r/); 
+                if (lines.length < 2) throw new Error('ไฟล์ต้องมี Header และข้อมูลอย่างน้อย 1 แถว');
+
+                // 3. Detect Separator (Comma or Semicolon) from Header
+                const firstLine = lines[0];
+                const separator = firstLine.includes(';') ? ';' : ',';
+
+                // 4. Parse Header (Remove quotes and spaces)
+                // Regex นี้ใช้แยก CSV โดยไม่แยก comma ที่อยู่ใน quotes
+                const splitCSV = (str) => {
+                    const matches = str.matchAll(/(?:^|[,;])(?:\s*(?:"([^"]*)"|([^",;]*))\s*)(?=$|[,;])/g);
+                    const res = [];
+                    for (const match of matches) {
+                        // match[1] คือค่าใน quotes, match[2] คือค่าปกติ
+                        res.push((match[1] !== undefined ? match[1] : match[2]).trim());
+                    }
+                    // filter out the empty match at the end if strict regex used, but simple logic:
+                    // Fallback simpler split if regex fails complexity or simple split is safe
+                    if (res.length > 0) return res;
+                    return str.split(separator).map(v => v.trim().replace(/^"|"$/g, ''));
+                };
+
+                const headers = splitCSV(firstLine);
+                const headerMap = {};
+                CSV_HEADERS.forEach(h => {
+                    headerMap[h] = headers.findIndex(header => header.toLowerCase().includes(h.toLowerCase()));
+                });
+
+                // ตรวจสอบว่าเจอ column สำคัญไหม
+                if (headerMap['idCard'] === -1 && headerMap['name'] === -1) {
+                    throw new Error(`ไม่พบหัวตารางสำคัญ (idCard, name) กรุณาตรวจสอบไฟล์ (เจอ: ${headers.join(', ')})`);
+                }
+
+                const data = []; 
+                let validCount = 0;
+
                 for (let i = 1; i < lines.length; i++) {
                     if (!lines[i].trim()) continue;
-                    const values = lines[i].split(',').map(v => v.trim()); const patient = {};
-                    CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
                     
-                    // [MODIFIED] ทำความสะอาดเลขบัตร (ลบขีด/วรรค) ก่อนตรวจสอบ
-                    if (patient.idCard) {
-                        patient.idCard = patient.idCard.replace(/[^0-9]/g, '');
-                    }
+                    const values = splitCSV(lines[i]);
+                    // Skip empty rows or rows with too few columns
+                    if (values.length < 2) continue;
 
+                    const patient = {};
+                    CSV_HEADERS.forEach(h => {
+                        const idx = headerMap[h];
+                        patient[h] = (idx > -1 && values[idx]) ? values[idx] : '';
+                    });
+
+                    // Clean ID Card
+                    if (patient.idCard) patient.idCard = patient.idCard.replace(/[^0-9]/g, '');
+
+                    // Validation Logic
                     if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
-                        // Deterministic ID Logic for Import
-                        const examDate = patient.referralDate ? new Date(patient.referralDate) : new Date();
+                        const examDate = parseDateStr(patient.referralDate) || new Date();
                         
                         // Calculate Age
                         if (patient.dob) {
-                            const dobDate = new Date(patient.dob);
-                            if (!isNaN(dobDate)) {
+                            const dobDate = parseDateStr(patient.dob);
+                            if (dobDate) {
                                 let age = examDate.getFullYear() - dobDate.getFullYear();
                                 const m = examDate.getMonth() - dobDate.getMonth();
                                 if (m < 0 || (m === 0 && examDate.getDate() < dobDate.getDate())) age--;
                                 patient.age = age.toString();
+                                // บันทึกค่าวันที่มาตรฐานกลับไป
+                                patient.dob = dobDate.toISOString().split('T')[0];
                             }
                         }
 
                         // Calculate DM Years
                         if (patient.dxDate) {
-                            const dxDate = new Date(patient.dxDate);
-                            if (!isNaN(dxDate)) {
+                            const dxDate = parseDateStr(patient.dxDate);
+                            if (dxDate) {
                                 let years = examDate.getFullYear() - dxDate.getFullYear();
                                 const m = examDate.getMonth() - dxDate.getMonth();
                                 if (m < 0 || (m === 0 && examDate.getDate() < dxDate.getDate())) years--;
                                 patient.dmYears = Math.max(0, years).toString();
+                                patient.dxDate = dxDate.toISOString().split('T')[0];
                             }
                         }
 
-                        // Auto Gender: เรียกใช้ฟังก์ชันกลาง เพื่อรองรับชื่อติดกันและคำนำหน้าหลากหลาย
+                        // Auto Gender
                         patient.gender = getGenderFromName(patient.name);
 
-                        // [MODIFIED] แปลงค่า DR Stage ให้เป็นมาตรฐานก่อนสร้าง Object
+                        // Normalize DR Stages
                         const normDrR = normalizeDR(patient.drStageR);
                         const normDrL = normalizeDR(patient.drStageL);
                         const normLastDrR = normalizeDR(patient.lastDrStageR);
@@ -1326,12 +1394,10 @@
                             status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
                             isDeleted: false, 
                             createdAt: examDate,
-                            // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
                             history: {
-                                date: patient.lastExamDate || '',
-                                drStageR: normLastDrR, // ใช้ค่าที่แปลงแล้ว
-                                drStageL: normLastDrL,  // ใช้ค่าที่แปลงแล้ว
-                                // [ADDED] เก็บข้อมูลสุขภาพลง History
+                                date: parseDateStr(patient.lastExamDate) || '',
+                                drStageR: normLastDrR,
+                                drStageL: normLastDrL,
                                 vaRight: patient.lastVaRight || '',
                                 vaLeft: patient.lastVaLeft || '',
                                 hba1c: patient.lastHba1c || '',
@@ -1362,7 +1428,13 @@
                 const collection = getCollection('patients_referrals'); 
                 setLoading(true); 
                 setUploadError(''); 
-                // [ADDED] ตั้งค่าเริ่มต้น Progress
+                
+                // [ADDED] ตั้งค่าเริ่มต้น Progress และตรวจสอบข้อมูลก่อนเริ่ม
+                if (!csvData || csvData.length === 0) {
+                    setUploadError('ไม่พบข้อมูลที่ถูกต้องสำหรับนำเข้า');
+                    setLoading(false);
+                    return;
+                }
                 setProgress({ current: 0, total: csvData.length });
                 
                 try { 
@@ -1448,7 +1520,7 @@
                         }
                     }
                     
-                    if(totalProcessed === 0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    if(totalProcessed === 0) { setUploadError('No valid data processed'); setLoading(false); return; } 
                     
                     setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูล ${totalProcessed} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
