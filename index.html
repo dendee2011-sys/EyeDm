@@ -1436,10 +1436,12 @@
                     return;
                 }
                 setProgress({ current: 0, total: csvData.length });
+                // [ADDED] หยุดรอเล็กน้อยเพื่อให้ UI อัปเดตสถานะก่อนเริ่มทำงานหนัก
+                await new Promise(r => setTimeout(r, 200));
                 
                 try { 
-                    // [MODIFIED] ปรับขนาด Batch ลงเหลือ 100 เพื่อความเสถียรและป้องกันการค้าง
-                    const BATCH_SIZE = 100; 
+                    // [MODIFIED] ปรับขนาด Batch ลงเหลือ 50 เพื่อความเสถียรสูงสุดและป้องกันหน้าจอค้าง
+                    const BATCH_SIZE = 50; 
                     let totalProcessed = 0;
                     
                     // วนลูปทำทีละ Batch
@@ -1515,8 +1517,8 @@
                             // [ADDED] อัปเดต Progress
                             setProgress({ current: totalProcessed, total: csvData.length });
                             
-                            // [ADDED] หยุดรอ 100ms เพื่อให้ UI อัปเดตและป้องกันหน้าค้าง (เพิ่มเวลาพักให้นานขึ้นเล็กน้อย)
-                            await new Promise(resolve => setTimeout(resolve, 100));
+                            // [ADDED] หยุดรอ 500ms (ครึ่งวินาที) เพื่อให้ UI อัปเดตและป้องกันหน้าค้างแน่นอน
+                            await new Promise(resolve => setTimeout(resolve, 500));
                         }
                     }
                     
