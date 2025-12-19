@@ -87,9 +87,10 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        const APP_ID_FIXED = "eyedm-production"; 
+        // [FIXED] ใช้ __app_id แบบ Dynamic เพื่อให้ทำงานใน Canvas ได้ถูกต้อง และลบ/เพิ่มข้อมูลได้จริง
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : "eyedm-production";
         const getCollection = (collectionName) => {
-            return db.collection(`artifacts/${APP_ID_FIXED}/public/data/${collectionName}`);
+            return db.collection(`artifacts/${APP_ID}/public/data/${collectionName}`);
         };
         
         // --- CONSTANTS ---
@@ -632,7 +633,7 @@
                 };
 
                 const initScanner = async () => {
-                     if (!window.Tesseract) { 
+                      if (!window.Tesseract) { 
                         await new Promise(r => setTimeout(r, 500));
                         if (!window.Tesseract) {
                             alert("ระบบสแกนยังโหลดไม่เสร็จ"); 
@@ -1062,29 +1063,29 @@
                                          
                                          {historyData.findings && (
                                              <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
-                                                <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
-                                                <div className="mt-1">
-                                                    {Object.entries(historyData.findings || {}).map(([key, val]) => {
-                                                        const sides = [];
-                                                        if (val.L) sides.push('L');
-                                                        if (val.R) sides.push('R');
-                                                        if (sides.length > 0 && key !== 'Normal') {
-                                                            return (
-                                                                <div key={key} className="flex items-center gap-1 mb-0.5">
-                                                                    <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
-                                                                    <span>{key} ({sides.join(',')})</span>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        return null;
-                                                    })}
-                                                    {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
-                                                        <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
-                                                    }
-                                                </div>
-                                             </div>
+                                                 <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
+                                                 <div className="mt-1">
+                                                     {Object.entries(historyData.findings || {}).map(([key, val]) => {
+                                                         const sides = [];
+                                                         if (val.L) sides.push('L');
+                                                         if (val.R) sides.push('R');
+                                                         if (sides.length > 0 && key !== 'Normal') {
+                                                             return (
+                                                                 <div key={key} className="flex items-center gap-1 mb-0.5">
+                                                                     <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
+                                                                     <span>{key} ({sides.join(',')})</span>
+                                                                 </div>
+                                                             );
+                                                         }
+                                                         return null;
+                                                     })}
+                                                     {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
+                                                         <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
+                                                     }
+                                                 </div>
+                                              </div>
                                          )}
-                                     </div>
+                                      </div>
                                 )}
 
                                 {patient.footExam && (
@@ -1251,18 +1252,35 @@
             const [uploadError, setUploadError] = useState('');
             const [validCount, setValidCount] = useState(0);
             
+            // Helper: Parse Thai Date (DD/MM/YYYY, with possible BE year)
+            const parseThaiDate = (dateStr) => {
+                if (!dateStr) return null;
+                let d = new Date(dateStr);
+                if (!isNaN(d.getTime())) return d;
+                
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    let year = parseInt(parts[2]);
+                    if (year > 2400) year -= 543; // Convert BE to AD
+                    const month = parseInt(parts[1]) - 1;
+                    const day = parseInt(parts[0]);
+                    d = new Date(year, month, day);
+                    if (!isNaN(d.getTime())) return d;
+                }
+                return null;
+            };
+
             // [ADDED] ฟังก์ชันแปลงค่าผลตรวจจาก CSV ให้ตรงกับ Dropdown ของระบบ (Normalization)
             const normalizeDR = (val) => {
                 if (!val) return '';
                 const v = val.toLowerCase().trim();
-                // จับคู่คำค้นหา (Keywords) เข้ากับค่ามาตรฐาน
                 if (v.includes('no') || v.includes('normal') || v.includes('ปกติ')) return "No DR";
                 if (v.includes('mild')) return "Mild DR";
                 if (v.includes('mod')) return "Moderate DR";
                 if (v.includes('sev')) return "Severe DR";
                 if (v.includes('pdr') || v.includes('proli')) return "PDR";
                 if (v.includes('incomp') || v.includes('ชัด') || v.includes('ไม่พบ') || v.includes('image') || v.includes('found')) return "ไม่พบจอประสาทตา";
-                return val; // ถ้าไม่ตรงเงื่อนไข ให้เก็บค่าเดิมไว้
+                return val;
             };
             
             const downloadTemplate = () => {
@@ -1285,17 +1303,13 @@
                     const sVal = source[key];
                     const tVal = result[key];
                     
-                    // ถ้าข้อมูลใหม่มีค่า (ไม่ว่าง)
                     if (sVal !== undefined && sVal !== null && sVal !== '') {
-                        // ถ้าข้อมูลเดิมว่าง (undefined, null, empty string) -> ให้เติมค่าใหม่
                         if (tVal === undefined || tVal === null || tVal === '') {
                             result[key] = sVal;
                         } 
-                        // ถ้าเป็น Object ทั้งคู่ (เช่น part1, history) ให้มุดเข้าไปเช็คข้างใน (Recursive)
                         else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
                             result[key] = mergeFillMissing(tVal, sVal);
                         }
-                        // กรณีอื่น (ข้อมูลเดิมมีค่าอยู่แล้ว) -> ไม่ทำอะไร (รักษาค่าเดิมไว้)
                     }
                 }
                 return result;
@@ -1303,21 +1317,54 @@
 
             const parseCSV = (text) => {
                 const lines = text.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
-                const headers = lines[0].split(',').map(h => h.trim());
+                // Remove BOM if present
+                const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
                 const data = []; let validCount = 0; const headerMap = {};
                 CSV_HEADERS.forEach(h => headerMap[h] = headers.findIndex(header => header.trim().toLowerCase() === h.toLowerCase()));
+                
+                // Helper regex to split CSV line respecting quotes
+                const splitCSVLine = (line) => {
+                    const matches = [];
+                    let match;
+                    const regex = /(?:^|,)(?:"([^"]*)"|([^,]*))/g;
+                    while ((match = regex.exec(line))) {
+                        // match[1] is quoted value, match[2] is unquoted value
+                        if (match.index === regex.lastIndex) regex.lastIndex++; // Avoid infinite loop
+                        let val = match[1] !== undefined ? match[1] : match[2];
+                        matches.push(val ? val.trim() : "");
+                    }
+                    // Remove the last empty match that regex often produces at end of string
+                    if (matches.length > headers.length) matches.pop(); 
+                    return matches;
+                };
+
                 for (let i = 1; i < lines.length; i++) {
                     if (!lines[i].trim()) continue;
-                    const values = lines[i].split(',').map(v => v.trim()); const patient = {};
+                    // Use robust splitter or fallback to simple split
+                    let values;
+                    if (lines[i].includes('"')) {
+                         values = splitCSVLine(lines[i]);
+                    } else {
+                         values = lines[i].split(',').map(v => v.trim());
+                    }
+
+                    const patient = {};
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
-                    if (patient.idCard && patient.idCard.length === 13 && patient.name) { 
-                        // Deterministic ID Logic for Import
-                        const examDate = patient.referralDate ? new Date(patient.referralDate) : new Date();
+                    
+                    if (patient.idCard && patient.idCard.replace(/[^0-9]/g, '').length === 13 && patient.name) { 
+                        patient.idCard = patient.idCard.replace(/[^0-9]/g, ''); // Sanitize ID Card
+                        
+                        // Robust Date Parsing
+                        let examDate = new Date();
+                        if (patient.referralDate) {
+                            const parsed = parseThaiDate(patient.referralDate);
+                            if (parsed) examDate = parsed;
+                        }
                         
                         // Calculate Age
                         if (patient.dob) {
-                            const dobDate = new Date(patient.dob);
-                            if (!isNaN(dobDate)) {
+                            const dobDate = parseThaiDate(patient.dob);
+                            if (dobDate) {
                                 let age = examDate.getFullYear() - dobDate.getFullYear();
                                 const m = examDate.getMonth() - dobDate.getMonth();
                                 if (m < 0 || (m === 0 && examDate.getDate() < dobDate.getDate())) age--;
@@ -1327,8 +1374,8 @@
 
                         // Calculate DM Years
                         if (patient.dxDate) {
-                            const dxDate = new Date(patient.dxDate);
-                            if (!isNaN(dxDate)) {
+                            const dxDate = parseThaiDate(patient.dxDate);
+                            if (dxDate) {
                                 let years = examDate.getFullYear() - dxDate.getFullYear();
                                 const m = examDate.getMonth() - dxDate.getMonth();
                                 if (m < 0 || (m === 0 && examDate.getDate() < dxDate.getDate())) years--;
@@ -1336,16 +1383,13 @@
                             }
                         }
 
-                        // Auto Gender: เรียกใช้ฟังก์ชันกลาง เพื่อรองรับชื่อติดกันและคำนำหน้าหลากหลาย
                         patient.gender = getGenderFromName(patient.name);
 
-                        // [MODIFIED] แปลงค่า DR Stage ให้เป็นมาตรฐานก่อนสร้าง Object
                         const normDrR = normalizeDR(patient.drStageR);
                         const normDrL = normalizeDR(patient.drStageL);
                         const normLastDrR = normalizeDR(patient.lastDrStageR);
                         const normLastDrL = normalizeDR(patient.lastDrStageL);
 
-                        // Create import object
                         const importData = { 
                             part1: {
                                 idCard: patient.idCard,
@@ -1368,12 +1412,10 @@
                             status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
                             isDeleted: false, 
                             createdAt: examDate,
-                            // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
                             history: {
                                 date: patient.lastExamDate || '',
-                                drStageR: normLastDrR, // ใช้ค่าที่แปลงแล้ว
-                                drStageL: normLastDrL,  // ใช้ค่าที่แปลงแล้ว
-                                // [ADDED] เก็บข้อมูลสุขภาพลง History
+                                drStageR: normLastDrR, 
+                                drStageL: normLastDrL,  
                                 vaRight: patient.lastVaRight || '',
                                 vaLeft: patient.lastVaLeft || '',
                                 hba1c: patient.lastHba1c || '',
@@ -1405,62 +1447,53 @@
                 setLoading(true); 
                 setUploadError(''); 
                 try { 
-                    // 1. เตรียมการอ่านข้อมูลทั้งหมดเพื่อเช็คก่อนบันทึก
+                    // 1. Fetch existing data first (Read Phase)
                     const tasks = csvData.map(async (data) => {
                         const dateStr = data.createdAt.toISOString().split('T')[0];
                         const docId = `${data.part1.idCard}_${dateStr}`;
                         const docRef = collection.doc(docId);
-                        // ดึงข้อมูลเก่ามาดูก่อน
                         const snap = await docRef.get();
-                        // [IMPORTANT] Clone data เพื่อไม่ให้กระทบต้นฉบับเวลาลบ field
                         return { docRef, data: JSON.parse(JSON.stringify(data)), snap };
                     });
 
-                    // รอให้ดึงข้อมูลครบทุกรายการ
                     const results = await Promise.all(tasks);
 
-                    const batch = db.batch(); 
-                    let count = 0; 
-                    
-                    results.forEach(({ docRef, data, snap }) => { 
-                        if (snap.exists) {
-                            // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
-                            const existingData = snap.data();
-                            
-                            // [MODIFIED] กฎที่ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ถ้ามีอยู่แล้ว ห้าม CSV ทับ)
-                            if (existingData.part1?.dob) {
-                                delete data.part1.dob;
-                                delete data.part1.age; 
-                            }
-                            if (existingData.part1?.dxDate) {
-                                delete data.part1.dxDate;
-                                delete data.part1.dmYears; 
-                            }
+                    // 2. Batch Write (Chunked to 400 per batch)
+                    const BATCH_SIZE = 400;
+                    let processedCount = 0;
 
-                            // [MODIFIED] กฎที่ 2: บังคับอัปเดต "ชื่อ-สกุล" และ "เลขบัตร" จาก CSV เสมอ (Overwrite)
-                            // เพื่อให้สามารถแก้ไขคำผิดหรือข้อมูลส่วนตัวได้จากไฟล์ใหม่
-                            if (data.part1?.name) {
-                                if (!existingData.part1) existingData.part1 = {};
-                                existingData.part1.name = data.part1.name;
+                    for (let i = 0; i < results.length; i += BATCH_SIZE) {
+                        const chunk = results.slice(i, i + BATCH_SIZE);
+                        const batch = db.batch();
+                        
+                        chunk.forEach(({ docRef, data, snap }) => {
+                            if (snap.exists) {
+                                const existingData = snap.data();
+                                // Rules for protecting existing data
+                                if (existingData.part1?.dob) { delete data.part1.dob; delete data.part1.age; }
+                                if (existingData.part1?.dxDate) { delete data.part1.dxDate; delete data.part1.dmYears; }
+                                // Rules for overwriting
+                                if (data.part1?.name) {
+                                    if (!existingData.part1) existingData.part1 = {};
+                                    existingData.part1.name = data.part1.name;
+                                }
+                                if (data.part1?.idCard) {
+                                    if (!existingData.part1) existingData.part1 = {};
+                                    existingData.part1.idCard = data.part1.idCard;
+                                }
+                                const mergedData = mergeFillMissing(existingData, data);
+                                batch.set(docRef, mergedData); 
+                            } else {
+                                batch.set(docRef, data); 
                             }
-                            if (data.part1?.idCard) {
-                                if (!existingData.part1) existingData.part1 = {};
-                                existingData.part1.idCard = data.part1.idCard;
-                            }
-
-                            // รวมข้อมูล: สำหรับข้อมูลอื่นๆ ให้ใช้ Logic "เติมเฉพาะช่องว่าง" (ไม่ทับของเดิม)
-                            const mergedData = mergeFillMissing(existingData, data);
-                            batch.set(docRef, mergedData); 
-                        } else {
-                            // กรณีไม่มีข้อมูล: สร้างใหม่เลย
-                            batch.set(docRef, data); 
-                        }
-                        count++; 
-                    }); 
+                            processedCount++;
+                        });
+                        
+                        await batch.commit();
+                    }
                     
-                    if(count===0) { setUploadError('No valid data'); setLoading(false); return; } 
-                    await batch.commit(); 
-                    setModal({ visible: true, title: "สำเร็จ", message: `ตรวจสอบและเติมข้อมูล ${count} รายการเรียบร้อยแล้ว`, onConfirm: () => onBack('admin_home') }); 
+                    if(processedCount===0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูลสำเร็จ ${processedCount} รายการ`, onConfirm: () => onBack('admin_home') }); 
                 } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
 
