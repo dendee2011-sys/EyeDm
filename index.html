@@ -271,7 +271,7 @@
             const [agencyFilter, setAgencyFilter] = useState('All');
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
-            // [ADDED] ฟังก์ชัน Export CSV สำหรับ PCU
+            // ฟังก์ชัน Export CSV สำหรับ PCU
             const exportData = () => {
                 const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
                 const BOM = "\uFEFF"; 
@@ -325,7 +325,7 @@
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
                     
-                    // [MODIFIED] ปรับเงื่อนไข: ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported/ประวัติเก่าได้ทั้งหมด
+                    // ปรับเงื่อนไข: ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported/ประวัติเก่าได้ทั้งหมด
                     // แต่ถ้าไม่ได้ค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported ไว้ตามเดิมเพื่อไม่ให้รก
                     if (term.length === 0 && p.status === 'Imported') return false;
 
@@ -371,7 +371,7 @@
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Icon name={role==='PCU'?'home':'building'} className={role==='PCU'?'text-green-600':'text-blue-600'} />{role === 'PCU' ? 'ทะเบียนผู้ป่วย' : 'รายการส่งตัว (Hospital)'}</h2>
                             {role === 'PCU' && <div className="text-sm text-green-700 mt-1 font-semibold">{agencyCode} - {agencyName}</div>}
                         </div>
-                        {/* [MODIFIED] ปรับปุ่มเพิ่มผู้ป่วยให้ใหญ่ เด่นชัด และกดง่ายขึ้น */}
+                        {/* ปรับปุ่มเพิ่มผู้ป่วยให้ใหญ่ เด่นชัด และกดง่ายขึ้น */}
                         {role === 'PCU' && (
                             <button 
                                 onClick={() => onNew()} 
@@ -395,12 +395,12 @@
                         )}
                         <div className="flex-1 flex items-center w-full border rounded px-2 bg-white ring-1 ring-transparent focus-within:ring-blue-500">
                             <Icon name="search" className="text-gray-400"/>
-                            {/* [MODIFIED] ปรับข้อความ Placeholder ให้สื่อถึงการค้นหาประวัติเดิม */}
+                            {/* ปรับข้อความ Placeholder ให้สื่อถึงการค้นหาประวัติเดิม */}
                             <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาประวัติ/ชื่อ/เลขบัตร..." className="flex-1 p-2 outline-none text-sm w-full" />
                             {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
                         
-                        {/* [MODIFIED] เพิ่มปุ่มเพิ่มผู้ป่วยใหม่ในแถบค้นหา (Quick Add) - ส่ง term ไปด้วย */}
+                        {/* เพิ่มปุ่มเพิ่มผู้ป่วยใหม่ในแถบค้นหา (Quick Add) - ส่ง term ไปด้วย */}
                         {role === 'PCU' && (
                             <div className="flex gap-2">
                                 <button onClick={() => onNew(term)} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm hover:bg-green-700 whitespace-nowrap"><Icon name="plus-circle" size={16}/> เพิ่มผู้ป่วย</button>
@@ -412,7 +412,7 @@
                         <table className="w-full text-sm text-left whitespace-nowrap">
                             <thead className="bg-gray-50 border-b text-gray-500">
                                 <tr>
-                                    {/* [ADDED] เพิ่มหัวตารางลำดับ */}
+                                    {/* เพิ่มหัวตารางลำดับ */}
                                     <th className="p-3 text-center w-10">#</th>
                                     <th className="p-3">วันที่</th>
                                     <th className="p-3">ผู้ป่วย / ID</th>
@@ -426,7 +426,7 @@
                                     const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
                                     return (
                                     <tr key={p.id} className="hover:bg-gray-50">
-                                            {/* [ADDED] แสดงลำดับที่ (index + 1) */}
+                                            {/* แสดงลำดับที่ (index + 1) */}
                                             <td className="p-3 text-center align-top text-gray-400 font-bold">{index + 1}</td>
                                             
                                             <td className="p-3 text-gray-500 align-top">{formatDate(p.createdAt)}</td>
@@ -451,7 +451,7 @@
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
                                                     {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
                                                     
-                                                    {/* [MODIFIED] ปุ่มลบแบบ Soft Delete: ไม่ลบข้อมูลจริง แต่ทำเครื่องหมายว่าลบ และบันทึกว่าใครลบ/ลบเมื่อไหร่ */}
+                                                    {/* ปุ่มลบแบบ Soft Delete: ไม่ลบข้อมูลจริง แต่ทำเครื่องหมายว่าลบ และบันทึกว่าใครลบ/ลบเมื่อไหร่ */}
                                                     {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
                                                         setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ? (ข้อมูลจะถูกเก็บไว้ในฐานข้อมูล แต่ซ่อนจากหน้านี้)", onConfirm: async () => { 
                                                             try { 
@@ -484,6 +484,9 @@
             const [showScanner, setShowScanner] = useState(false);
             const [scanStatus, setScanStatus] = useState('');
             
+            // ใช้ ref เพื่อจำว่าเลขนี้ถูกเติม Auto ไปแล้วหรือยัง (ป้องกัน Loop จอขาว)
+            const lastAutoFilledId = useRef('');
+
             const [recordDate, setRecordDate] = useState(() => {
                 if (isEditing && patientToEdit.createdAt) {
                     const d = new Date(patientToEdit.createdAt);
@@ -512,7 +515,7 @@
                 return checkDigit === parseFloat(id.charAt(12));
             };
 
-            // [MODIFIED] Scanner Effect: Adaptive OCR
+            // Scanner Effect: Adaptive OCR
             useEffect(() => {
                 if (!showScanner) return;
 
@@ -696,36 +699,36 @@
                 }
             }, [recordDate, form.dob, form.dxDate]);
 
-            // [MODIFIED] Logic กลับมาเติมข้อมูลอัตโนมัติทันทีเมื่อครบ 13 หลัก (ไม่ต้องถาม)
+            // Logic กลับมาเติมข้อมูลอัตโนมัติทันทีเมื่อครบ 13 หลัก (ไม่ต้องถาม) + ป้องกัน Loop
             useEffect(() => {
                 if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
-                    // 1. ค้นหาประวัติทั้งหมด
+                    // Prevent loop: if we just auto-filled this ID, don't do it again
+                    if (form.idCard === lastAutoFilledId.current) return;
+
                     const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
                     
                     if(historyMatches.length > 0) { 
                         setFoundOld(true); 
-                        
-                        // 2. เรียงลำดับจาก ใหม่ -> เก่า
                         historyMatches.sort((a, b) => b.createdAt - a.createdAt);
                         const latestRecord = historyMatches[0];
 
-                        // 3. เตรียมข้อมูลที่จะเติม
                         let loadedPart1 = { ...latestRecord.part1 };
                         
-                        // ถ้าข้อมูลเก่าไม่มีเพศ ให้ลอง Auto-detect จากชื่อใหม่
                         if (!loadedPart1.gender && loadedPart1.name) {
                             loadedPart1.gender = getGenderFromName(loadedPart1.name);
                         }
 
-                        // 4. เติมข้อมูลลงฟอร์มทันที (คงเลขบัตรที่พิมพ์ไว้)
                         setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
+                        lastAutoFilledId.current = form.idCard; // Mark as filled
                         
-                        // ดึงความเสี่ยงเท้าล่าสุดมาแสดง
                         if (latestRecord.footExam) setFootStatus(latestRecord.footExam.riskLevel);
                     } else { 
                         setFoundOld(false); 
                         setFootStatus(null);
                     }
+                } else if (form.idCard.length < 13) {
+                     lastAutoFilledId.current = '';
+                     setFoundOld(false);
                 }
             }, [form.idCard, existingPatients, isEditing]);
 
@@ -806,7 +809,7 @@
                                 </div>
                             </div>
 
-                            {/* [MODIFIED] Only OCR Camera Modal */}
+                            {/* Only OCR Camera Modal */}
                             {showScanner && (
                                 <div className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col items-center justify-center p-4">
                                     <div className="relative w-full max-w-md rounded-xl overflow-hidden border-2 border-white/30 shadow-2xl bg-black h-64">
@@ -882,8 +885,8 @@
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <h3 className="text-sm font-bold text-gray-700 mb-3">ค่าสายตา (Visual Acuity)</h3>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <select value={form.vaRight || ''} onChange={e=>setForm({...form, vaRight:e.target.value})} className="w-full p-2 border rounded text-sm"><option value="">ขวา (Right)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
-                                    <select value={form.vaLeft || ''} onChange={e=>setForm({...form, vaLeft:e.target.value})} className="w-full p-2 border rounded text-sm"><option value="">ซ้าย (Left)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                                    <select value={form.vaRight || ''} onChange={e=>setForm({...form, vaRight:e.target.value})} className="w-full p-2 border rounded-lg text-sm"><option value="">ขวา (Right)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
+                                    <select value={form.vaLeft || ''} onChange={e=>setForm({...form, vaLeft:e.target.value})} className="w-full p-2 border rounded-lg text-sm"><option value="">ซ้าย (Left)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
                                 </div>
                             </div>
                             <button onClick={save} disabled={saving} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700">{saving ? 'บันทึก...' : 'บันทึกและส่งตัว'}</button>
@@ -1375,7 +1378,7 @@
                             // กรณีมีข้อมูลอยู่แล้ว: ใช้ฟังก์ชัน mergeFillMissing เพื่อเติมเฉพาะช่องว่าง
                             const existingData = snap.data();
                             
-                            // [MODIFIED] กฎพิเศษ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ห้าม CSV ทับ)
+                            // [MODIFIED] กฎที่ 1: ปกป้องข้อมูลวันเกิดและวันวินิจฉัยเดิม (ถ้ามีอยู่แล้ว ห้าม CSV ทับ)
                             if (existingData.part1?.dob) {
                                 delete data.part1.dob;
                                 delete data.part1.age; 
@@ -1385,8 +1388,8 @@
                                 delete data.part1.dmYears; 
                             }
 
-                            // [MODIFIED] กฎพิเศษ 2: บังคับอัปเดต ชื่อ และ เลขบัตร จาก CSV เสมอ (แก้ชื่อผิด/เลขผิด)
-                            // เราจะอัปเดตข้อมูลใน existingData ก่อนส่งไปรวม เพื่อให้ mergeFillMissing ยึดค่าใหม่นี้
+                            // [MODIFIED] กฎที่ 2: บังคับอัปเดต "ชื่อ-สกุล" และ "เลขบัตร" จาก CSV เสมอ (Overwrite)
+                            // เพื่อให้สามารถแก้ไขคำผิดหรือข้อมูลส่วนตัวได้จากไฟล์ใหม่
                             if (data.part1?.name) {
                                 if (!existingData.part1) existingData.part1 = {};
                                 existingData.part1.name = data.part1.name;
@@ -1396,6 +1399,7 @@
                                 existingData.part1.idCard = data.part1.idCard;
                             }
 
+                            // รวมข้อมูล: สำหรับข้อมูลอื่นๆ ให้ใช้ Logic "เติมเฉพาะช่องว่าง" (ไม่ทับของเดิม)
                             const mergedData = mergeFillMissing(existingData, data);
                             batch.set(docRef, mergedData); 
                         } else {
@@ -1932,22 +1936,22 @@
                         setAgencyCode(code);
                         if (code === '20000') {
                             setRole('FOOT'); setAgencyName('คลินิกเท้าเบาหวาน'); setView('foot_dashboard');
-                        } else if (code === '10700') { 
+                        } else if (code === '10700') { 
                             setRole('HOSPITAL'); setAgencyName('โรงพยาบาลศรีสะเกษ'); setView('dashboard');
-                        } else { 
+                        } else { 
                             setRole('PCU'); setAgencyName(STATIC_PCU_DATA[code] || `PCU ${code}`); setView('dashboard');
                         }
                     } else { setRole(null); setAgencyCode(null); }
                 });
-            }, []); 
+            }, []); 
 
             useEffect(() => {
                 if(!user || !role) return;
                 const collection = getCollection('patients_referrals');
                 const unsub = collection.onSnapshot(snap => {
-                    const newPatients = snap.docs.map(d => { 
-                        const data = d.data(); 
-                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
+                    const newPatients = snap.docs.map(d => { 
+                        const data = d.data(); 
+                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
                     });
                     // [MODIFIED] เรียงลำดับจาก "เก่าไปใหม่" (ใครมาก่อนอยู่อันดับ 1, 2, 3...)
                     // ใช้ a - b แทน b - a
