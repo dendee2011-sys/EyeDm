@@ -1139,19 +1139,68 @@
             );
         };
 
-        const AdminHome = ({ onNavigate }) => (
-            <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
-                <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
-                <div className="bg-white p-6 rounded-xl shadow-lg border border-blue-100">
-                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-800"><Icon name="settings" className="text-blue-600"/> Admin Tools</h2>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100"><div><h3 className="font-bold text-blue-900">จัดการรายชื่อ PCU</h3><p className="text-sm text-blue-700">เพิ่มหน่วยงาน PCU ใหม่ลงในระบบ Firebase</p></div><button onClick={()=>onNavigate('manage_agencies')} className="bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded hover:bg-blue-100 font-bold">จัดการ</button></div>
-                        <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-100"><div><h3 className="font-bold text-yellow-900">นำเข้าข้อมูล (CSV / History)</h3><p className="text-sm text-yellow-700">อัปโหลดผู้ป่วยหรือผลตรวจเก่า</p></div><button onClick={()=>onNavigate('import_csv')} className="bg-white border border-yellow-200 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-100 font-bold">นำเข้า</button></div>
-                        <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-100"><div><h3 className="font-bold text-green-900">รายงานและสถิติ เลือกได้</h3><p className="text-sm text-green-700">ดูภาพรวมและส่งออกข้อมูล</p></div><button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded hover:bg-green-100 font-bold">ดูรายงาน</button></div>
+        // [MODIFIED] ปรับ AdminHome ให้รับ setModal เพื่อแสดง Pop-up ยืนยันการลบ
+        const AdminHome = ({ onNavigate, setModal }) => {
+            const handleClearDatabase = () => {
+                setModal({
+                    visible: true,
+                    title: "⚠️ ล้างฐานข้อมูลทั้งหมด",
+                    message: "คุณแน่ใจหรือไม่ที่จะลบข้อมูลผู้ป่วยทั้งหมดออกจากระบบ? การกระทำนี้ไม่สามารถย้อนกลับได้!",
+                    onConfirm: async () => {
+                        try {
+                            const collectionRef = getCollection('patients_referrals');
+                            const snapshot = await collectionRef.get();
+                            
+                            if (snapshot.empty) {
+                                alert("ไม่มีข้อมูลในฐานข้อมูล");
+                                setModal({ visible: false });
+                                return;
+                            }
+
+                            // ลบข้อมูลทีละ Batch (Firestore จำกัด 500 operation/batch)
+                            const BATCH_SIZE = 400;
+                            const chunks = [];
+                            for (let i = 0; i < snapshot.docs.length; i += BATCH_SIZE) {
+                                chunks.push(snapshot.docs.slice(i, i + BATCH_SIZE));
+                            }
+
+                            for (const chunk of chunks) {
+                                const batch = db.batch();
+                                chunk.forEach(doc => batch.delete(doc.ref));
+                                await batch.commit();
+                            }
+
+                            setModal({ visible: false });
+                            alert(`ล้างข้อมูลเรียบร้อยแล้ว (${snapshot.size} รายการ)`);
+                        } catch (error) {
+                            console.error("Error clearing DB:", error);
+                            alert("เกิดข้อผิดพลาด: " + error.message);
+                            setModal({ visible: false });
+                        }
+                    }
+                });
+            };
+
+            return (
+                <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
+                    <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-blue-100">
+                        <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-800"><Icon name="settings" className="text-blue-600"/> Admin Tools</h2>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100"><div><h3 className="font-bold text-blue-900">จัดการรายชื่อ PCU</h3><p className="text-sm text-blue-700">เพิ่มหน่วยงาน PCU ใหม่ลงในระบบ Firebase</p></div><button onClick={()=>onNavigate('manage_agencies')} className="bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded hover:bg-blue-100 font-bold">จัดการ</button></div>
+                            <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-100"><div><h3 className="font-bold text-yellow-900">นำเข้าข้อมูล (CSV / History)</h3><p className="text-sm text-yellow-700">อัปโหลดผู้ป่วยหรือผลตรวจเก่า</p></div><button onClick={()=>onNavigate('import_csv')} className="bg-white border border-yellow-200 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-100 font-bold">นำเข้า</button></div>
+                            <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-100"><div><h3 className="font-bold text-green-900">รายงานและสถิติ เลือกได้</h3><p className="text-sm text-green-700">ดูภาพรวมและส่งออกข้อมูล</p></div><button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded hover:bg-green-100 font-bold">ดูรายงาน</button></div>
+                            
+                            {/* [ADDED] ปุ่มล้างฐานข้อมูล */}
+                            <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                                <div><h3 className="font-bold text-red-900">ล้างฐานข้อมูล (Reset Data)</h3><p className="text-sm text-red-700">ลบข้อมูลผู้ป่วยทั้งหมดออกจากระบบ</p></div>
+                                <button onClick={handleClearDatabase} className="bg-white border border-red-200 text-red-700 px-4 py-2 rounded hover:bg-red-100 font-bold flex items-center gap-1"><Icon name="trash-2" size={16}/> ล้างข้อมูล</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        );
+            );
+        };
 
         const ManageAgencies = ({ onBack, agenciesMap }) => {
             const [code, setCode] = useState('');
@@ -1936,22 +1985,22 @@
                         setAgencyCode(code);
                         if (code === '20000') {
                             setRole('FOOT'); setAgencyName('คลินิกเท้าเบาหวาน'); setView('foot_dashboard');
-                        } else if (code === '10700') { 
+                        } else if (code === '10700') { 
                             setRole('HOSPITAL'); setAgencyName('โรงพยาบาลศรีสะเกษ'); setView('dashboard');
-                        } else { 
+                        } else { 
                             setRole('PCU'); setAgencyName(STATIC_PCU_DATA[code] || `PCU ${code}`); setView('dashboard');
                         }
                     } else { setRole(null); setAgencyCode(null); }
                 });
-            }, []); 
+            }, []); 
 
             useEffect(() => {
                 if(!user || !role) return;
                 const collection = getCollection('patients_referrals');
                 const unsub = collection.onSnapshot(snap => {
-                    const newPatients = snap.docs.map(d => { 
-                        const data = d.data(); 
-                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
+                    const newPatients = snap.docs.map(d => { 
+                        const data = d.data(); 
+                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
                     });
                     // [MODIFIED] เรียงลำดับจาก "เก่าไปใหม่" (ใครมาก่อนอยู่อันดับ 1, 2, 3...)
                     // ใช้ a - b แทน b - a
@@ -2030,7 +2079,9 @@
                     
                     {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     
-                    {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} />}
+                    {/* [MODIFIED] ส่ง setModal ไปให้ AdminHome ใช้งาน */}
+                    {role === 'HOSPITAL' && view === 'admin_home' && <AdminHome onNavigate={setView} setModal={setModal} />}
+                    
                     {role === 'HOSPITAL' && view === 'manage_agencies' && <ManageAgencies onBack={setView} agenciesMap={agenciesMap} />}
                     {role === 'HOSPITAL' && view === 'import_csv' && <HospitalImport onBack={setView} setModal={setModal} />}
                     {role === 'HOSPITAL' && view === 'reports' && <ReportsPage onBack={() => setView('admin_home')} patients={patients} agenciesMap={agenciesMap} />}
