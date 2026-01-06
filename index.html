@@ -193,8 +193,11 @@
             }, [patients, role, agencyCode, selectedDate]);
 
             const totalPatients = myPatients.length;
+            // [MODIFIED] แยกการนับคิวอิสระจากกัน
+            // Eye Queue: นับเฉพาะคนที่สถานะยังเป็น Waiting (ยังไม่ได้ตรวจตา)
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
-            const waitingFoot = myPatients.filter(p => p.status === 'Waiting' && !p.footExam).length;
+            // Foot Queue: นับคนที่ยังไม่มีข้อมูล footExam (ไม่สนว่าตรวจตาเสร็จหรือยัง)
+            const waitingFoot = myPatients.filter(p => !p.footExam).length;
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 animate-fade-in">
@@ -348,14 +351,9 @@
                     }
                 });
 
-                // [MODIFIED] Sort: Completed items go to the bottom
-                return res.sort((a, b) => {
-                    const aDone = a.status === 'Completed';
-                    const bDone = b.status === 'Completed';
-                    // If A is done and B is not, A > B (A goes after B)
-                    if (aDone !== bDone) return aDone ? 1 : -1;
-                    return 0; // Preserve existing order (Date)
-                });
+                // [MODIFIED] ยกเลิกการเรียงคนตรวจเสร็จไปไว้ข้างล่าง ตามคำขอ "ห้ามเปลี่ยนคิวจากการลงทะเบียนมา"
+                // ใช้ลำดับเดิมตามเวลาที่ลงทะเบียน (createdAt) ซึ่งถูกเรียงมาแล้วจาก state patients
+                return res;
 
             }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
 
@@ -1823,14 +1821,8 @@
                 const matchesDate = pDateStr === selectedDate;
 
                 return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
-            })
-            // [MODIFIED] Sort: Foot exam done (มีค่า footExam) goes to bottom
-            .sort((a, b) => {
-                const aDone = !!a.footExam;
-                const bDone = !!b.footExam;
-                if (aDone === bDone) return 0; // ถ้าเหมือนกัน ไม่ต้องสลับ (รักษาลำดับเดิมตามเวลา)
-                return aDone ? 1 : -1; // ถ้า a เสร็จแล้ว (true) ให้ไปอยู่หลัง (1), ถ้ายังไม่เสร็จอยู่ก่อน (-1)
             });
+            // [MODIFIED] ยกเลิกการเรียง .sort(...) เพื่อให้ลำดับคิวคงที่ตามเวลาการลงทะเบียน
 
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
