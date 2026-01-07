@@ -177,11 +177,15 @@
             const myPatients = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
+                    // [MODIFIED] Queue Count should exclude Imported (raw data) unless searched, but for status bar we mostly care about active tasks.
+                    // Let's exclude Imported from general stats to avoid clutter, as they are not "Waiting" in the queue sense yet (until registered/updated).
                     if (p.status === 'Imported') return false; 
 
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
                     
                     if (selectedDate) {
+                        if (p.status === 'Waiting') return true; 
+
                         const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                         const offset = pDate.getTimezoneOffset() * 60000;
                         const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
@@ -193,10 +197,7 @@
             }, [patients, role, agencyCode, selectedDate]);
 
             const totalPatients = myPatients.length;
-            // [MODIFIED] แยกการนับคิวอิสระจากกัน
-            // Eye Queue: นับเฉพาะคนที่สถานะยังเป็น Waiting (ยังไม่ได้ตรวจตา)
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
-            // Foot Queue: นับคนที่ยังไม่มีข้อมูล footExam (ไม่สนว่าตรวจตาเสร็จหรือยัง)
             const waitingFoot = myPatients.filter(p => !p.footExam).length;
 
             return (
@@ -267,11 +268,16 @@
             );
         };
 
-        const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap, selectedDate, setSelectedDate }) => {
+        const Dashboard = ({ role, patients, onNew, onSelect, onEdit, setModal, agencyCode, agencyName, agenciesMap, selectedDate, setSelectedDate, onSearchTermChange }) => {
             const [term, setTerm] = useState('');
             const [agencyFilter, setAgencyFilter] = useState('All');
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
             
+            // Handle Search Change
+            useEffect(() => {
+                onSearchTermChange(term);
+            }, [term]);
+
             // ฟังก์ชัน Export CSV สำหรับ PCU
             const exportData = () => {
                 const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
@@ -326,8 +332,8 @@
                 let res = patients.filter(p => {
                     if (p.isDeleted) return false;
                     
-                    // ปรับเงื่อนไข: ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported/ประวัติเก่าได้ทั้งหมด
-                    // แต่ถ้าไม่ได้ค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported ไว้ตามเดิมเพื่อไม่ให้รก
+                    // [FIX] ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported ได้ เพื่อให้ค้นหาเจอ
+                    // ถ้าไม่มีการค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported เพื่อไม่ให้รก
                     if (term.length === 0 && p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
@@ -336,7 +342,8 @@
                     const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                     const offset = pDate.getTimezoneOffset() * 60000;
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
-                    const matchesDate = pDateStr === selectedDate;
+                    // [MODIFIED] Show if matches date OR if status is 'Waiting' (Queue)
+                    const matchesDate = pDateStr === selectedDate || p.status === 'Waiting';
 
                     let matchesAgency = true;
                     if (role === 'HOSPITAL') {
@@ -352,24 +359,12 @@
                     }
                 });
 
-                // [MODIFIED] Logic การเรียง: 
-                // 1. Assign เลขคิว (displayQueue) ตามลำดับเวลาการลงทะเบียน (ก่อน Sort) -> ทำให้เลขคิวคงที่ตลอดไป
-                // patients (ต้นทาง) ถูกเรียงตามเวลามาแล้ว (เก่า -> ใหม่) ดังนั้นใช้ index ได้เลย
-                // แต่เนื่องจากเรา filter ก่อน (เช่น filter ตามวันที่) การใช้ index ของ res จะทำให้เลขรันใหม่ทุกครั้งที่ค้นหา
-                // เพื่อให้ถูกต้องแม่นยำที่สุด เราควรใช้ลำดับจาก patients หลักที่ filter ตามวันที่แล้ว (แต่ยังไม่ filter search term)
-                // เพื่อความง่ายและ UX ที่ดี: "คิวที่ X ของวันนั้น"
-                // ดังนั้นโค้ดนี้จะรันเลขคิวใหม่ 1..N ของ "วันนั้น" เสมอ ไม่ว่าจะค้นหาหรือไม่
                 res = res.map((p, i) => ({ ...p, displayQueue: i + 1 }));
 
-                // 2. Sort ย้ายคนตรวจเสร็จ (Completed) ไปล่างสุด
                 return res.sort((a, b) => {
                     const aDone = a.status === 'Completed';
                     const bDone = b.status === 'Completed';
-                    
-                    // ถ้าสถานะต่างกัน: คนที่ตรวจเสร็จแล้ว (true) ให้ค่ามากกว่า (ไปอยู่หลัง/ล่าง)
                     if (aDone !== bDone) return aDone ? 1 : -1;
-                    
-                    // ถ้าสถานะเหมือนกัน (รอเหมือนกัน หรือ เสร็จเหมือนกัน): ให้เรียงตามลำดับคิวเดิม (displayQueue)
                     return a.displayQueue - b.displayQueue; 
                 });
 
@@ -419,7 +414,7 @@
                         <div className="flex-1 flex items-center w-full border rounded px-2 bg-white ring-1 ring-transparent focus-within:ring-blue-500">
                             <Icon name="search" className="text-gray-400"/>
                             {/* ปรับข้อความ Placeholder ให้สื่อถึงการค้นหาประวัติเดิม */}
-                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาประวัติ/ชื่อ/เลขบัตร..." className="flex-1 p-2 outline-none text-sm w-full" />
+                            <input type="text" value={term} onChange={e=>setTerm(e.target.value)} placeholder="ค้นหาประวัติ (ระบุเลขบัตร 13 หลัก เพื่อค้นหาจาก Server)..." className="flex-1 p-2 outline-none text-sm w-full" />
                             {term && <button onClick={()=>setTerm('')} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={14}/></button>}
                         </div>
                         
@@ -475,24 +470,24 @@
                                                     {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
                                                     
                                                     {/* ปุ่มลบแบบ Soft Delete: ไม่ลบข้อมูลจริง แต่ทำเครื่องหมายว่าลบ และบันทึกว่าใครลบ/ลบเมื่อไหร่ */}
-                                                    {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
-                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ? (ข้อมูลจะถูกเก็บไว้ในฐานข้อมูล แต่ซ่อนจากหน้านี้)", onConfirm: async () => { 
-                                                            try { 
-                                                                await getCollection('patients_referrals').doc(p.id).update({ 
+                                                    {!(role === 'PCU' && p.status === 'Completed') && <button onClick={() => { 
+                                                        setModal({ visible: true, title: "ลบข้อมูล", message: "ยืนยันการลบ? (ข้อมูลจะถูกเก็บไว้ในฐานข้อมูล แต่ซ่อนจากหน้านี้)", onConfirm: async () => { 
+                                                            try { 
+                                                                await getCollection('patients_referrals').doc(p.id).update({ 
                                                                     isDeleted: true,
                                                                     deletedAt: new Date(), // บันทึกเวลาที่ลบ
-                                                                    deletedBy: agencyCode  // บันทึกรหัสหน่วยงานคนที่ลบ
-                                                                }); 
-                                                                setModal({ visible: false }); 
-                                                            } 
-                                                            catch(e) { alert(e.message); } 
-                                                        } }); 
+                                                                    deletedBy: agencyCode  // บันทึกรหัสหน่วยงานคนที่ลบ
+                                                                }); 
+                                                                setModal({ visible: false }); 
+                                                            } 
+                                                            catch(e) { alert(e.message); } 
+                                                        } }); 
                                                     }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Icon name="trash-2" size={16}/></button>}
                                                 </div>
                                             </td>
                                     </tr>
                                 );})}
-                                {filtered.length===0 && <tr><td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก</td></tr>}
+                                {filtered.length===0 && <tr><td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก (ค้นหาด้วยเลขบัตร 13 หลักเพื่อดูประวัติเก่า)</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -500,7 +495,7 @@
             );
         };
 
-        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode, initialId }) => {
+        const PCUForm = ({ onBack, existingPatients, setModal, patientToEdit, agencyCode, initialId, onSearch }) => {
             const isEditing = !!patientToEdit;
             const defaultForm = { idCard: initialId || '', name:'', gender:'', age:'', dob:'', dxDate:'', dmYears:'', hba1c:'', bp:'', weight:'', height:'', vaRight:'', vaLeft:'', priorExam:'No', priorExamCount: 0, wheelchair: false };
             const [form, setForm] = useState(isEditing ? { ...defaultForm, ...patientToEdit.part1 } : defaultForm);
@@ -538,19 +533,26 @@
                 return checkDigit === parseFloat(id.charAt(12));
             };
 
+            // [ADDED] Trigger global search when ID is complete (เพื่อดึงประวัติเก่า/Imported)
+            useEffect(() => {
+                if (form.idCard && form.idCard.length === 13 && onSearch) {
+                    onSearch(form.idCard);
+                }
+            }, [form.idCard, onSearch]);
+
             // Scanner Effect: Adaptive OCR
             useEffect(() => {
                 if (!showScanner) return;
 
                 let stream = null;
                 let scanInterval = null;
-                let isScanning = false; 
+                let isScanning = false; 
 
                 const startCamera = async () => {
                     try {
                         // Use high res for better OCR
-                        stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                        stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
                         });
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
@@ -581,8 +583,8 @@
                                 const h = video.videoHeight;
                                 
                                 // Crop Logic: Expand to 90% width to handle variable distance/position
-                                const cropW = w * 0.90; 
-                                const cropH = h * 0.20; 
+                                const cropW = w * 0.90; 
+                                const cropH = h * 0.20; 
                                 const startX = (w - cropW) / 2;
                                 const startY = (h - cropH) / 2;
                                 
@@ -606,7 +608,7 @@
                                     totalBrightness += gray;
                                 }
                                 const avgBrightness = totalBrightness / (data.length / 4);
-                                const threshold = avgBrightness * 0.70; 
+                                const threshold = avgBrightness * 0.70; 
 
                                 // Binarization
                                 for (let i = 0; i < data.length; i += 4) {
@@ -614,17 +616,17 @@
                                     const g = data[i + 1];
                                     const b = data[i + 2];
                                     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                                    const contrast = gray > threshold ? 255 : 0; 
+                                    const contrast = gray > threshold ? 255 : 0; 
                                     data[i] = contrast; data[i + 1] = contrast; data[i + 2] = contrast;
                                 }
                                 ctx.putImageData(imageData, 0, 0);
 
                                 const { data: { text } } = await Tesseract.recognize(
-                                    canvas, 
+                                    canvas, 
                                     'eng',
-                                    { 
-                                        tessedit_char_whitelist: '0123456789', 
-                                        tessedit_pageseg_mode: '6' 
+                                    { 
+                                        tessedit_char_whitelist: '0123456789', 
+                                        tessedit_pageseg_mode: '6' 
                                     }
                                 );
                                 
@@ -651,16 +653,16 @@
                         } finally {
                             isScanning = false;
                         }
-                    }, 500); 
+                    }, 500); 
                 };
 
                 const initScanner = async () => {
-                      if (!window.Tesseract) { 
+                      if (!window.Tesseract) { 
                         await new Promise(r => setTimeout(r, 500));
                         if (!window.Tesseract) {
-                            alert("ระบบสแกนยังโหลดไม่เสร็จ"); 
-                            setShowScanner(false); 
-                            return; 
+                            alert("ระบบสแกนยังโหลดไม่เสร็จ"); 
+                            setShowScanner(false); 
+                            return; 
                         }
                     }
                     startCamera();
@@ -676,10 +678,10 @@
             const handleNameChange = (e) => {
                 const val = e.target.value;
                 const detectedGender = getGenderFromName(val);
-                setForm(prev => ({ 
-                    ...prev, 
-                    name: val, 
-                    gender: detectedGender !== '' ? detectedGender : prev.gender 
+                setForm(prev => ({ 
+                    ...prev, 
+                    name: val, 
+                    gender: detectedGender !== '' ? detectedGender : prev.gender 
                 }));
             };
 
@@ -730,8 +732,8 @@
 
                     const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
                     
-                    if(historyMatches.length > 0) { 
-                        setFoundOld(true); 
+                    if(historyMatches.length > 0) { 
+                        setFoundOld(true); 
                         historyMatches.sort((a, b) => b.createdAt - a.createdAt);
                         const latestRecord = historyMatches[0];
 
@@ -741,17 +743,17 @@
                             loadedPart1.gender = getGenderFromName(loadedPart1.name);
                         }
 
-                        setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
+                        setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
                         lastAutoFilledId.current = form.idCard; // Mark as filled
                         
                         if (latestRecord.footExam) setFootStatus(latestRecord.footExam.riskLevel);
-                    } else { 
-                        setFoundOld(false); 
+                    } else { 
+                        setFoundOld(false); 
                         setFootStatus(null);
                     }
                 } else if (form.idCard.length < 13) {
-                     lastAutoFilledId.current = '';
-                     setFoundOld(false);
+                      lastAutoFilledId.current = '';
+                      setFoundOld(false);
                 }
             }, [form.idCard, existingPatients, isEditing]);
 
@@ -759,14 +761,14 @@
                 if(!form.idCard || form.idCard.length !== 13 || !form.name) { setModal({visible:true, message: "กรุณากรอกข้อมูลให้ครบ"}); return; }
                 
                 const parts = recordDate.split('-');
-                const targetDate = new Date(parts[0], parts[1]-1, parts[2]); 
+                const targetDate = new Date(parts[0], parts[1]-1, parts[2]); 
                 const now = new Date();
                 targetDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
 
                 if (!isEditing && existingPatients) {
                     const duplicate = existingPatients.find(p => {
-                        if (p.isDeleted) return false; 
-                        if (p.part1?.idCard !== form.idCard) return false; 
+                        if (p.isDeleted) return false; 
+                        if (p.part1?.idCard !== form.idCard) return false; 
                         const pDate = p.createdAt;
                         return pDate.getDate() === targetDate.getDate() &&
                                pDate.getMonth() === targetDate.getMonth() &&
@@ -774,10 +776,10 @@
                     });
 
                     if (duplicate) {
-                        setModal({ 
-                            visible: true, 
-                            title: "ไม่สามารถบันทึกได้", 
-                            message: `ผู้ป่วยรายนี้ (${form.name}) มีรายการส่งตัวในวันที่เลือก (${recordDate}) แล้ว` 
+                        setModal({ 
+                            visible: true, 
+                            title: "ไม่สามารถบันทึกได้", 
+                            message: `ผู้ป่วยรายนี้ (${form.name}) มีรายการส่งตัวในวันที่เลือก (${recordDate}) แล้ว` 
                         });
                         return;
                     }
@@ -786,13 +788,13 @@
                 setSaving(true);
                 try {
                     const collection = getCollection('patients_referrals');
-                    const data = { 
-                        part1: form, 
+                    const data = { 
+                        part1: form, 
                         // [MODIFIED] ถ้าเป็นการแก้ไข (isEditing) ให้ใช้รหัสหน่วยงานเดิม (patientToEdit.referringAgencyCode)
                         // เพื่อป้องกันกรณี Hospital แก้ไขข้อมูลแล้วกลายเป็นของ Hospital เอง
-                        referringAgencyCode: isEditing ? patientToEdit.referringAgencyCode : agencyCode, 
+                        referringAgencyCode: isEditing ? patientToEdit.referringAgencyCode : agencyCode, 
                         createdAt: targetDate,
-                        ...(isEditing ? {} : { status: 'Waiting', isDeleted: false }) 
+                        ...(isEditing ? {} : { status: 'Waiting', isDeleted: false }) 
                     };
                     if (isEditing) await collection.doc(patientToEdit.id).update(data); else await collection.add(data);
                     setModal({ visible: true, title: "สำเร็จ", message: "บันทึกข้อมูลเรียบร้อย", onConfirm: () => { setModal({ visible: false }); onBack(); } });
@@ -812,10 +814,10 @@
                             
                             <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
                                 <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center gap-2"><Icon name="calendar" size={16}/> วันที่ส่งตรวจ (Date)</label>
-                                <input 
-                                    type="date" 
-                                    value={recordDate} 
-                                    onChange={e => setRecordDate(e.target.value)} 
+                                <input 
+                                    type="date" 
+                                    value={recordDate} 
+                                    onChange={e => setRecordDate(e.target.value)} 
                                     className="w-full p-2 border rounded-lg text-lg font-semibold text-gray-700 cursor-pointer"
                                 />
                             </div>
@@ -919,7 +921,7 @@
             );
         };
 
-        const HospitalForm = ({ patient, patients, onBack, setModal, role }) => { 
+        const HospitalForm = ({ patient, patients, onBack, setModal, role }) => { 
             const isReadOnly = role === 'PCU';
             const [p2, setP2] = useState({ cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false, drStageL: 'No DR', drStageR: 'No DR', ...patient.part2 });
             const [findings, setFindings] = useState(patient.findings || JSON.parse(JSON.stringify(defaultFindings)));
@@ -928,9 +930,9 @@
             const historyData = useMemo(() => {
                 if (!patients || !patient.part1?.idCard) return null;
 
-                const allRecords = patients.filter(p => 
-                    p.part1?.idCard === patient.part1.idCard && 
-                    p.id !== patient.id && 
+                const allRecords = patients.filter(p => 
+                    p.part1?.idCard === patient.part1.idCard && 
+                    p.id !== patient.id && 
                     !p.isDeleted
                 );
                 allRecords.sort((a, b) => b.createdAt - a.createdAt);
@@ -1062,7 +1064,7 @@
                                 {historyData && (
                                     <div className="pt-2 border-t border-blue-200 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
                                          <p className="font-bold text-yellow-800 mb-2 text-xs uppercase flex items-center gap-1">
-                                            <Icon name="history" size={12}/> 
+                                            <Icon name="history" size={12}/> 
                                             ผลตรวจตาปีที่แล้ว {historyData.date && `(${historyData.date.toLocaleDateString('th-TH')})`}
                                             {historyData.type === 'CSV' && <span className="ml-auto text-[10px] bg-yellow-200 px-1 rounded text-yellow-800">CSV</span>}
                                          </p>
@@ -1101,13 +1103,13 @@
                                                          }
                                                          return null;
                                                      })}
-                                                     {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
+                                                     {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
                                                          <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
                                                      }
                                                  </div>
-                                              </div>
+                                             </div>
                                          )}
-                                      </div>
+                                    </div>
                                 )}
 
                                 {patient.footExam && (
@@ -1310,7 +1312,7 @@
             };
             
             const downloadTemplate = () => {
-                const BOM = "\uFEFF"; 
+                const BOM = "\uFEFF"; 
                 const csvContent = BOM + CSV_HEADERS.join(",") + "\n";
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -1334,7 +1336,7 @@
                         // ถ้าข้อมูลเดิมว่าง (undefined, null, empty string) -> ให้เติมค่าใหม่
                         if (tVal === undefined || tVal === null || tVal === '') {
                             result[key] = sVal;
-                        } 
+                        } 
                         // ถ้าเป็น Object ทั้งคู่ (เช่น part1, history) ให้มุดเข้าไปเช็คข้างใน (Recursive)
                         else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
                             result[key] = mergeFillMissing(tVal, sVal);
@@ -1364,7 +1366,7 @@
                         matches.push(val ? val.trim() : "");
                     }
                     // Remove the last empty match that regex often produces at end of string
-                    if (matches.length > headers.length) matches.pop(); 
+                    if (matches.length > headers.length) matches.pop(); 
                     return matches;
                 };
 
@@ -1381,7 +1383,7 @@
                     const patient = {};
                     CSV_HEADERS.forEach(h => patient[h] = headerMap[h] > -1 ? values[headerMap[h]] : '');
                     
-                    if (patient.idCard && patient.idCard.replace(/[^0-9]/g, '').length === 13 && patient.name) { 
+                    if (patient.idCard && patient.idCard.replace(/[^0-9]/g, '').length === 13 && patient.name) { 
                         patient.idCard = patient.idCard.replace(/[^0-9]/g, ''); // Sanitize ID Card
                         
                         // Robust Date Parsing
@@ -1423,7 +1425,7 @@
                         const normLastDrL = normalizeDR(patient.lastDrStageL);
 
                         // Create import object
-                        const importData = { 
+                        const importData = { 
                             part1: {
                                 idCard: patient.idCard,
                                 name: patient.name,
@@ -1432,7 +1434,7 @@
                                 age: patient.age,
                                 dxDate: patient.dxDate || '',
                                 dmYears: patient.dmYears,
-                                hba1c: patient.hba1c, 
+                                hba1c: patient.hba1c, 
                                 bp: patient.bp,
                                 weight: patient.weight,
                                 height: patient.height,
@@ -1442,14 +1444,14 @@
                                 priorExamCount: patient.priorExamCount
                             },
                             referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
-                            isDeleted: false, 
+                            status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
+                            isDeleted: false, 
                             createdAt: examDate,
                             // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
                             history: {
                                 date: patient.lastExamDate || '',
                                 drStageR: normLastDrR, // ใช้ค่าที่แปลงแล้ว
-                                drStageL: normLastDrL,  // ใช้ค่าที่แปลงแล้ว
+                                drStageL: normLastDrL,  // ใช้ค่าที่แปลงแล้ว
                                 // [ADDED] เก็บข้อมูลสุขภาพลง History
                                 vaRight: patient.lastVaRight || '',
                                 vaLeft: patient.lastVaLeft || '',
@@ -1460,16 +1462,16 @@
                         
                         if(importData.status === 'Completed') {
                             importData.examinedAt = examDate;
-                            importData.part2 = { 
-                                drStageR: normDrR || 'ไม่พบจอประสาทตา', 
-                                drStageL: normDrL || 'ไม่พบจอประสาทตา', 
-                                cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false 
+                            importData.part2 = { 
+                                drStageR: normDrR || 'ไม่พบจอประสาทตา', 
+                                drStageL: normDrL || 'ไม่พบจอประสาทตา', 
+                                cataract: false, hearingUnclear: false, cannotSit: false, liftEyelids: false, retinaViewable: true, mydriasis: false 
                             };
                             importData.findings = JSON.parse(JSON.stringify(defaultFindings));
                         }
 
-                        data.push(importData); 
-                        validCount++; 
+                        data.push(importData); 
+                        validCount++; 
                     }
                 }
                 setValidCount(validCount); return data;
@@ -1477,11 +1479,11 @@
             
             const handleParse = () => { if (!file) return; setLoading(true); setUploadError(''); const reader = new FileReader(); reader.onload = (event) => { try { setCsvData(parseCSV(event.target.result)); setLoading(false); } catch (error) { setUploadError(error.message); setLoading(false); } }; reader.readAsText(file, 'UTF-8'); };
             
-            const uploadData = async () => { 
-                const collection = getCollection('patients_referrals'); 
-                setLoading(true); 
-                setUploadError(''); 
-                try { 
+            const uploadData = async () => { 
+                const collection = getCollection('patients_referrals'); 
+                setLoading(true); 
+                setUploadError(''); 
+                try { 
                     // [MODIFIED] Logic สำหรับ Fast Mode
                     let results = [];
                     
@@ -1530,9 +1532,9 @@
                                     existingData.part1.idCard = data.part1.idCard;
                                 }
                                 const mergedData = mergeFillMissing(existingData, data);
-                                batch.set(docRef, mergedData); 
+                                batch.set(docRef, mergedData); 
                             } else {
-                                batch.set(docRef, data); 
+                                batch.set(docRef, data); 
                             }
                             processedCount++;
                         });
@@ -1540,9 +1542,9 @@
                         await batch.commit();
                     }
                     
-                    if(processedCount===0) { setUploadError('No valid data'); setLoading(false); return; } 
-                    setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูลสำเร็จ ${processedCount} รายการ`, onConfirm: () => onBack('admin_home') }); 
-                } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
+                    if(processedCount===0) { setUploadError('No valid data'); setLoading(false); return; } 
+                    setModal({ visible: true, title: "สำเร็จ", message: `นำเข้าข้อมูลสำเร็จ ${processedCount} รายการ`, onConfirm: () => onBack('admin_home') }); 
+                } catch (e) { setUploadError(e.message); } finally { setLoading(false); } 
             };
 
             return (
@@ -1557,10 +1559,10 @@
                         
                         {/* Checkbox Fast Mode */}
                         <div className="mb-4 flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <input 
-                                type="checkbox" 
-                                id="fastMode" 
-                                checked={fastMode} 
+                            <input 
+                                type="checkbox" 
+                                id="fastMode" 
+                                checked={fastMode} 
                                 onChange={(e) => setFastMode(e.target.checked)}
                                 className="w-5 h-5 text-blue-600 rounded"
                             />
@@ -1599,7 +1601,7 @@
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
                     // ไม่นับ Imported (ข้อมูลดิบที่ยังไม่ได้ทำอะไร) ในรายงานสถิติผลงาน
-                    if (p.status === 'Imported') return false; 
+                    if (p.status === 'Imported') return false; 
 
                     if (!startDate && !endDate) return true; // ไม่เลือกวันที่ = เอาทั้งหมด
 
@@ -1641,7 +1643,7 @@
                             if (s.includes('Moderate')) return 2;
                             if (s.includes('Severe')) return 3;
                             if (s.includes('PDR')) return 4;
-                            return -1; 
+                            return -1; 
                         };
                         const scoreL = getScore(p.part2.drStageL);
                         const scoreR = getScore(p.part2.drStageR);
@@ -1677,7 +1679,7 @@
                 if (options.eye) headers.push("VA (R)", "VA (L)", "DR Stage (R)", "DR Stage (L)", "Eye Status");
                 if (options.foot) headers.push("Foot Risk", "Pulse", "Monofilament", "Deformity/Callus", "Footwear");
 
-                const BOM = "\uFEFF"; 
+                const BOM = "\uFEFF"; 
                 let csvContent = BOM + headers.join(",") + "\n";
                 
                 filteredPatients.forEach(p => {
@@ -1689,8 +1691,8 @@
 
                     if (options.general) {
                         row.push(
-                            safeStr(`'${p.part1?.idCard || ''}`), 
-                            safeStr(p.part1?.name), 
+                            safeStr(`'${p.part1?.idCard || ''}`), 
+                            safeStr(p.part1?.name), 
                             safeStr(p.part1?.gender),
                             safeStr(p.part1?.age),
                             safeStr(p.part1?.dmYears),
@@ -1819,17 +1821,24 @@
             );
         };
 
-        const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate }) => {
+        const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate, onSearchTermChange }) => {
             const [term, setTerm] = useState('');
             const [agencyFilter, setAgencyFilter] = useState('All');
             
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
+            // Handle Search Change
+            useEffect(() => {
+                onSearchTermChange(term);
+            }, [term]);
+
             // [MODIFIED] Logic ในการ Filter + Assign Queue + Sort
             const filtered = useMemo(() => {
                 let res = patients.filter(p => {
                     if (p.isDeleted) return false;
-                    if (p.status === 'Imported') return false;
+                    
+                    // [FIX] เช่นเดียวกับ Dashboard ถ้ามีการค้นหาให้แสดง Imported ได้
+                    if (term.length === 0 && p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.includes(term);
@@ -1840,7 +1849,13 @@
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
                     const matchesDate = pDateStr === selectedDate;
 
-                    return matchesAgency && matchesDate && (term.length === 0 || matchesTerm);
+                    // [MODIFIED] Show if matches date OR if status is 'Waiting' (Queue)
+                    if (term.length > 0) {
+                        return matchesAgency && matchesTerm;
+                    } else {
+                        // ถ้าไม่ได้ค้นหา ให้แสดงทั้ง คนที่มาวันนี้ และ คนที่ Waiting ทั้งหมด (งานค้าง)
+                        return matchesAgency && (matchesDate || p.status === 'Waiting');
+                    }
                 });
 
                 // Assign Queue Number (ก่อน Sort) เพื่อให้เลขคงที่ตามเวลา
@@ -2084,7 +2099,9 @@
             const [selectedPatient, setSelectedPatient] = useState(null);
             const [modal, setModal] = useState({ visible: false, title: '', message: '', onConfirm: null });
             
+            // ยก State วันที่และคำค้นหาขึ้นมาที่ App เพื่อควบคุมการ Fetch
             const [currentDate, setCurrentDate] = useState(getTodayStr());
+            const [globalSearchTerm, setGlobalSearchTerm] = useState('');
             const [quickAddId, setQuickAddId] = useState('');
 
             const activePatient = useMemo(() => {
@@ -2109,19 +2126,59 @@
                 });
             }, []); 
 
+            // --- OPTIMIZED FETCHING LOGIC ---
             useEffect(() => {
                 if(!user || !role) return;
-                const collection = getCollection('patients_referrals');
-                const unsub = collection.onSnapshot(snap => {
-                    const newPatients = snap.docs.map(d => { 
-                        const data = d.data(); 
-                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) }; 
+                
+                let unsubs = [];
+                // ใช้ Map เพื่อรวมข้อมูลจากหลาย Query โดยไม่ซ้ำซ้อน (Dedup by ID)
+                const dataMap = new Map();
+
+                const syncData = () => {
+                    const list = Array.from(dataMap.values());
+                    list.sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
+                    setPatients(list);
+                };
+
+                const handleUpdate = (snap) => {
+                    snap.docChanges().forEach(change => {
+                        if (change.type === 'added' || change.type === 'modified') {
+                            const data = change.doc.data();
+                            dataMap.set(change.doc.id, { 
+                                id: change.doc.id, 
+                                ...data, 
+                                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) 
+                            });
+                        } else if (change.type === 'removed') {
+                            dataMap.delete(change.doc.id);
+                        }
                     });
-                    newPatients.sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
-                    setPatients(newPatients);
-                });
-                return () => unsub();
-            }, [user, role, agencyCode]);
+                    syncData();
+                };
+                
+                // 1. Logic ค้นหาด้วย ID 13 หลัก (Priority สูงสุด - ดึงประวัติทั้งหมด)
+                if (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) {
+                    const q = getCollection('patients_referrals').where('part1.idCard', '==', globalSearchTerm);
+                    unsubs.push(q.onSnapshot(handleUpdate));
+                } 
+                // 2. Logic ปกติ (Dashboard รายวัน + คิวที่ค้างอยู่)
+                else {
+                    // A. ดึงข้อมูลตามวันที่เลือก (เพื่อให้เห็นเคสที่ตรวจเสร็จแล้วของวันนั้น)
+                    const start = new Date(currentDate); start.setHours(0,0,0,0);
+                    const end = new Date(currentDate); end.setHours(23,59,59,999);
+                    const qDate = getCollection('patients_referrals')
+                        .where('createdAt', '>=', start)
+                        .where('createdAt', '<=', end);
+                    unsubs.push(qDate.onSnapshot(handleUpdate));
+
+                    // B. [ADDED] ดึงเคสที่ "รอตรวจ" (Waiting) ทั้งหมด (เพื่อให้เห็นคิวค้างจากวันก่อนๆ)
+                    // ช่วยให้ห้องตรวจเห็นคนไข้ที่ตกค้างโดยไม่ต้องย้อนวันที่
+                    const qWaiting = getCollection('patients_referrals').where('status', '==', 'Waiting');
+                    unsubs.push(qWaiting.onSnapshot(handleUpdate));
+                }
+
+                return () => unsubs.forEach(u => u());
+            }, [user, role, agencyCode, currentDate, (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) ? globalSearchTerm : null]); // Re-fetch เมื่อเปลี่ยนวันหรือคำค้นหา
 
             useEffect(() => {
                 if(!user) return;
@@ -2143,8 +2200,16 @@
                             <button onClick={()=>auth.signOut()} className="text-gray-500 hover:text-red-600"><Icon name="log-out" size={18}/></button>
                         </nav>
                         <QueueStatusBar patients={patients} role={role} agencyCode={agencyCode} selectedDate={currentDate} />
-                        {/* ใช้ activePatient แทน selectedPatient */}
-                        {view === 'foot_dashboard' && <FootDashboard patients={patients} agenciesMap={agenciesMap} onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} selectedDate={currentDate} setSelectedDate={setCurrentDate} />}
+                        {/* ส่ง onSearchTermChange ไปให้ Dashboard เพื่ออัปเดต globalSearchTerm */}
+                        {view === 'foot_dashboard' && <FootDashboard 
+                            patients={patients} 
+                            agenciesMap={agenciesMap} 
+                            onSelect={(p)=>{setSelectedPatient(p);setView('foot_form');}} 
+                            selectedDate={currentDate} 
+                            setSelectedDate={setCurrentDate}
+                            onLogout={()=>auth.signOut()}
+                            onSearchTermChange={setGlobalSearchTerm}
+                        />}
                         {view === 'foot_form' && activePatient && <FootForm patient={activePatient} onBack={()=>{setSelectedPatient(null);setView('foot_dashboard');}} setModal={setModal} />}
                         <MessageModal modal={modal} setModal={setModal} />
                     </div>
@@ -2181,11 +2246,35 @@
                         onSelect={(p)=>{setSelectedPatient(p);setView('hospital');}} 
                         setModal={setModal} 
                         selectedDate={currentDate} 
-                        setSelectedDate={setCurrentDate} 
+                        setSelectedDate={setCurrentDate}
+                        onSearchTermChange={setGlobalSearchTerm} // เชื่อมต่อการค้นหากับการดึงข้อมูล
                     />}
                     
-                    {view === 'pcu_form' && activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={activePatient} agencyCode={agencyCode} />}
-                    {view === 'pcu_form' && !activePatient && <PCUForm onBack={()=>{setSelectedPatient(null);setView('dashboard');}} existingPatients={patients} setModal={setModal} patientToEdit={null} agencyCode={agencyCode} initialId={quickAddId} />}
+                    {view === 'pcu_form' && activePatient && <PCUForm 
+                        onBack={()=>{
+                            setSelectedPatient(null);
+                            setView('dashboard');
+                            setGlobalSearchTerm(''); // Clear search when going back
+                        }} 
+                        existingPatients={patients} 
+                        setModal={setModal} 
+                        patientToEdit={activePatient} 
+                        agencyCode={agencyCode} 
+                        onSearch={setGlobalSearchTerm} // Pass search trigger
+                    />}
+                    {view === 'pcu_form' && !activePatient && <PCUForm 
+                        onBack={()=>{
+                            setSelectedPatient(null);
+                            setView('dashboard');
+                            setGlobalSearchTerm(''); // Clear search when going back
+                        }} 
+                        existingPatients={patients} 
+                        setModal={setModal} 
+                        patientToEdit={null} 
+                        agencyCode={agencyCode} 
+                        initialId={quickAddId} 
+                        onSearch={setGlobalSearchTerm} // Pass search trigger
+                    />}
                     
                     {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     
