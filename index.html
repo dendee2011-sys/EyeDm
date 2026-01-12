@@ -276,9 +276,10 @@
                 onSearchTermChange(term);
             }, [term]);
 
-            // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
-            const handlePrint = () => {
+            // [NEW] ฟังก์ชันพิมพ์ใบคัดกรองสำหรับ Dashboard (ปรับขนาดช่อง VA)
+            const handlePrint = (p) => {
                 const w = window.open('', '_blank');
+                const form = p.part1 || {};
                 
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
                 const boxVal = (v) => v || '';
@@ -287,14 +288,14 @@
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>ใบคัดกรอง (A5) - ${form.name}</title>
+                        <title>ใบคัดกรอง (A5) - ${form.name || ''}</title>
                         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
                         <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
                         <style>
                             @page { size: A5; margin: 10mm; }
                             body { font-family: 'Sarabun', sans-serif; font-size: 12px; line-height: 1.3; color: #000; margin: 0; }
                             .header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
-                            .sub-header { text-align: center; font-size: 15px; margin-bottom: 15px; }
+                            .sub-header { text-align: center; font-size: 12px; margin-bottom: 15px; }
                             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
                             td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
                             .no-border td { border: none; padding: 2px 5px; }
@@ -307,8 +308,8 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
-                        <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="sub-header">หน่วยงาน: ${p.referringAgencyCode || '................................'} วันที่: ${formatDateTh(p.createdAt) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
                         <div style="margin-bottom: 10px;">
