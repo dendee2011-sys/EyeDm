@@ -644,7 +644,7 @@
                 const w = window.open('', '_blank');
                 
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
-                const val = (v, suffix='') => v ? v + suffix : '................................';
+                const val = (v, suffix='') => v ? v + suffix : '..............';
                 const boxVal = (v) => v || '';
 
                 w.document.write(`
@@ -669,7 +669,7 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
                         <div class="sub-header">หน่วยงาน: ${agencyCode} วันที่: ${formatDateTh(recordDate)}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
