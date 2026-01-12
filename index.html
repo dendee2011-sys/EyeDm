@@ -669,7 +669,6 @@
                 const w = window.open('', '_blank');
                 
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
-                const val = (v, suffix='') => v ? v + suffix : '..............';
                 const boxVal = (v) => v || '';
 
                 w.document.write(`
@@ -688,38 +687,73 @@
                             td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
                             .no-border td { border: none; padding: 2px 5px; }
                             .title { font-weight: bold; background: #eee; padding: 4px; border: 1px solid #000; border-bottom: none; font-size: 13px; }
+                            .label { font-size: 10px; color: #555; display: block; margin-bottom: 2px; }
+                            .value { font-size: 14px; font-weight: bold; min-height: 18px; display: block; }
                             @media print {
                                 body { -webkit-print-color-adjust: exact; }
                             }
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
-                        <div class="sub-header">หน่วยงาน: ${agencyCode} วันที่: ${formatDateTh(recordDate)}</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
-                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
-                            <table class="no-border" style="margin-bottom:0;">
+                        <div style="margin-bottom: 10px;">
+                            <!-- แถวที่ 1: ชื่อ และ ID -->
+                            <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="60%"><b>ชื่อ:</b> ${val(form.name)}</td>
-                                    <td>
-                                        <b>ID:</b> ${val(form.idCard)}<br/>
-                                        <svg id="barcode"></svg>
+                                    <td width="55%">
+                                        <span class="label">ชื่อ-สกุล</span>
+                                        <span class="value">${boxVal(form.name)}</span>
+                                    </td>
+                                    <td width="45%">
+                                        <span class="label">เลขบัตรประชาชน</span>
+                                        <span class="value">${boxVal(form.idCard)}</span>
+                                        <div style="height: 30px; overflow: hidden; margin-top: 2px;"><svg id="barcode"></svg></div>
                                     </td>
                                 </tr>
+                            </table>
+                            <!-- แถวที่ 2: อายุ, DM, HbA1c, BP -->
+                            <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td><b>อายุ:</b> ${val(form.age, ' ปี')} <b>DM:</b> ${val(form.dmYears, ' ปี')}</td>
-                                    <td><b>HbA1c:</b> ${val(form.hba1c, '%')} <b>BP:</b> ${val(form.bp)}</td>
-                                </tr>
-                                <tr>
-                                    <td><b>น้ำหนัก:</b> ${val(form.weight, ' กก.')} <b>ส่วนสูง:</b> ${val(form.height, ' ซม.')}</td>
-                                    <td></td>
+                                    <td width="25%">
+                                        <span class="label">อายุ (ปี)</span>
+                                        <span class="value">${boxVal(form.age)}</span>
+                                    </td>
+                                    <td width="25%">
+                                        <span class="label">ระยะเวลาเป็น DM (ปี)</span>
+                                        <span class="value">${boxVal(form.dmYears)}</span>
+                                    </td>
+                                    <td width="25%">
+                                        <span class="label">HbA1c (%)</span>
+                                        <span class="value">${boxVal(form.hba1c)}</span>
+                                    </td>
+                                    <td width="25%">
+                                        <span class="label">ความดัน (BP)</span>
+                                        <span class="value">${boxVal(form.bp)}</span>
+                                    </td>
                                 </tr>
                             </table>
-                            <div style="padding: 0 5px;">
-                                <span style="margin-right:10px;">[${form.wheelchair?'/':' '}] รถเข็น</span>
-                                <span>[${form.priorExam==='Yes'?'/':' '}] เคยตรวจตา (${form.priorExamCount||0} ครั้ง)</span>
-                            </div>
+                            <!-- แถวที่ 3: น้ำหนัก, ส่วนสูง, อื่นๆ -->
+                            <table style="margin-bottom: 10px;">
+                                <tr>
+                                    <td width="25%">
+                                        <span class="label">น้ำหนัก (kg)</span>
+                                        <span class="value">${boxVal(form.weight)}</span>
+                                    </td>
+                                    <td width="25%">
+                                        <span class="label">ส่วนสูง (cm)</span>
+                                        <span class="value">${boxVal(form.height)}</span>
+                                    </td>
+                                    <td width="50%" style="vertical-align: middle;">
+                                        <div style="display: flex; gap: 10px; align-items: center; height: 100%;">
+                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.wheelchair?'/':''}</span> นั่งรถเข็น</label>
+                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.priorExam==='Yes'?'/':''}</span> เคยตรวจตา</label>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
                         </div>
 
                         <div class="title">2. สายตา (Visual Acuity)</div>
@@ -734,24 +768,6 @@
                             </table>
                         </div>
 
-                        <div class="title">3. ผลการตรวจจอประสาทตา (แพทย์/จนท.)</div>
-                        <div style="border: 1px solid #000; padding: 5px; height: 180px;">
-                            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
-                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ขวา (OD)</span>
-                                </div>
-                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
-                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ซ้าย (OS)</span>
-                                </div>
-                            </div>
-                            <div style="margin-top: 10px; font-size: 11px;">
-                                <span style="margin-right:15px;">[ ] No DR</span>
-                                <span style="margin-right:15px;">[ ] Mild</span>
-                                <span style="margin-right:15px;">[ ] Mod</span>
-                                <span style="margin-right:15px;">[ ] Severe</span>
-                                <span>[ ] PDR</span>
-                            </div>
-                        </div>
                          <div style="margin-top: 15px; display: flex; justify-content: space-between; font-size: 11px;">
                             <div>ผู้ส่ง: ...........................</div>
                             <div>ผู้ตรวจ: ...........................</div>
