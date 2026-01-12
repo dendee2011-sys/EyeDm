@@ -177,8 +177,6 @@
             const myPatients = useMemo(() => {
                 return patients.filter(p => {
                     if (p.isDeleted) return false;
-                    // [MODIFIED] Queue Count should exclude Imported (raw data) unless searched, but for status bar we mostly care about active tasks.
-                    // Let's exclude Imported from general stats to avoid clutter, as they are not "Waiting" in the queue sense yet (until registered/updated).
                     if (p.status === 'Imported') return false; 
 
                     if (role === 'PCU' && p.referringAgencyCode !== agencyCode) return false;
@@ -198,7 +196,7 @@
 
             const totalPatients = myPatients.length;
             const waitingEye = myPatients.filter(p => p.status === 'Waiting').length;
-            const waitingFoot = myPatients.filter(p => !p.footExam).length;
+            const waitingFoot = myPatients.filter(p => !p.footExam).length; 
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 animate-fade-in">
@@ -278,6 +276,108 @@
                 onSearchTermChange(term);
             }, [term]);
 
+            // [NEW] ฟังก์ชันพิมพ์ใบคัดกรองสำหรับ Dashboard (ปรับขนาดช่อง VA)
+            const handlePrint = (p) => {
+                const w = window.open('', '_blank');
+                const form = p.part1 || {};
+                w.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>ใบคัดกรอง (A5) - ${form.name}</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
+                        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+                        <style>
+                            @page { size: A5; margin: 10mm; }
+                            body { font-family: 'Sarabun', sans-serif; font-size: 12px; line-height: 1.3; color: #000; margin: 0; }
+                            .header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
+                            .sub-header { text-align: center; font-size: 12px; margin-bottom: 15px; }
+                            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+                            td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
+                            .no-border td { border: none; padding: 2px 5px; }
+                            .title { font-weight: bold; background: #eee; padding: 4px; border: 1px solid #000; border-bottom: none; font-size: 13px; }
+                            @media print {
+                                body { -webkit-print-color-adjust: exact; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="sub-header">หน่วยงาน: ${p.referringAgencyCode || '-'} วันที่: ${formatDateTh(p.createdAt)}</div>
+                        
+                        <div class="title">1. ข้อมูลทั่วไป</div>
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                            <table class="no-border" style="margin-bottom:0;">
+                                <tr>
+                                    <td width="60%"><b>ชื่อ:</b> ${form.name || '-'}</td>
+                                    <td>
+                                        <b>ID:</b> ${form.idCard || '-'}<br/>
+                                        <svg id="barcode"></svg>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><b>อายุ:</b> ${form.age || '-'} ปี <b>DM:</b> ${form.dmYears || '-'} ปี</td>
+                                    <td><b>HbA1c:</b> ${form.hba1c || '-'}% <b>BP:</b> ${form.bp || '-'}</td>
+                                </tr>
+                            </table>
+                            <div style="padding: 0 5px;">
+                                <span style="margin-right:10px;">[${form.wheelchair?'/':' '}] รถเข็น</span>
+                                <span>[${form.priorExam==='Yes'?'/':' '}] เคยตรวจตา (${form.priorExamCount||0} ครั้ง)</span>
+                            </div>
+                        </div>
+
+                        <div class="title">2. สายตา (Visual Acuity)</div>
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                            <table style="width: 100%; text-align: center; margin-bottom:0;">
+                                <tr><th width="50%">ขวา (OD)</th><th>ซ้าย (OS)</th></tr>
+                                <tr>
+                                    <!-- ปรับ padding และ font-size ให้ช่องกว้างและตัวใหญ่ขึ้น -->
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaRight || '-'}</td>
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaLeft || '-'}</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div class="title">3. ผลการตรวจจอประสาทตา (แพทย์/จนท.)</div>
+                        <div style="border: 1px solid #000; padding: 5px; height: 180px;">
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
+                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ขวา (OD)</span>
+                                </div>
+                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
+                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ซ้าย (OS)</span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; font-size: 11px;">
+                                <span style="margin-right:15px;">[ ] No DR</span>
+                                <span style="margin-right:15px;">[ ] Mild</span>
+                                <span style="margin-right:15px;">[ ] Mod</span>
+                                <span style="margin-right:15px;">[ ] Severe</span>
+                                <span>[ ] PDR</span>
+                            </div>
+                        </div>
+                         <div style="margin-top: 15px; display: flex; justify-content: space-between; font-size: 11px;">
+                            <div>ผู้ส่ง: ...........................</div>
+                            <div>ผู้ตรวจ: ...........................</div>
+                        </div>
+                        <script>
+                            try {
+                                JsBarcode("#barcode", "${form.idCard}", {
+                                    format: "CODE128",
+                                    width: 1.5,
+                                    height: 30,
+                                    displayValue: false,
+                                    margin: 0
+                                });
+                            } catch(e) { console.error(e); }
+                        <\/script>
+                    </body>
+                    </html>
+                `);
+                w.document.close();
+                setTimeout(() => { w.print(); w.close(); }, 500);
+            };
+
             // ฟังก์ชัน Export CSV สำหรับ PCU
             const exportData = () => {
                 const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
@@ -331,9 +431,6 @@
             const filtered = useMemo(() => {
                 let res = patients.filter(p => {
                     if (p.isDeleted) return false;
-                    
-                    // [FIX] ถ้ามีการค้นหา (term มีค่า) ให้แสดงข้อมูล Imported ได้ เพื่อให้ค้นหาเจอ
-                    // ถ้าไม่มีการค้นหา (ดูรายวันปกติ) ให้ซ่อน Imported เพื่อไม่ให้รก
                     if (term.length === 0 && p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
@@ -342,7 +439,6 @@
                     const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                     const offset = pDate.getTimezoneOffset() * 60000;
                     const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
-                    // [MODIFIED] Show if matches date OR if status is 'Waiting' (Queue)
                     const matchesDate = pDateStr === selectedDate || p.status === 'Waiting';
 
                     let matchesAgency = true;
@@ -465,6 +561,9 @@
                                             <td className="p-3 text-center align-top">{getStatusBadge(p.status)}</td>
                                             <td className="p-3 text-right align-top">
                                                 <div className="flex justify-end gap-2">
+                                                    {/* [NEW] ปุ่มพิมพ์ใบส่งตัวในหน้า Dashboard */}
+                                                    <button onClick={()=>handlePrint(p)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg" title="พิมพ์ใบส่งตัว"><Icon name="printer" size={16}/></button>
+
                                                     {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
                                                     {p.status === 'Completed' && <button onClick={()=>onSelect(p)} className="bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-xs">ดูผล</button>}
@@ -539,6 +638,107 @@
                     onSearch(form.idCard);
                 }
             }, [form.idCard, onSearch]);
+
+            // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
+            const handlePrint = () => {
+                const w = window.open('', '_blank');
+                w.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>ใบคัดกรอง (A5) - ${form.name}</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
+                        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+                        <style>
+                            @page { size: A5; margin: 10mm; }
+                            body { font-family: 'Sarabun', sans-serif; font-size: 12px; line-height: 1.3; color: #000; margin: 0; }
+                            .header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
+                            .sub-header { text-align: center; font-size: 12px; margin-bottom: 15px; }
+                            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+                            td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
+                            .no-border td { border: none; padding: 2px 5px; }
+                            .title { font-weight: bold; background: #eee; padding: 4px; border: 1px solid #000; border-bottom: none; font-size: 13px; }
+                            @media print {
+                                body { -webkit-print-color-adjust: exact; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="sub-header">หน่วยงาน: ${agencyCode} วันที่: ${formatDateTh(recordDate)}</div>
+                        
+                        <div class="title">1. ข้อมูลทั่วไป</div>
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                            <table class="no-border" style="margin-bottom:0;">
+                                <tr>
+                                    <td width="60%"><b>ชื่อ:</b> ${form.name || '-'}</td>
+                                    <td>
+                                        <b>ID:</b> ${form.idCard || '-'}<br/>
+                                        <svg id="barcode"></svg>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><b>อายุ:</b> ${form.age || '-'} ปี <b>DM:</b> ${form.dmYears || '-'} ปี</td>
+                                    <td><b>HbA1c:</b> ${form.hba1c || '-'}% <b>BP:</b> ${form.bp || '-'}</td>
+                                </tr>
+                            </table>
+                            <div style="padding: 0 5px;">
+                                <span style="margin-right:10px;">[${form.wheelchair?'/':' '}] รถเข็น</span>
+                                <span>[${form.priorExam==='Yes'?'/':' '}] เคยตรวจตา (${form.priorExamCount||0} ครั้ง)</span>
+                            </div>
+                        </div>
+
+                        <div class="title">2. สายตา (Visual Acuity)</div>
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                            <table style="width: 100%; text-align: center; margin-bottom:0;">
+                                <tr><th width="50%">ขวา (OD)</th><th>ซ้าย (OS)</th></tr>
+                                <tr>
+                                    <!-- ปรับ padding และ font-size ให้ช่องกว้างและตัวใหญ่ขึ้น -->
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaRight || '-'}</td>
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaLeft || '-'}</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div class="title">3. ผลการตรวจจอประสาทตา (แพทย์/จนท.)</div>
+                        <div style="border: 1px solid #000; padding: 5px; height: 180px;">
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
+                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ขวา (OD)</span>
+                                </div>
+                                <div style="width: 48%; border: 1px dashed #ccc; height: 120px; text-align:center; position:relative;">
+                                    <span style="position:absolute; top:2px; left:2px; font-size:10px;">ซ้าย (OS)</span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; font-size: 11px;">
+                                <span style="margin-right:15px;">[ ] No DR</span>
+                                <span style="margin-right:15px;">[ ] Mild</span>
+                                <span style="margin-right:15px;">[ ] Mod</span>
+                                <span style="margin-right:15px;">[ ] Severe</span>
+                                <span>[ ] PDR</span>
+                            </div>
+                        </div>
+                         <div style="margin-top: 15px; display: flex; justify-content: space-between; font-size: 11px;">
+                            <div>ผู้ส่ง: ...........................</div>
+                            <div>ผู้ตรวจ: ...........................</div>
+                        </div>
+                        <script>
+                            try {
+                                JsBarcode("#barcode", "${form.idCard}", {
+                                    format: "CODE128",
+                                    width: 1.5,
+                                    height: 30,
+                                    displayValue: false,
+                                    margin: 0
+                                });
+                            } catch(e) { console.error(e); }
+                        <\/script>
+                    </body>
+                    </html>
+                `);
+                w.document.close();
+                setTimeout(() => { w.print(); w.close(); }, 500);
+            };
 
             // Scanner Effect: Adaptive OCR
             useEffect(() => {
@@ -803,12 +1003,16 @@
             };
 
             return (
-                <div className="max-w-2xl mx-auto animate-fade-in pb-20">
+                <div className="max-w-4xl mx-auto animate-fade-in pb-20">
                     <button onClick={onBack} className="text-gray-500 mb-4 flex items-center gap-1"><Icon name="arrow-left" size={16}/> ยกเลิก</button>
                     <div className="bg-white rounded-2xl shadow-xl border border-green-100 overflow-hidden">
                         <div className="bg-green-600 p-4 text-white flex items-center justify-between">
                             <div className="flex items-center gap-2"><Icon name="file-text" className="text-white"/><h2 className="font-bold">{isEditing ? 'แก้ไขข้อมูล' : 'แบบฟอร์มส่งตัว'}</h2></div>
-                            {footStatus && <div className="bg-white/20 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Icon name="footprints" size={12}/> {footStatus.split(' ')[0]}</div>}
+                            <div className="flex items-center gap-2">
+                                {/* ปุ่มพิมพ์ */}
+                                <button onClick={handlePrint} className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs flex items-center gap-1"><Icon name="printer" size={14}/> พิมพ์ใบ</button>
+                                {footStatus && <div className="bg-white/20 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Icon name="footprints" size={12}/> {footStatus.split(' ')[0]}</div>}
+                            </div>
                         </div>
                         <div className="p-6 space-y-4">
                             
@@ -914,7 +1118,10 @@
                                     <select value={form.vaLeft || ''} onChange={e=>setForm({...form, vaLeft:e.target.value})} className="w-full p-2 border rounded-lg text-sm"><option value="">ซ้าย (Left)</option>{VA_OPTIONS.map(o=><option key={o}>{o}</option>)}</select>
                                 </div>
                             </div>
-                            <button onClick={save} disabled={saving} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700">{saving ? 'บันทึก...' : 'บันทึกและส่งตัว'}</button>
+                            <div className="flex gap-2">
+                                <button onClick={handlePrint} className="flex-1 bg-gray-600 text-white py-3 rounded-xl font-bold hover:bg-gray-700 flex items-center justify-center gap-2"><Icon name="printer" size={20}/> พิมพ์ใบ (A5)</button>
+                                <button onClick={save} disabled={saving} className="flex-[2] bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700">{saving ? 'บันทึก...' : 'บันทึกและส่งตัว'}</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1836,9 +2043,7 @@
             const filtered = useMemo(() => {
                 let res = patients.filter(p => {
                     if (p.isDeleted) return false;
-                    
-                    // [FIX] เช่นเดียวกับ Dashboard ถ้ามีการค้นหาให้แสดง Imported ได้
-                    if (term.length === 0 && p.status === 'Imported') return false;
+                    if (p.status === 'Imported') return false;
 
                     const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
                     const matchesTerm = searchStr.includes(term);
