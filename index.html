@@ -642,20 +642,25 @@
             // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
             const handlePrint = () => {
                 const w = window.open('', '_blank');
+                
+                // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
+                const val = (v, suffix='') => v ? v + suffix : '................................';
+                const boxVal = (v) => v || '';
+
                 w.document.write(`
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>ใบคัดกรอง  - ${form.name}</title>
+                        <title>ใบคัดกรอง (A5) - ${form.name}</title>
                         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
                         <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
                         <style>
                             @page { size: A5; margin: 10mm; }
-                            body { font-family: 'Sarabun', sans-serif; font-size: 16px; line-height: 1.3; color: #000; margin: 0; }
+                            body { font-family: 'Sarabun', sans-serif; font-size: 12px; line-height: 1.3; color: #000; margin: 0; }
                             .header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
                             .sub-header { text-align: center; font-size: 12px; margin-bottom: 15px; }
                             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-                            td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 15px; }
+                            td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
                             .no-border td { border: none; padding: 2px 5px; }
                             .title { font-weight: bold; background: #eee; padding: 4px; border: 1px solid #000; border-bottom: none; font-size: 13px; }
                             @media print {
@@ -664,22 +669,26 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน </div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
                         <div class="sub-header">หน่วยงาน: ${agencyCode} วันที่: ${formatDateTh(recordDate)}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
                         <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
                             <table class="no-border" style="margin-bottom:0;">
                                 <tr>
-                                    <td width="60%"><b>ชื่อ:</b> ${form.name || '-'}</td>
+                                    <td width="60%"><b>ชื่อ:</b> ${val(form.name)}</td>
                                     <td>
-                                        <b>ID:</b> ${form.idCard || '-'}<br/>
+                                        <b>ID:</b> ${val(form.idCard)}<br/>
                                         <svg id="barcode"></svg>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td><b>อายุ:</b> ${form.age || '-'} ปี <b>DM:</b> ${form.dmYears || ' '} ปี</td>
-                                    <td><b>HbA1c:</b> ${form.hba1c || '-'}% <b>BP:</b> ${form.bp || ' '}</td>
+                                    <td><b>อายุ:</b> ${val(form.age, ' ปี')} <b>DM:</b> ${val(form.dmYears, ' ปี')}</td>
+                                    <td><b>HbA1c:</b> ${val(form.hba1c, '%')} <b>BP:</b> ${val(form.bp)}</td>
+                                </tr>
+                                <tr>
+                                    <td><b>น้ำหนัก:</b> ${val(form.weight, ' กก.')} <b>ส่วนสูง:</b> ${val(form.height, ' ซม.')}</td>
+                                    <td></td>
                                 </tr>
                             </table>
                             <div style="padding: 0 5px;">
@@ -694,8 +703,8 @@
                                 <tr><th width="50%">ขวา (OD)</th><th>ซ้าย (OS)</th></tr>
                                 <tr>
                                     <!-- ปรับ padding และ font-size ให้ช่องกว้างและตัวใหญ่ขึ้น -->
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaRight || ' '}</td>
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${form.vaLeft || ' '}</td>
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaRight)}</td>
+                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaLeft)}</td>
                                 </tr>
                             </table>
                         </div>
