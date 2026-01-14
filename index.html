@@ -736,7 +736,7 @@
                 }
             }, [form.idCard, onSearch]);
 
-            // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
+             // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
             const handlePrint = () => {
                 const w = window.open('', '_blank');
                 if (!w) { alert("Pop-up ถูกบล็อก กรุณาอนุญาต Pop-up สำหรับเว็บไซต์นี้"); return; }
@@ -784,7 +784,7 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
                         <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
@@ -794,6 +794,9 @@
                                     <td width="55%">
                                         <span class="label">ชื่อ-สกุล</span>
                                         <span class="value">${boxVal(form.name)}</span>
+                                        <td width="15%">
+                                        <span class="label">อายุ (ปี)</span>
+                                        <span class="value">${boxVal(form.age)}</span>
                                     </td>
                                     <td width="45%">
                                         <span class="label">เลขบัตรประชาชน</span>
@@ -804,9 +807,6 @@
                             </table>
                             <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="25%">
-                                        <span class="label">อายุ (ปี)</span>
-                                        <span class="value">${boxVal(form.age)}</span>
                                     </td>
                                     <td width="25%">
                                         <span class="label">ระยะเวลาเป็น DM (ปี)</span>
@@ -859,14 +859,18 @@
                                 <tr>
                                     <td width="50%" style="padding: 5px;">
                                         <div style="margin-bottom:5px; font-weight:bold;">ตาขวา (Right Eye - OD)</div>
-                                        <div style="font-size:16px; font-weight:bold; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
-                                            ${p2.drStageR || '..........................................................'}
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            <div style="font-size: 11px; display: flex; flex-wrap: wrap; gap: 10px;">
+                                                ${genDRCheckboxes(p2.drStageR)}
+                                            </div>
                                         </div>
                                     </td>
                                     <td width="50%" style="padding: 5px;">
                                         <div style="margin-bottom:5px; font-weight:bold;">ตาซ้าย (Left Eye - OS)</div>
-                                        <div style="font-size:16px; font-weight:bold; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
-                                            ${p2.drStageL || '..........................................................'}
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            <div style="font-size: 11px; display: flex; flex-wrap: wrap; gap: 10px;">
+                                                ${genDRCheckboxes(p2.drStageL)}
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -906,9 +910,7 @@
                             </table>
                         </div>
 
-                         <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 11px;">
-                            <div>ผู้ส่ง: ...........................</div>
-                            <div>ผู้ตรวจ: ...........................</div>
+                        
                         </div>
                         <script>
                             window.onload = function() {
