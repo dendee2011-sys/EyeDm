@@ -280,9 +280,15 @@
             const handlePrint = (p) => {
                 const w = window.open('', '_blank');
                 const form = p.part1 || {};
+                const p2 = p.part2 || {}; // ดึงข้อมูลผลตรวจตา
+                const f = p.footExam || {}; // ดึงข้อมูลตรวจเท้า
                 
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
+                const val = (v, suffix='') => v ? v + suffix : '................................';
                 const boxVal = (v) => v || '';
+
+                // Helper สร้าง Checkbox ทั่วไปแบบ Text (ไม่มีกรอบสี่เหลี่ยม)
+                const chk = (condition) => condition ? '[ / ]' : '[&nbsp;&nbsp;&nbsp;]';
 
                 w.document.write(`
                     <!DOCTYPE html>
@@ -308,11 +314,11 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
                         <div class="sub-header">หน่วยงาน: ${p.referringAgencyCode || '................................'} วันที่: ${formatDateTh(p.createdAt) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
-                        <div style="margin-bottom: 10px;">
+                        <div style="margin-bottom: 5px;">
                             <!-- แถวที่ 1: ชื่อ และ ID -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
@@ -330,11 +336,11 @@
                             <!-- แถวที่ 2: อายุ, DM, HbA1c, BP -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="20%">
+                                    <td width="25%">
                                         <span class="label">อายุ (ปี)</span>
                                         <span class="value">${boxVal(form.age)}</span>
                                     </td>
-                                    <td width="20%">
+                                    <td width="25%">
                                         <span class="label">ระยะเวลาเป็น DM (ปี)</span>
                                         <span class="value">${boxVal(form.dmYears)}</span>
                                     </td>
@@ -342,27 +348,27 @@
                                         <span class="label">HbA1c (%)</span>
                                         <span class="value">${boxVal(form.hba1c)}</span>
                                     </td>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">ความดัน (BP)</span>
                                         <span class="value">${boxVal(form.bp)}</span>
                                     </td>
                                 </tr>
                             </table>
                             <!-- แถวที่ 3: น้ำหนัก, ส่วนสูง, อื่นๆ -->
-                            <table style="margin-bottom: 10px;">
+                            <table style="margin-bottom: 5px;">
                                 <tr>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">น้ำหนัก (kg)</span>
                                         <span class="value">${boxVal(form.weight)}</span>
                                     </td>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">ส่วนสูง (cm)</span>
                                         <span class="value">${boxVal(form.height)}</span>
                                     </td>
                                     <td width="50%" style="vertical-align: middle;">
                                         <div style="display: flex; gap: 10px; align-items: center; height: 100%;">
-                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.wheelchair?'/':''}</span> นั่งรถเข็น</label>
-                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.priorExam==='Yes'?'/':''}</span> เคยตรวจตา</label>
+                                            <label>${chk(form.wheelchair)} นั่งรถเข็น</label>
+                                            <label>${chk(form.priorExam==='Yes')} เคยตรวจตา (${form.priorExamCount||0})</label>
                                         </div>
                                     </td>
                                 </tr>
@@ -370,24 +376,78 @@
                         </div>
 
                         <div class="title">2. สายตา (Visual Acuity)</div>
-                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 5px;">
                             <table style="width: 100%; text-align: center; margin-bottom:0;">
                                 <tr><th width="50%">ขวา (OD)</th><th>ซ้าย (OS)</th></tr>
                                 <tr>
-                                    <!-- ปรับ padding และ font-size ให้ช่องกว้างและตัวใหญ่ขึ้น -->
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaRight)}</td>
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaLeft)}</td>
+                                    <td style="padding: 20px; font-size: 22px; font-weight: bold;">${boxVal(form.vaRight)}</td>
+                                    <td style="padding: 20px; font-size: 22px; font-weight: bold;">${boxVal(form.vaLeft)}</td>
                                 </tr>
                             </table>
                         </div>
 
-                         <div style="margin-top: 15px; display: flex; justify-content: space-between; font-size: 11px;">
+                        <!-- Section 3: DR (Text Only, No Frames, No Boxes) -->
+                        <div class="title">3. ผลการตรวจจอประสาทตา (แพทย์/จนท.)</div>
+                        <div style="border: 1px solid #000; padding: 10px; margin-bottom: 5px;">
+                             <table class="no-border" style="width:100%">
+                                <tr>
+                                    <td width="50%" style="padding: 5px;">
+                                        <div style="margin-bottom:5px; font-weight:bold;">ตาขวา (Right Eye - OD)</div>
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            ${p2.drStageR ? p2.drStageR : '..........................................................'}
+                                        </div>
+                                    </td>
+                                    <td width="50%" style="padding: 5px;">
+                                        <div style="margin-bottom:5px; font-weight:bold;">ตาซ้าย (Left Eye - OS)</div>
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            ${p2.drStageL ? p2.drStageL : '..........................................................'}
+                                        </div>
+                                    </td>
+                                </tr>
+                             </table>
+                             <div style="margin-top:10px; font-size: 10px; color:#666;">
+                                (เกณฑ์: No DR / Mild / Moderate / Severe / PDR / Incomplete)
+                             </div>
+                        </div>
+
+                        <!-- Section 4: Foot Exam (Text Only checkboxes) -->
+                        <div class="title">4. การตรวจเท้า (Foot Exam)</div>
+                        <div style="border: 1px solid #000; padding: 5px;">
+                            <div style="font-size: 12px; margin-bottom: 5px;"><b>ความเสี่ยง (Risk Level):</b> ${f.riskLevel ? f.riskLevel.split('(')[0] : '.........................'}</div>
+                            
+                            <table style="width: 100%; border: none; margin-bottom: 0;" class="no-border">
+                                <tr>
+                                    <td style="border-right: 1px solid #000; width: 50%;">
+                                        <b>Monofilament (10g)</b><br/>
+                                        <div style="margin-left: 5px;">
+                                            L: ${chk(f.monofilament?.L==='Normal')} Norm ${chk(f.monofilament?.L==='Abnormal')} Abn<br/>
+                                            R: ${chk(f.monofilament?.R==='Normal')} Norm ${chk(f.monofilament?.R==='Abnormal')} Abn
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <b>Pulse (Dorsalis Pedis)</b><br/>
+                                        <div style="margin-left: 5px;">
+                                            L: ${chk(f.pulse?.L==='Normal' || f.pulse?.L==='Present')} Norm ${chk(f.pulse?.L==='Absent' || f.pulse?.L==='Weak')} Abn<br/>
+                                            R: ${chk(f.pulse?.R==='Normal' || f.pulse?.R==='Present')} Norm ${chk(f.pulse?.R==='Absent' || f.pulse?.R==='Weak')} Abn
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="border-top: 1px solid #000;">
+                                        <b>Physical & History:</b><br/>
+                                        ${chk(f.deformity)} Deformity &nbsp; ${chk(f.callus)} Callus &nbsp; ${chk(f.ulcer)} Ulcer &nbsp; ${chk(f.amputation?.toe || f.amputation?.foot || f.amputation?.leg)} Amputation
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                         <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 11px;">
                             <div>ผู้ส่ง: ...........................</div>
                             <div>ผู้ตรวจ: ...........................</div>
                         </div>
                         <script>
                             try {
-                                JsBarcode("#barcode", "${form.idCard}", {
+                                JsBarcode("#barcode", "${form.idCard || '0000000000000'}", {
                                     format: "CODE128",
                                     width: 1.5,
                                     height: 30,
@@ -667,9 +727,14 @@
             // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
             const handlePrint = () => {
                 const w = window.open('', '_blank');
-                
+                const p2 = (patientToEdit && patientToEdit.part2) ? patientToEdit.part2 : {}; // ดึงข้อมูลผลตรวจตา ถ้ามี
+                const f = existingFootExam || (patientToEdit && patientToEdit.footExam) || {}; // ดึงข้อมูลเท้าจากประวัติเก่า หรือที่กำลังแก้ไข
+
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
                 const boxVal = (v) => v || '';
+                
+                // Helper สร้าง Checkbox ทั่วไปแบบ Text (ไม่มีกรอบสี่เหลี่ยม)
+                const chk = (condition) => condition ? '[ / ]' : '[&nbsp;&nbsp;&nbsp;]';
 
                 w.document.write(`
                     <!DOCTYPE html>
@@ -682,7 +747,7 @@
                             @page { size: A5; margin: 10mm; }
                             body { font-family: 'Sarabun', sans-serif; font-size: 12px; line-height: 1.3; color: #000; margin: 0; }
                             .header { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 10px; }
-                            .sub-header { text-align: center; font-size: 15px; margin-bottom: 15px; }
+                            .sub-header { text-align: center; font-size: 12px; margin-bottom: 15px; }
                             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
                             td, th { border: 1px solid #000; padding: 5px; vertical-align: top; font-size: 12px; }
                             .no-border td { border: none; padding: 2px 5px; }
@@ -695,11 +760,11 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
                         <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
-                        <div style="margin-bottom: 10px;">
+                        <div style="margin-bottom: 5px;">
                             <!-- แถวที่ 1: ชื่อ และ ID -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
@@ -717,11 +782,11 @@
                             <!-- แถวที่ 2: อายุ, DM, HbA1c, BP -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="20%">
+                                    <td width="25%">
                                         <span class="label">อายุ (ปี)</span>
                                         <span class="value">${boxVal(form.age)}</span>
                                     </td>
-                                    <td width="20%">
+                                    <td width="25%">
                                         <span class="label">ระยะเวลาเป็น DM (ปี)</span>
                                         <span class="value">${boxVal(form.dmYears)}</span>
                                     </td>
@@ -729,27 +794,27 @@
                                         <span class="label">HbA1c (%)</span>
                                         <span class="value">${boxVal(form.hba1c)}</span>
                                     </td>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">ความดัน (BP)</span>
                                         <span class="value">${boxVal(form.bp)}</span>
                                     </td>
                                 </tr>
                             </table>
                             <!-- แถวที่ 3: น้ำหนัก, ส่วนสูง, อื่นๆ -->
-                            <table style="margin-bottom: 10px;">
+                            <table style="margin-bottom: 5px;">
                                 <tr>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">น้ำหนัก (kg)</span>
                                         <span class="value">${boxVal(form.weight)}</span>
                                     </td>
-                                    <td width="40%">
+                                    <td width="25%">
                                         <span class="label">ส่วนสูง (cm)</span>
                                         <span class="value">${boxVal(form.height)}</span>
                                     </td>
                                     <td width="50%" style="vertical-align: middle;">
                                         <div style="display: flex; gap: 10px; align-items: center; height: 100%;">
-                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.wheelchair?'/':''}</span> นั่งรถเข็น</label>
-                                            <label><span style="border:1px solid #000; display:inline-block; width:12px; height:12px; text-align:center; line-height:12px;">${form.priorExam==='Yes'?'/':''}</span> เคยตรวจตา</label>
+                                            <label>${chk(form.wheelchair)} นั่งรถเข็น</label>
+                                            <label>${chk(form.priorExam==='Yes')} เคยตรวจตา (${form.priorExamCount||0})</label>
                                         </div>
                                     </td>
                                 </tr>
@@ -757,24 +822,79 @@
                         </div>
 
                         <div class="title">2. สายตา (Visual Acuity)</div>
-                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 10px;">
+                        <div style="border: 1px solid #000; padding: 5px; margin-bottom: 5px;">
                             <table style="width: 100%; text-align: center; margin-bottom:0;">
                                 <tr><th width="50%">ขวา (OD)</th><th>ซ้าย (OS)</th></tr>
                                 <tr>
                                     <!-- ปรับ padding และ font-size ให้ช่องกว้างและตัวใหญ่ขึ้น -->
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaRight)}</td>
-                                    <td style="padding: 30px; font-size: 22px; font-weight: bold;">${boxVal(form.vaLeft)}</td>
+                                    <td style="padding: 20px; font-size: 22px; font-weight: bold;">${boxVal(form.vaRight)}</td>
+                                    <td style="padding: 20px; font-size: 22px; font-weight: bold;">${boxVal(form.vaLeft)}</td>
                                 </tr>
                             </table>
                         </div>
 
-                         <div style="margin-top: 15px; display: flex; justify-content: space-between; font-size: 11px;">
+                        <!-- Section 3: DR (Text Only, No Frames, No Boxes) -->
+                        <div class="title">3. ผลการตรวจจอประสาทตา (แพทย์/จนท.)</div>
+                        <div style="border: 1px solid #000; padding: 10px; margin-bottom: 5px;">
+                             <table class="no-border" style="width:100%">
+                                <tr>
+                                    <td width="50%" style="padding: 5px;">
+                                        <div style="margin-bottom:5px; font-weight:bold;">ตาขวา (Right Eye - OD)</div>
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            ${p2.drStageR ? p2.drStageR : '..........................................................'}
+                                        </div>
+                                    </td>
+                                    <td width="50%" style="padding: 5px;">
+                                        <div style="margin-bottom:5px; font-weight:bold;">ตาซ้าย (Left Eye - OS)</div>
+                                        <div style="font-size:16px; border-bottom: 1px dotted #999; padding-bottom: 5px; min-height: 24px;">
+                                            ${p2.drStageL ? p2.drStageL : '..........................................................'}
+                                        </div>
+                                    </td>
+                                </tr>
+                             </table>
+                             <div style="margin-top:10px; font-size: 10px; color:#666;">
+                                (เกณฑ์: No DR / Mild / Moderate / Severe / PDR / Incomplete)
+                             </div>
+                        </div>
+
+                        <!-- Section 4: Foot Exam (Text Only checkboxes) -->
+                        <div class="title">4. การตรวจเท้า (Foot Exam)</div>
+                        <div style="border: 1px solid #000; padding: 5px;">
+                            <div style="font-size: 12px; margin-bottom: 5px;"><b>ความเสี่ยง (Risk Level):</b> ${f.riskLevel ? f.riskLevel.split('(')[0] : '.........................'}</div>
+                            
+                            <table style="width: 100%; border: none; margin-bottom: 0;" class="no-border">
+                                <tr>
+                                    <td style="border-right: 1px solid #000; width: 50%;">
+                                        <b>Monofilament (10g)</b><br/>
+                                        <div style="margin-left: 5px;">
+                                            L: ${chk(f.monofilament?.L==='Normal')} Norm ${chk(f.monofilament?.L==='Abnormal')} Abn<br/>
+                                            R: ${chk(f.monofilament?.R==='Normal')} Norm ${chk(f.monofilament?.R==='Abnormal')} Abn
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <b>Pulse (Dorsalis Pedis)</b><br/>
+                                        <div style="margin-left: 5px;">
+                                            L: ${chk(f.pulse?.L==='Normal' || f.pulse?.L==='Present')} Norm ${chk(f.pulse?.L==='Absent' || f.pulse?.L==='Weak')} Abn<br/>
+                                            R: ${chk(f.pulse?.R==='Normal' || f.pulse?.R==='Present')} Norm ${chk(f.pulse?.R==='Absent' || f.pulse?.R==='Weak')} Abn
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="border-top: 1px solid #000;">
+                                        <b>Physical & History:</b><br/>
+                                        ${chk(f.deformity)} Deformity &nbsp; ${chk(f.callus)} Callus &nbsp; ${chk(f.ulcer)} Ulcer &nbsp; ${chk(f.amputation?.toe || f.amputation?.foot || f.amputation?.leg)} Amputation
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                         <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 11px;">
                             <div>ผู้ส่ง: ...........................</div>
                             <div>ผู้ตรวจ: ...........................</div>
                         </div>
                         <script>
                             try {
-                                JsBarcode("#barcode", "${form.idCard}", {
+                                JsBarcode("#barcode", "${form.idCard || '0000000000000'}", {
                                     format: "CODE128",
                                     width: 1.5,
                                     height: 30,
