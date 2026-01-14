@@ -314,7 +314,7 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
                         <div class="sub-header">หน่วยงาน: ${p.referringAgencyCode || '................................'} วันที่: ${formatDateTh(p.createdAt) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
@@ -336,19 +336,19 @@
                             <!-- แถวที่ 2: อายุ, DM, HbA1c, BP -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">อายุ (ปี)</span>
                                         <span class="value">${boxVal(form.age)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">ระยะเวลาเป็น DM (ปี)</span>
                                         <span class="value">${boxVal(form.dmYears)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">HbA1c (%)</span>
                                         <span class="value">${boxVal(form.hba1c)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="40%">
                                         <span class="label">ความดัน (BP)</span>
                                         <span class="value">${boxVal(form.bp)}</span>
                                     </td>
@@ -760,7 +760,7 @@
                         </style>
                     </head>
                     <body>
-                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน (A5)</div>
+                        <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
                         <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
@@ -782,19 +782,19 @@
                             <!-- แถวที่ 2: อายุ, DM, HbA1c, BP -->
                             <table style="margin-bottom: -1px;">
                                 <tr>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">อายุ (ปี)</span>
                                         <span class="value">${boxVal(form.age)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">ระยะเวลาเป็น DM (ปี)</span>
                                         <span class="value">${boxVal(form.dmYears)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="20%">
                                         <span class="label">HbA1c (%)</span>
                                         <span class="value">${boxVal(form.hba1c)}</span>
                                     </td>
-                                    <td width="25%">
+                                    <td width="40%">
                                         <span class="label">ความดัน (BP)</span>
                                         <span class="value">${boxVal(form.bp)}</span>
                                     </td>
