@@ -2646,10 +2646,6 @@
                         .where('createdAt', '<=', end);
                     unsubs.push(qDate.onSnapshot(handleUpdate));
 
-                    // B. [ADDED] ดึงเคสที่ "รอตรวจ" (Waiting) ทั้งหมด (เพื่อให้เห็นคิวค้างจากวันก่อนๆ)
-                    // ช่วยให้ห้องตรวจเห็นคนไข้ที่ตกค้างโดยไม่ต้องย้อนวันที่
-                    const qWaiting = getCollection('patients_referrals').where('status', '==', 'Waiting');
-                    unsubs.push(qWaiting.onSnapshot(handleUpdate));
                 }
 
                 return () => unsubs.forEach(u => u());
