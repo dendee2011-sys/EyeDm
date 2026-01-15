@@ -974,6 +974,7 @@
                 w.document.write(content);
                 w.document.close();
             };
+            
 
             // Scanner Effect: Adaptive OCR
             useEffect(() => {
@@ -2707,7 +2708,8 @@
                             dataMap.set(change.doc.id, { 
                                 id: change.doc.id, 
                                 ...data, 
-                                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt) 
+                                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
+                                examinedAt: data.examinedAt?.toDate ? data.examinedAt.toDate() : (data.examinedAt ? new Date(data.examinedAt) : null)
                             });
                         } else if (change.type === 'removed') {
                             dataMap.delete(change.doc.id);
@@ -2716,8 +2718,14 @@
                     syncData();
                 };
                 
+                // 0. [NEW] Logic สำหรับหน้า Reports (ดึงข้อมูลทั้งหมดที่ไมใช่ Import เพื่อสรุปผล)
+                if (view === 'reports') {
+                     // ดึงเฉพาะ Waiting และ Completed (ไม่เอา Imported) เพื่อให้ Admin เลือกช่วงเวลาดูรายงานได้ครบถ้วน
+                     const qAll = getCollection('patients_referrals').where('status', 'in', ['Waiting', 'Completed']);
+                     unsubs.push(qAll.onSnapshot(handleUpdate));
+                }
                 // 1. Logic ค้นหาด้วย ID 13 หลัก (Priority สูงสุด - ดึงประวัติทั้งหมด)
-                if (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) {
+                else if (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) {
                     const q = getCollection('patients_referrals').where('part1.idCard', '==', globalSearchTerm);
                     unsubs.push(q.onSnapshot(handleUpdate));
                 } 
@@ -2734,8 +2742,7 @@
                 }
 
                 return () => unsubs.forEach(u => u());
-            }, [user, role, agencyCode, currentDate, (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) ? globalSearchTerm : null]); // Re-fetch เมื่อเปลี่ยนวันหรือคำค้นหา
-
+            }, [user, role, agencyCode, currentDate, (globalSearchTerm && /^\d{13}$/.test(globalSearchTerm)) ? globalSearchTerm : null, view]);
             useEffect(() => {
                 if(!user) return;
                 const collection = getCollection('agencies');
