@@ -2149,7 +2149,7 @@
             );
         };
 
-        const ReportsPage = ({ onBack, patients, agenciesMap }) => {
+       const ReportsPage = ({ onBack, patients, agenciesMap }) => {
             // Filter States
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
@@ -2182,7 +2182,7 @@
                 });
             }, [patients, startDate, endDate]);
 
-            // 2. Calculate Statistics (From Filtered Data)
+           // 2. Calculate Statistics (From Filtered Data)
             const stats = useMemo(() => {
                 const total = filteredPatients.length;
                 const completed = filteredPatients.filter(p => p.status === 'Completed').length;
@@ -2193,28 +2193,22 @@
                 const footRiskCounts = { 'Low Risk': 0, 'Moderate Risk': 0, 'High Risk': 0, 'Very High Risk': 0, 'Active Ulcer': 0 };
                 const agencyStats = {};
 
-                filteredPatients.forEach(p => {
-                    // Agency Logic
-                    const code = p.referringAgencyCode || 'Unknown';
-                    // [FIX] ใช้ allAgenciesMap แทน agenciesMap
-                    const name = allAgenciesMap[code] || code;
-                    if (!agencyStats[code]) agencyStats[code] = { name, total: 0, completed: 0 };
-                    agencyStats[code].total++;
-                    if (p.status === 'Completed') agencyStats[code].completed++;
+                const getScore = (s) => {
+                    if (!s || s.includes('No DR')) return 0;
+                    if (s.includes('Mild')) return 1;
+                    if (s.includes('Moderate')) return 2;
+                    if (s.includes('Severe')) return 3;
+                    if (s.includes('PDR')) return 4;
+                    return -1; 
+                };
 
-                    // Eye Logic
+                filteredPatients.forEach(p => {
+                    // Determine Max Score for Eye
+                    let maxScore = -99;
                     if (p.status === 'Completed' && p.part2) {
-                        const getScore = (s) => {
-                            if (!s || s.includes('No DR')) return 0;
-                            if (s.includes('Mild')) return 1;
-                            if (s.includes('Moderate')) return 2;
-                            if (s.includes('Severe')) return 3;
-                            if (s.includes('PDR')) return 4;
-                            return -1; 
-                        };
                         const scoreL = getScore(p.part2.drStageL);
                         const scoreR = getScore(p.part2.drStageR);
-                        const maxScore = Math.max(scoreL, scoreR);
+                        maxScore = Math.max(scoreL, scoreR);
                         
                         if (maxScore === 0) severityCounts['No DR']++;
                         else if (maxScore === 1) severityCounts['Mild DR']++;
@@ -2223,15 +2217,59 @@
                         else if (maxScore === 4) severityCounts['PDR']++;
                         else severityCounts['ไม่พบจอประสาทตา']++;
                     }
+                    // Agency Logic
+                    const code = p.referringAgencyCode || 'Unknown';
+                    const name = allAgenciesMap[code] || code;
+                    if (!agencyStats[code]) {
+                        agencyStats[code] = { 
+                            name, 
+                            total: 0, 
+                            completed: 0,
+                            // Eye Severity
+                            abnormal: 0, // [NEW] นับรวมคนผิดปกติ
+                            noDr: 0, mild: 0, mod: 0, severe: 0, pdr: 0, incomplete: 0,
+                            // Foot Risk
+                            footTotal: 0, footLow: 0, footMod: 0, footHigh: 0, footVeryHigh: 0, footUlcer: 0
+                        };
+                    }
+                    
+                    agencyStats[code].total++;
+                    if (p.status === 'Completed') {
+                        agencyStats[code].completed++;
+                        
+                        if (maxScore === 0) agencyStats[code].noDr++;
+                        else if (maxScore === 1) { agencyStats[code].mild++; agencyStats[code].abnormal++; }
+                        else if (maxScore === 2) { agencyStats[code].mod++; agencyStats[code].abnormal++; }
+                        else if (maxScore === 3) { agencyStats[code].severe++; agencyStats[code].abnormal++; }
+                        else if (maxScore === 4) { agencyStats[code].pdr++; agencyStats[code].abnormal++; }
+                        else agencyStats[code].incomplete++;
+                    }
 
                     // Foot Logic
                     if (p.footExam && p.footExam.riskLevel) {
                         const r = p.footExam.riskLevel;
-                        if (r.includes('Ulcer')) footRiskCounts['Active Ulcer']++;
-                        else if (r.includes('Very High')) footRiskCounts['Very High Risk']++;
-                        else if (r.includes('High')) footRiskCounts['High Risk']++;
-                        else if (r.includes('Moderate')) footRiskCounts['Moderate Risk']++;
-                        else footRiskCounts['Low Risk']++;
+                        agencyStats[code].footTotal++; // Count foot exams for this agency
+
+                        if (r.includes('Ulcer')) { 
+                            footRiskCounts['Active Ulcer']++; 
+                            agencyStats[code].footUlcer++;
+                        }
+                        else if (r.includes('Very High')) { 
+                            footRiskCounts['Very High Risk']++; 
+                            agencyStats[code].footVeryHigh++;
+                        }
+                        else if (r.includes('High')) { 
+                            footRiskCounts['High Risk']++; 
+                            agencyStats[code].footHigh++;
+                        }
+                        else if (r.includes('Moderate')) { 
+                            footRiskCounts['Moderate Risk']++; 
+                            agencyStats[code].footMod++;
+                        }
+                        else { 
+                            footRiskCounts['Low Risk']++; 
+                            agencyStats[code].footLow++;
+                        }
                     }
                 });
 
@@ -2261,22 +2299,22 @@
                         row.push(
                             safeStr(`'${p.part1?.idCard || ''}`), 
                             safeStr(p.part1?.name), 
-                            safeStr(p.part1?.gender),
-                            safeStr(p.part1?.age),
-                            safeStr(p.part1?.dmYears),
-                            safeStr(p.part1?.hba1c),
-                            safeStr(p.part1?.bp),
-                            safeStr(p.part1?.weight),
+                            safeStr(p.part1?.gender), 
+                            safeStr(p.part1?.age), 
+                            safeStr(p.part1?.dmYears), 
+                            safeStr(p.part1?.hba1c), 
+                            safeStr(p.part1?.bp), 
+                            safeStr(p.part1?.weight), 
                             safeStr(p.part1?.height)
                         );
                     }
 
                     if (options.eye) {
                         row.push(
-                            safeStr(p.part1?.vaRight),
-                            safeStr(p.part1?.vaLeft),
-                            safeStr(p.part2?.drStageR || '-'),
-                            safeStr(p.part2?.drStageL || '-'),
+                            safeStr(p.part1?.vaRight), 
+                            safeStr(p.part1?.vaLeft), 
+                            safeStr(p.part2?.drStageR || '-'), 
+                            safeStr(p.part2?.drStageL || '-'), 
                             safeStr(p.status)
                         );
                     }
@@ -2285,10 +2323,10 @@
                         const f = p.footExam || {};
                         const deformityStr = (f.deformity ? 'Deformity ' : '') + (f.callus ? 'Callus' : '');
                         row.push(
-                            safeStr(f.riskLevel || '-'),
-                            safeStr(`L:${f.pulse?.L}/R:${f.pulse?.R}`),
-                            safeStr(`L:${f.monofilament?.L}/R:${f.monofilament?.R}`),
-                            safeStr(deformityStr),
+                            safeStr(f.riskLevel || '-'), 
+                            safeStr(`L:${f.pulse?.L}/R:${f.pulse?.R}`), 
+                            safeStr(`L:${f.monofilament?.L}/R:${f.monofilament?.R}`), 
+                            safeStr(deformityStr), 
                             safeStr(f.footwear)
                         );
                     }
@@ -2347,7 +2385,15 @@
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจตาแล้ว</div><div className="text-3xl font-bold text-green-600">{stats.completed}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-pink-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตรวจเท้าแล้ว</div><div className="text-3xl font-bold text-pink-600">{stats.footTotal}</div></div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">รอตรวจตา</div><div className="text-3xl font-bold text-orange-600">{stats.waiting}</div></div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center"><div className="text-gray-500 text-xs uppercase mb-1">ตาผิดปกติ (Any DR)</div><div className="text-3xl font-bold text-red-600">{stats.completed - (stats.severityCounts['No DR'] || 0) - (stats.severityCounts['ไม่พบจอประสาทตา'] || 0)}</div></div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center">
+                            <div className="text-gray-500 text-xs uppercase mb-1">ตาผิดปกติ (Any DR)</div>
+                            <div className="text-3xl font-bold text-red-600">
+                                {(stats.severityCounts['Mild DR'] || 0) + 
+                                 (stats.severityCounts['Moderate DR'] || 0) + 
+                                 (stats.severityCounts['Severe DR'] || 0) + 
+                                 (stats.severityCounts['PDR'] || 0)}
+                            </div>
+                        </div>
                     </div>
                     
                     {/* Charts */}
@@ -2379,16 +2425,70 @@
                     <div className="bg-white p-6 rounded-xl shadow-sm border flex flex-col h-[400px]">
                             <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Icon name="list" size={18}/> สถิติรายหน่วยงาน (PCU)</h3>
                             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="p-2 text-left rounded-tl-lg">หน่วยงาน</th><th className="p-2 text-center">ส่งมา</th><th className="p-2 text-center rounded-tr-lg">ตรวจตาแล้ว</th></tr></thead>
-                                    <tbody className="divide-y">{Object.values(stats.agencyStats).sort((a,b) => b.total - a.total).map((s, i) => (<tr key={i} className="hover:bg-gray-50"><td className="p-3 truncate max-w-[180px]" title={s.name}>{s.name}</td><td className="p-3 text-center font-bold text-gray-700">{s.total}</td><td className="p-3 text-center font-bold text-green-600">{s.completed}</td></tr>))}</tbody>
+                                <table className="w-full text-sm border-collapse">
+                                    <thead className="bg-gray-50 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="p-2 text-left rounded-tl-lg bg-gray-100 border-b">หน่วยงาน</th>
+                                            <th className="p-2 text-center bg-gray-100 border-b">ส่ง</th>
+                                            <th className="p-2 text-center bg-gray-100 border-b">ตรวจ</th>
+                                            <th className="p-2 text-center bg-red-100 text-red-800 border-b font-bold">ผิดปกติ</th>
+                                            <th className="p-2 text-center bg-blue-50 border-b text-blue-800" colSpan="6">รายละเอียดความรุนแรง (Eye)</th>
+                                            <th className="p-2 text-center bg-pink-50 border-b text-pink-800 rounded-tr-lg" colSpan="5">ผลตรวจเท้า (Foot)</th>
+                                        </tr>
+                                        <tr className="text-xs">
+                                            <th className="p-1 bg-gray-50 border-b"></th>
+                                            <th className="p-1 bg-gray-50 border-b text-center">คน</th>
+                                            <th className="p-1 bg-gray-50 border-b text-center">คน</th>
+                                            <th className="p-1 bg-red-50 text-red-900 text-center border-b">คน</th>
+                                            
+                                            {/* Eye Headers */}
+                                            <th className="p-1 bg-green-50 text-green-800 text-center border-b">No</th>
+                                            <th className="p-1 bg-yellow-50 text-yellow-800 text-center border-b">Mild</th>
+                                            <th className="p-1 bg-orange-50 text-orange-800 text-center border-b">Mod</th>
+                                            <th className="p-1 bg-red-50 text-red-800 text-center border-b">Sev</th>
+                                            <th className="p-1 bg-purple-50 text-purple-800 text-center border-b">PDR</th>
+                                            <th className="p-1 bg-gray-100 text-gray-600 text-center border-b">Inc</th>
+
+                                            {/* Foot Headers */}
+                                            <th className="p-1 bg-emerald-50 text-emerald-800 text-center border-b">Low</th>
+                                            <th className="p-1 bg-yellow-50 text-yellow-800 text-center border-b">Mod</th>
+                                            <th className="p-1 bg-orange-50 text-orange-800 text-center border-b">High</th>
+                                            <th className="p-1 bg-red-50 text-red-800 text-center border-b">V.Hi</th>
+                                            <th className="p-1 bg-red-100 text-red-900 text-center border-b">Ulc</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {Object.values(stats.agencyStats).sort((a,b) => b.total - a.total).map((s, i) => (
+                                            <tr key={i} className="hover:bg-gray-50">
+                                                <td className="p-2 truncate max-w-[150px] font-semibold text-gray-700" title={s.name}>{s.name}</td>
+                                                <td className="p-2 text-center font-bold">{s.total}</td>
+                                                <td className="p-2 text-center font-bold text-blue-600">{s.completed}</td>
+                                                {/* [NEW] คอลัมน์รวมคนผิดปกติ */}
+                                                <td className="p-2 text-center font-bold text-red-600 bg-red-50/50">{s.abnormal > 0 ? s.abnormal : '-'}</td>
+                                                
+                                                {/* Eye Data */}
+                                                <td className="p-2 text-center text-green-600 bg-green-50/30">{s.noDr || '-'}</td>
+                                                <td className="p-2 text-center text-yellow-600 bg-yellow-50/30">{s.mild || '-'}</td>
+                                                <td className="p-2 text-center text-orange-600 bg-orange-50/30">{s.mod || '-'}</td>
+                                                <td className="p-2 text-center text-red-600 bg-red-50/30">{s.severe || '-'}</td>
+                                                <td className="p-2 text-center text-purple-600 bg-purple-50/30">{s.pdr || '-'}</td>
+                                                <td className="p-2 text-center text-gray-400 bg-gray-50/30">{s.incomplete || '-'}</td>
+
+                                                {/* Foot Data */}
+                                                <td className="p-2 text-center text-emerald-600 bg-emerald-50/30">{s.footLow || '-'}</td>
+                                                <td className="p-2 text-center text-yellow-600 bg-yellow-50/30">{s.footMod || '-'}</td>
+                                                <td className="p-2 text-center text-orange-600 bg-orange-50/30">{s.footHigh || '-'}</td>
+                                                <td className="p-2 text-center text-red-600 bg-red-50/30">{s.footVeryHigh || '-'}</td>
+                                                <td className="p-2 text-center text-red-800 bg-red-100/30 font-bold">{s.footUlcer || '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
                                 </table>
                             </div>
                     </div>
                 </div>
             );
         };
-
         const FootDashboard = ({ patients, onSelect, agenciesMap, onLogout, selectedDate, setSelectedDate, onSearchTermChange }) => {
             const [term, setTerm] = useState('');
             const [agencyFilter, setAgencyFilter] = useState('All');
