@@ -1515,13 +1515,16 @@
                     await getCollection('patients_referrals').doc(patient.id).update({ 
                         part2: p2, 
                         findings, 
-                        plan, // [NEW] Save Plan
+                        plan, 
                         status: 'Completed', 
                         examinedAt: new Date() 
                     });
-                    setModal({ visible: true, title: "สำเร็จ", message: "บันทึกผลเรียบร้อย", onConfirm: () => { setModal({ visible: false }); onBack(); } });
-                } catch(e){ setModal({ visible: true, message: e.message }); }
-                setSaving(false);
+                    // [MODIFIED] บันทึกเสร็จแล้วกลับเลยทันที (ไม่ต้องรอ Popup Confirm) เพื่อความรวดเร็ว
+                    onBack();
+                } catch(e){ 
+                    setModal({ visible: true, message: "เกิดข้อผิดพลาด: " + e.message }); 
+                    setSaving(false);
+                }
             };
             const toggle = (k,s) => {
                  if (isReadOnly) return;
