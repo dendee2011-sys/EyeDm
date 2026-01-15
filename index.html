@@ -2159,6 +2159,9 @@
                 foot: true     // ผลตรวจเท้า (Risk, รายละเอียด)
             });
 
+            // [FIX] รวมรายชื่อหน่วยงาน Static และ Dynamic เพื่อให้แสดงชื่อครบถ้วน
+            const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
+
             // 1. Filter Patients based on Date Range
             const filteredPatients = useMemo(() => {
                 return patients.filter(p => {
@@ -2193,7 +2196,8 @@
                 filteredPatients.forEach(p => {
                     // Agency Logic
                     const code = p.referringAgencyCode || 'Unknown';
-                    const name = agenciesMap[code] || code;
+                    // [FIX] ใช้ allAgenciesMap แทน agenciesMap
+                    const name = allAgenciesMap[code] || code;
                     if (!agencyStats[code]) agencyStats[code] = { name, total: 0, completed: 0 };
                     agencyStats[code].total++;
                     if (p.status === 'Completed') agencyStats[code].completed++;
@@ -2232,7 +2236,7 @@
                 });
 
                 return { total, completed, waiting, severityCounts, agencyStats, footTotal, footRiskCounts };
-            }, [filteredPatients, agenciesMap]);
+            }, [filteredPatients, allAgenciesMap]);
 
             // 3. Dynamic Export CSV
             const exportCSV = () => {
@@ -2247,7 +2251,8 @@
                 
                 filteredPatients.forEach(p => {
                     const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('th-TH') : '-';
-                    const agency = agenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '-';
+                    // [FIX] ใช้ allAgenciesMap แทน agenciesMap
+                    const agency = allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '-';
                     const safeStr = (s) => { if (s === null || s === undefined) return '""'; return `"${String(s).replace(/"/g, '""')}"`; };
 
                     let row = [safeStr(date), safeStr(agency)];
