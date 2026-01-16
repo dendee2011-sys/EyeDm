@@ -291,6 +291,11 @@
                 const val = (v, suffix='') => v ? v + suffix : '................................';
                 const boxVal = (v) => v || '';
                 const chk = (condition) => condition ? '[ / ]' : '[&nbsp;&nbsp;&nbsp;]';
+                
+                // [MODIFIED] แปลงรหัสหน่วยงานเป็นชื่อ
+                const agencyLabel = allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '................................'
+                // [IMPORTANT] วันที่ต้องใช้ p.createdAt (ของ Dashboard) ไม่ใช่ recordDate (ของ Form)
+                const dateLabel = formatDateTh(p.createdAt) || '................................';
 
                 const content = `
                     <!DOCTYPE html>
@@ -317,7 +322,7 @@
                     </head>
                     <body>
                         <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
-                        <div class="sub-header">หน่วยงาน: ${p.referringAgencyCode || '................................'} วันที่: ${formatDateTh(p.createdAt) || '................................'}</div>
+                        <div class="sub-header">หน่วยงาน: ${agencyLabel} วันที่: ${dateLabel}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
                         <div style="margin-bottom: 5px;">
@@ -785,6 +790,11 @@
                 const val = (v, suffix='') => v ? v + suffix : '................................';
                 const boxVal = (v) => v || '';
                 const chk = (condition) => condition ? '[ / ]' : '[&nbsp;&nbsp;&nbsp;]';
+                // [MODIFIED] ใช้ชื่อหน่วยงานแทนรหัส และจัดรูปแบบวันที่
+                const agencyLabel = STATIC_PCU_DATA[agencyCode] || agencyName || agencyCode || '................................';
+                const dateLabel = formatDateTh(recordDate) || '................................';
+
+                
 
                 const genDRCheckboxes = (val) => {
                     const stages = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "PDR"];
@@ -821,7 +831,7 @@
                     </head>
                     <body>
                         <div class="header">แบบบันทึกการตรวจคัดกรองภาวะแทรกซ้อน</div>
-                        <div class="sub-header">หน่วยงาน: ${agencyCode || '................................'} วันที่: ${formatDateTh(recordDate) || '................................'}</div>
+                        <div class="sub-header">หน่วยงาน: ${agencyLabel} วันที่: ${dateLabel}</div>
                         
                         <div class="title">1. ข้อมูลทั่วไป</div>
                         <div style="margin-bottom: 5px;">
