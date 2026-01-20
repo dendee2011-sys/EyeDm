@@ -689,9 +689,9 @@
                                             <td className="p-3 align-top text-gray-500">{p.referringAgencyCode ? <div className="flex flex-col"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono w-fit mb-1">{p.referringAgencyCode}</span><span className="text-xs truncate max-w-[150px]">{allAgenciesMap[p.referringAgencyCode] || '-'}</span></div> : <span>-</span>}</td>
                                             <td className="p-3 text-center align-top">{getStatusBadge(p.status)}</td>
                                             <td className="p-3 text-right align-top">
-                                                <div className="flex justify-end gap-2">
-                                                    {/* [NEW] ปุ่มพิมพ์ใบส่งตัวในหน้า Dashboard */}
-                                                    <button onClick={()=>handlePrint(p)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg" title="พิมพ์ใบส่งตัว"><Icon name="printer" size={16}/></button>
+                                                 <div className="flex justify-end gap-2">
+                                                    {/* [NEW] ปุ่มพิมพ์ใบส่งตัวในหน้า Dashboard (ซ่อนสำหรับ Hospital เพื่อความเร็ว) */}
+                                                    {role !== 'HOSPITAL' && <button onClick={()=>handlePrint(p)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg" title="พิมพ์ใบส่งตัว"><Icon name="printer" size={16}/></button>}
 
                                                     {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
@@ -2675,13 +2675,16 @@
                 setForm(f => ({ ...f, riskLevel: risk }));
             }, [form.monofilament, form.pulse, form.deformity, form.callus, form.ulcer, form.historyUlcer, form.amputation]);
 
-            const save = async () => {
+           const save = async () => {
                 setSaving(true);
                 try {
                     await getCollection('patients_referrals').doc(patient.id).update({ footExam: { ...form, checkedAt: new Date() } });
-                    setModal({ visible: true, title: "สำเร็จ", message: "บันทึกการตรวจเท้าเรียบร้อย", onConfirm: () => { setModal({ visible: false }); onBack(); } });
-                } catch(e) { setModal({ visible: true, message: e.message }); }
-                setSaving(false);
+                    // [MODIFIED] บันทึกเสร็จแล้วกลับทันที ไม่ต้องรอ Modal
+                    onBack();
+                } catch(e) { 
+                    setModal({ visible: true, message: e.message }); 
+                    setSaving(false);
+                }
             };
 
             return (
@@ -2764,7 +2767,7 @@
             );
         };
 
-        const App = () => {
+       const App = () => {
             const [user, setUser] = useState(null);
             const [role, setRole] = useState(null);
             const [agencyCode, setAgencyCode] = useState(null);
@@ -2779,6 +2782,10 @@
             const [currentDate, setCurrentDate] = useState(getTodayStr());
             const [globalSearchTerm, setGlobalSearchTerm] = useState('');
             const [quickAddId, setQuickAddId] = useState('');
+
+            // [NEW] ตัวแปรตรวจสอบว่าเป็นหน้ารายงานหรือไม่ (เพื่อใช้ใน useEffect dependency แทน view)
+            // การใช้ isReportView แทน view จะทำให้การสลับระหว่างหน้า Dashboard <-> Form ไม่ไป Trigger การโหลดข้อมูลใหม่
+            const isReportView = view === 'reports';
 
             const activePatient = useMemo(() => {
                 if (!selectedPatient) return null;
@@ -2800,9 +2807,9 @@
                         }
                     } else { setRole(null); setAgencyCode(null); }
                 });
-            }, []); 
+            }, []);  
 
-            // --- OPTIMIZED FETCHING LOGIC ---
+             // --- OPTIMIZED FETCHING LOGIC ---
             useEffect(() => {
                 if(!user || !role) return;
                 
