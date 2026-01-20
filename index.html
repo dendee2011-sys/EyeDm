@@ -576,6 +576,10 @@
                     if (term.length > 0) {
                         return matchesAgency && matchesTerm;
                     } else {
+                        // [MODIFIED] สำหรับ Hospital: ถ้าตรวจเสร็จแล้ว (Completed) ให้ซ่อนจากหน้ารายการหลัก (เพื่อให้โหลดเร็วและโฟกัสงานค้าง)
+                        // จะแสดงก็ต่อเมื่อค้นหา (term.length > 0) เท่านั้น
+                        if (role === 'HOSPITAL' && p.status === 'Completed') return false;
+                        
                         return matchesAgency && matchesDate;
                     }
                 });
