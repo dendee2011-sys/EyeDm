@@ -554,17 +554,10 @@
             };
             
             const filtered = useMemo(() => {
-                let res = patients.filter(p => {
+                // 1. กรองเบื้องต้นตามหน่วยงาน (Agency)
+                let baseList = patients.filter(p => {
                     if (p.isDeleted) return false;
                     if (term.length === 0 && p.status === 'Imported') return false;
-
-                    const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
-                    const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
-                    
-                    const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
-                    const offset = pDate.getTimezoneOffset() * 60000;
-                    const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
-                    const matchesDate = pDateStr === selectedDate || p.status === 'Waiting';
 
                     let matchesAgency = true;
                     if (role === 'HOSPITAL') {
@@ -572,26 +565,62 @@
                     } else {
                         matchesAgency = p.referringAgencyCode === agencyCode;
                     }
+                    return matchesAgency;
+                });
+
+                // 2. กรองตามวันที่หรือสถานะ เพื่อสร้าง "รายการคิวทั้งหมดของวัน"
+                let queueList = baseList.filter(p => {
+                    const searchStr = (p.part1?.idCard || '') + (p.part1?.name || '');
+                    const matchesTerm = searchStr.toLowerCase().includes(term.toLowerCase());
                     
+                    const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
+                    const offset = pDate.getTimezoneOffset() * 60000;
+                    const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+                    const matchesDate = pDateStr === selectedDate;
+
                     if (term.length > 0) {
-                        return matchesAgency && matchesTerm;
+                        return matchesTerm;
                     } else {
-                        // [MODIFIED] สำหรับ Hospital: ถ้าตรวจเสร็จแล้ว (Completed) ให้ซ่อนจากหน้ารายการหลัก (เพื่อให้โหลดเร็วและโฟกัสงานค้าง)
-                        // จะแสดงก็ต่อเมื่อค้นหา (term.length > 0) เท่านั้น
-                        if (role === 'HOSPITAL' && p.status === 'Completed') return false;
-                        
-                        return matchesAgency && matchesDate;
+                        // แสดง: รายการของวันที่เลือก OR รายการที่ยังค้างตรวจ (Waiting)
+                        return matchesDate || p.status === 'Waiting';
                     }
                 });
 
-                res = res.map((p, i) => ({ ...p, displayQueue: i + 1 }));
-
-                return res.sort((a, b) => {
-                    const aDone = a.status === 'Completed';
-                    const bDone = b.status === 'Completed';
-                    if (aDone !== bDone) return aDone ? 1 : -1;
-                    return a.displayQueue - b.displayQueue; 
+                // 3. เรียงลำดับตามเวลาลงทะเบียน (createdAt) เพื่อรันเลขคิวให้ถูกต้องและคงที่
+                queueList.sort((a, b) => {
+                    const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return tA - tB;
                 });
+
+                // 4. รันเลขคิว (Queue Number) *ก่อน* จะซ่อน
+                const listWithQueue = queueList.map((p, i) => ({ 
+                    ...p, 
+                    displayQueue: i + 1 
+                }));
+
+                // 5. การแสดงผล (Filtering for Display)
+                let displayList = listWithQueue;
+
+                // [MODIFIED] สำหรับ Hospital: ซ่อนคนที่ตรวจเสร็จแล้ว (Completed) เพื่อให้โหลดไวและไม่รก
+                // แต่ถ้ามีการค้นหา (term) ให้แสดงออกมาด้วยเผื่อต้องแก้ไข
+                if (role === 'HOSPITAL' && term.length === 0) {
+                    displayList = listWithQueue.filter(p => p.status !== 'Completed');
+                }
+
+                // 6. การเรียงลำดับสำหรับการแสดงผล (Sorting for Display)
+                // PCU: เอาคนตรวจเสร็จไว้ล่างสุด
+                // Hospital: เรียงตามคิวเหมือนเดิม (คนที่เสร็จแล้วถูกซ่อนไปแล้ว)
+                if (role !== 'HOSPITAL') {
+                     displayList.sort((a, b) => {
+                        const aDone = a.status === 'Completed';
+                        const bDone = b.status === 'Completed';
+                        if (aDone !== bDone) return aDone ? 1 : -1;
+                        return a.displayQueue - b.displayQueue; 
+                     });
+                }
+
+                return displayList;
 
             }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
 
