@@ -467,8 +467,13 @@
             };
 
             // ฟังก์ชัน Export CSV สำหรับ PCU
-            const exportData = () => {
-                const headers = ["Date", "ID Card", "Name", "Gender", "Age", "DM Years", "VA (R)", "VA (L)", "HbA1c", "Foot Risk", "Status", "Result (R)", "Result (L)"];
+const exportData = () => {
+                const headers = [
+                    "Date", "ID Card", "Name", "Gender", "Age", "DM Years", 
+                    "VA (R)", "VA (L)", "HbA1c", 
+                    "BP", "Weight", "Height", // เพิ่ม Header ตรงนี้
+                    "Foot Risk", "Status", "Result (R)", "Result (L)"
+                ];
                 const BOM = "\uFEFF"; 
                 let csv = BOM + headers.join(",") + "\n";
                 
