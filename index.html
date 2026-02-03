@@ -1971,17 +1971,19 @@ useEffect(() => {
                     const sVal = source[key];
                     const tVal = result[key];
                     
-                    // ถ้าข้อมูลใหม่มีค่า (ไม่ว่าง)
+                    // [เพิ่มใหม่] ตรรกะพิเศษสำหรับ hba1c_history: รวมข้อมูลเก่าและใหม่เข้าด้วยกันตามปี
+                    if (key === 'hba1c_history') {
+                        result[key] = { ...(target[key] || {}), ...(source[key] || {}) };
+                        continue;
+                    }
+
                     if (sVal !== undefined && sVal !== null && sVal !== '') {
-                        // ถ้าข้อมูลเดิมว่าง (undefined, null, empty string) -> ให้เติมค่าใหม่
                         if (tVal === undefined || tVal === null || tVal === '') {
                             result[key] = sVal;
                         } 
-                        // ถ้าเป็น Object ทั้งคู่ (เช่น part1, history) ให้มุดเข้าไปเช็คข้างใน (Recursive)
                         else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
                             result[key] = mergeFillMissing(tVal, sVal);
                         }
-                        // กรณีอื่น (ข้อมูลเดิมมีค่าอยู่แล้ว) -> ไม่ทำอะไร (รักษาค่าเดิมไว้)
                     }
                 }
                 return result;
@@ -2065,6 +2067,10 @@ useEffect(() => {
                         const normLastDrL = normalizeDR(patient.lastDrStageL);
 
                         // Create import object
+                        // [เพิ่มบรรทัดนี้] คำนวณปี พ.ศ. จากวันที่นำเข้า
+                        const yearBE = examDate.getFullYear() + 543; 
+
+                        // Create import object
                         const importData = { 
                             part1: {
                                 idCard: patient.idCard,
@@ -2074,7 +2080,13 @@ useEffect(() => {
                                 age: patient.age,
                                 dxDate: patient.dxDate || '',
                                 dmYears: patient.dmYears,
-                                hba1c: patient.hba1c, 
+                                hba1c: patient.hba1c, // ค่าล่าสุด
+
+                                // [เพิ่มส่วนนี้] เก็บประวัติแยกปี
+                                hba1c_history: {
+                                    [yearBE]: patient.hba1c 
+                                },
+
                                 bp: patient.bp,
                                 weight: patient.weight,
                                 height: patient.height,
@@ -2084,7 +2096,7 @@ useEffect(() => {
                                 priorExamCount: patient.priorExamCount
                             },
                             referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
+                            // ... ส่วนที่เหลือคงเดิมไว้ ... 
                             isDeleted: false, 
                             createdAt: examDate,
                             // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
