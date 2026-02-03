@@ -734,7 +734,9 @@ const exportData = () => {
                                                     {/* [NEW] ปุ่มพิมพ์ใบส่งตัวในหน้า Dashboard (ซ่อนสำหรับ Hospital เพื่อความเร็ว) */}
                                                     {role !== 'HOSPITAL' && <button onClick={()=>handlePrint(p)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-lg" title="พิมพ์ใบส่งตัว"><Icon name="printer" size={16}/></button>}
 
-                                                    {p.status !== 'Completed' && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
+                                                    {/* [MODIFIED] อนุญาตให้ PCU แก้ไขข้อมูลพื้นฐานได้แม้ตรวจเสร็จแล้ว */}
+                                                    {(p.status !== 'Completed' || role === 'PCU') && <button onClick={()=>onEdit(p)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Icon name="pencil" size={16}/></button>}
+                                                    
                                                     {role === 'HOSPITAL' && p.status === 'Waiting' && <button onClick={()=>onSelect(p)} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">ตรวจ</button>}
                                                     
                                                     {/* [MODIFIED] ปุ่มดูผล/แก้ไขผล สำหรับ Hospital */}
@@ -1647,52 +1649,52 @@ const exportData = () => {
 
                                 {historyData && (
                                     <div className="pt-2 border-t border-blue-200 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
-                                         <p className="font-bold text-yellow-800 mb-2 text-xs uppercase flex items-center gap-1">
+                                        <p className="font-bold text-yellow-800 mb-2 text-xs uppercase flex items-center gap-1">
                                             <Icon name="history" size={12}/> 
                                             ผลตรวจตาปีที่แล้ว {historyData.date && `(${historyData.date.toLocaleDateString('th-TH')})`}
                                             {historyData.type === 'CSV' && <span className="ml-auto text-[10px] bg-yellow-200 px-1 rounded text-yellow-800">CSV</span>}
-                                         </p>
-                                         
-                                         <div className="grid grid-cols-2 gap-2 mb-2 text-[10px] text-gray-600 bg-white/50 p-1 rounded">
+                                        </p>
+                                        
+                                        <div className="grid grid-cols-2 gap-2 mb-2 text-[10px] text-gray-600 bg-white/50 p-1 rounded">
                                             <div><span className="font-bold">VA(R):</span> {historyData.vaRight || '-'}</div>
                                             <div><span className="font-bold">VA(L):</span> {historyData.vaLeft || '-'}</div>
                                             <div><span className="font-bold">HbA1c:</span> {historyData.hba1c || '-'}</div>
                                             <div><span className="font-bold">BP:</span> {historyData.bp || '-'}</div>
-                                         </div>
+                                        </div>
 
-                                         <div className="flex justify-between items-center text-xs mb-1">
-                                             <span className="text-gray-600">ขวา (OD):</span>
-                                             <span className="font-bold text-gray-800">{historyData.drStageR || '-'}</span>
-                                         </div>
-                                         <div className="flex justify-between items-center text-xs mb-2">
-                                             <span className="text-gray-600">ซ้าย (OS):</span>
-                                             <span className="font-bold text-gray-800">{historyData.drStageL || '-'}</span>
-                                         </div>
-                                         
-                                         {historyData.findings && (
-                                             <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
-                                                 <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
-                                                 <div className="mt-1">
-                                                     {Object.entries(historyData.findings || {}).map(([key, val]) => {
-                                                         const sides = [];
-                                                         if (val.L) sides.push('L');
-                                                         if (val.R) sides.push('R');
-                                                         if (sides.length > 0 && key !== 'Normal') {
-                                                             return (
-                                                                 <div key={key} className="flex items-center gap-1 mb-0.5">
-                                                                     <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
-                                                                     <span>{key} ({sides.join(',')})</span>
-                                                                 </div>
-                                                             );
-                                                         }
-                                                         return null;
-                                                     })}
-                                                     {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
-                                                         <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
-                                                     }
-                                                 </div>
-                                             </div>
-                                         )}
+                                        <div className="flex justify-between items-center text-xs mb-1">
+                                            <span className="text-gray-600">ขวา (OD):</span>
+                                            <span className="font-bold text-gray-800">{historyData.drStageR || '-'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs mb-2">
+                                            <span className="text-gray-600">ซ้าย (OS):</span>
+                                            <span className="font-bold text-gray-800">{historyData.drStageL || '-'}</span>
+                                        </div>
+                                        
+                                        {historyData.findings && (
+                                            <div className="text-[10px] text-gray-600 bg-white p-2 rounded border border-yellow-100 shadow-sm">
+                                                <span className="font-bold text-yellow-700">สิ่งที่ตรวจพบ (Findings):</span>
+                                                <div className="mt-1">
+                                                    {Object.entries(historyData.findings || {}).map(([key, val]) => {
+                                                        const sides = [];
+                                                        if (val.L) sides.push('L');
+                                                        if (val.R) sides.push('R');
+                                                        if (sides.length > 0 && key !== 'Normal') {
+                                                            return (
+                                                                <div key={key} className="flex items-center gap-1 mb-0.5">
+                                                                    <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
+                                                                    <span>{key} ({sides.join(',')})</span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })}
+                                                    {(!historyData.findings || Object.entries(historyData.findings).every(([k, v]) => k === 'Normal' || (!v.L && !v.R))) && 
+                                                        <div className="text-gray-400 italic">- ปกติ / ไม่ระบุ -</div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -2892,7 +2894,7 @@ const exportData = () => {
                             
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <h3 className="font-bold text-gray-800 mb-2 text-sm">การลงความเห็นอื่นๆ (Other Comments)</h3>
-                                <textarea value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="ระบุความเห็นเพิ่มเติม..."></textarea>
+                                <textarea value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="ระบุรายละเอียดเพิ่มเติม..."></textarea>
                             </div>
 
                             <div className={`p-4 text-white rounded-xl text-center ${form.riskLevel.includes('Active') ? 'bg-red-800' : form.riskLevel.includes('Very') ? 'bg-red-600' : form.riskLevel.includes('High') ? 'bg-orange-500' : form.riskLevel.includes('Moderate') ? 'bg-yellow-500' : 'bg-green-500'}`}>
@@ -3116,4 +3118,4 @@ const exportData = () => {
         root.render(<App />);
     </script>
 </body>
-</html
+</html>
