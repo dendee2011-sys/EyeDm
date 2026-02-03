@@ -2685,230 +2685,246 @@ const exportData = () => {
             );
         };
 
-       const FootForm = ({ patient, onBack, setModal }) => {
+      const FootForm = ({ patient, onBack, setModal }) => {
+            // 1. กำหนดค่าเริ่มต้น (Initial State) ให้เป็น "ปกติ" ทั้งหมดเสมอ
             const defaultFoot = { 
                 monofilament: { L: 'Normal', R: 'Normal' }, 
-                pulse: { L: 'Present', R: 'Present' }, 
+                pulse: { L: 'Normal', R: 'Normal' }, 
                 deformity: false,
                 callus: false, 
+                deformityType: { claw: false, bunions: false, charcot: false }, // ส่วนย่อย Deformity
                 ulcer: false, 
                 historyUlcer: false, 
                 riskLevel: 'Low Risk (ความเสี่ยงต่ำ)', 
                 remark: '',
                 amputation: { toe: false, foot: false, leg: false },
-                skin: { color: 'Normal', pain: false, temp: 'Normal', fungal: false },
-                deformityType: { claw: false, bunions: false, charcot: false }, 
-                footwear: 'Sandal'
+                skin: { color: 'ปกติ', pain: false, temp: 'อุ่นปกติ', fungal: false },
+                footwear: 'รองเท้าหุ้มส้น/ผ้าใบ'
             };
 
-            const [form, setForm] = useState(() => {
-                const fe = patient.footExam || {};
-                // Deep merge to ensure no undefined objects
-                return {
-                    ...defaultFoot,
-                    ...fe,
-                    monofilament: { ...defaultFoot.monofilament, ...(fe.monofilament || {}) },
-                    pulse: { ...defaultFoot.pulse, ...(fe.pulse || {}) },
-                    amputation: { ...defaultFoot.amputation, ...(fe.amputation || {}) },
-                    skin: { ...defaultFoot.skin, ...(fe.skin || {}) },
-                    deformityType: { ...defaultFoot.deformityType, ...(fe.deformityType || {}) },
-                };
-            });
+            const [form, setForm] = useState(() => ({
+                ...defaultFoot,
+                ...(patient.footExam || {})
+            }));
             
             const [saving, setSaving] = useState(false);
+            const [lastYearHistory, setLastYearHistory] = useState(null); // เก็บประวัติเก่า
 
-            // Risk Calculation Effect
+            // 2. ระบบดึงประวัติการตรวจครั้งล่าสุด (หากมีข้อมูลในระบบ)
+            useEffect(() => {
+                if (!patient.part1?.idCard) return;
+                const fetchHistory = async () => {
+                    try {
+                        const q = getCollection('patients_referrals')
+                            .where('part1.idCard', '==', patient.part1.idCard)
+                            .where('isDeleted', '==', false);
+                        const snap = await q.get();
+                        if (!snap.empty) {
+                            const historyRecords = snap.docs
+                                .map(d => ({ id: d.id, ...d.data() }))
+                                .filter(d => d.id !== patient.id && d.footExam)
+                                .sort((a, b) => {
+                                    const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                                    const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                                    return dateB - dateA;
+                                });
+                            if (historyRecords.length > 0) setLastYearHistory(historyRecords[0]);
+                        }
+                    } catch (e) { console.error("History fetch error:", e); }
+                };
+                fetchHistory();
+            }, [patient.part1.idCard, patient.id]);
+
+            // 3. ระบบคำนวณระดับความเสี่ยงอัตโนมัติ (Risk Assessment)
             useEffect(() => {
                 let risk = 'Low Risk (ความเสี่ยงต่ำ)';
-                try {
-                    // Destructure to ensure primitives are used in dependency array
-                    const { ulcer, historyUlcer, amputation, monofilament, pulse, deformity, callus } = form;
-                    
-                    const hasActiveUlcer = ulcer;
-                    const hasHistory = historyUlcer || amputation.toe || amputation.foot || amputation.leg;
-                    
-                    // Safe access
-                    const hasLOPS = monofilament.L === 'Abnormal' || monofilament.R === 'Abnormal';
-                    const hasPAD = ['Absent', 'Weak'].includes(pulse.L) || ['Absent', 'Weak'].includes(pulse.R);
-                    const hasDeformity = deformity || callus;
-
-                    if (hasActiveUlcer) risk = 'Active Ulcer (มีแผลขณะนี้)';
-                    else if (hasHistory) risk = 'Very High Risk (ความเสี่ยงสูงมาก)';
-                    else {
-                        let factors = 0;
-                        if (hasLOPS) factors++;
-                        if (hasPAD) factors++;
-                        if (hasDeformity) factors++;
-
-                        if (factors >= 2) risk = 'High Risk (ความเสี่ยงสูง)';
-                        else if (factors === 1) risk = 'Moderate Risk (ปานกลาง)';
-                        else risk = 'Low Risk (ความเสี่ยงต่ำ)';
-                    }
-                } catch (e) { console.error(e); }
+                const { ulcer, historyUlcer, amputation, monofilament, pulse, deformity, callus } = form;
                 
-                setForm(prev => prev.riskLevel === risk ? prev : { ...prev, riskLevel: risk });
-            }, [
-                form.ulcer, form.historyUlcer, 
-                form.deformity, form.callus,
-                form.amputation.toe, form.amputation.foot, form.amputation.leg,
-                form.monofilament.L, form.monofilament.R,
-                form.pulse.L, form.pulse.R
-            ]);
+                const hasActiveUlcer = ulcer;
+                const hasHistory = historyUlcer || amputation.toe || amputation.foot || amputation.leg;
+                const hasLOPS = monofilament.L === 'Abnormal' || monofilament.R === 'Abnormal';
+                const hasPAD = ['Absent', 'Weak'].includes(pulse.L) || ['Absent', 'Weak'].includes(pulse.R);
+                const hasDeformity = deformity || callus;
+
+                if (hasActiveUlcer) risk = 'Active Ulcer (มีแผลขณะนี้)';
+                else if (hasHistory) risk = 'Very High Risk (ความเสี่ยงสูงมาก)';
+                else {
+                    let factors = 0;
+                    if (hasLOPS) factors++;
+                    if (hasPAD) factors++;
+                    if (hasDeformity) factors++;
+                    if (factors >= 2) risk = 'High Risk (ความเสี่ยงสูง)';
+                    else if (factors === 1) risk = 'Moderate Risk (ปานกลาง)';
+                    else risk = 'Low Risk (ความเสี่ยงต่ำ)';
+                }
+                setForm(prev => ({ ...prev, riskLevel: risk }));
+            }, [form.ulcer, form.historyUlcer, form.deformity, form.callus, form.amputation, form.monofilament, form.pulse]);
 
             const save = async () => {
                 setSaving(true);
                 try {
-                    await getCollection('patients_referrals').doc(patient.id).update({ footExam: { ...form, checkedAt: new Date() } });
+                    await getCollection('patients_referrals').doc(patient.id).update({ 
+                        footExam: { ...form, checkedAt: new Date() } 
+                    });
                     onBack();
-                } catch(e) { 
-                    setModal({ visible: true, message: e.message }); 
-                    setSaving(false);
-                }
+                } catch(e) { setModal({ visible: true, message: "Error: " + e.message }); setSaving(false); }
             };
 
             return (
-                <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
-                    <button onClick={onBack} className="mb-4 text-gray-500 flex items-center gap-1 hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับทะเบียน</button>
-                    <div className="bg-white rounded-xl shadow-lg border border-pink-100 overflow-hidden">
-                        <div className="bg-pink-600 p-6 text-white flex flex-col md:flex-row items-center justify-between gap-4 shadow-md">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-white/20 p-2 rounded-full"><Icon name="activity" size={32} className="text-white"/></div>
-                                <h2 className="font-bold text-2xl">แบบประเมินเท้าเบาหวาน</h2>
-                            </div>
-                            <div className="text-center md:text-right">
-                                <div className="text-3xl font-bold mb-1 tracking-wide">{patient.part1?.name}</div>
-                                <div className="text-xl font-medium opacity-90 flex flex-col md:flex-row gap-2 md:gap-4 justify-center md:justify-end">
-                                    <span className="bg-pink-700/50 px-3 py-1 rounded-lg">อายุ <b>{patient.part1?.age}</b> ปี</span>
-                                    <span className="bg-pink-700/50 px-3 py-1 rounded-lg">เป็นเบาหวาน <b>{patient.part1?.dmYears}</b> ปี</span>
+                <div className="max-w-5xl mx-auto animate-fade-in pb-10">
+                    <button onClick={onBack} className="flex items-center gap-2 text-gray-500 mb-4 hover:text-gray-700">
+                        <Icon name="chevron-left" size={20}/> กลับทะเบียน
+                    </button>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        
+                        {/* ฝั่งซ้าย: ข้อมูลผู้ป่วย สรุปความเสี่ยง และประวัติเก่า */}
+                        <div className="lg:col-span-3 space-y-4">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center">
+                                <div className="bg-pink-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Icon name="footprints" className="text-pink-500" size={24}/>
                                 </div>
+                                <h2 className="text-pink-500 font-bold text-xl mb-1">คลินิกเท้า</h2>
+                                <p className="text-[10px] text-gray-400 font-mono mb-2">ID: {patient.part1?.idCard}</p>
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">{patient.part1?.name}</h3>
+                                
+                                <div className="space-y-3 text-sm text-left border-b border-dashed pb-4">
+                                    <div className="flex justify-between"><span>อายุ:</span> <span className="font-bold">{patient.part1?.age} ปี</span></div>
+                                    <div className="flex justify-between"><span>เป็นเบาหวาน:</span> <span className="font-bold">{patient.part1?.dmYears} ปี</span></div>
+                                    <div className="flex justify-between"><span>HbA1c:</span> <span className="font-bold text-blue-600">{patient.part1?.hba1c} %</span></div>
+                                </div>
+
+                                {/* Risk Assessment Badge */}
+                                <div className={`mt-6 p-4 rounded-xl text-white ${
+                                    form.riskLevel.includes('Low') ? 'bg-emerald-500' :
+                                    form.riskLevel.includes('Moderate') ? 'bg-yellow-500' : 'bg-red-500'
+                                }`}>
+                                    <div className="text-[10px] uppercase opacity-80 font-bold mb-1">Risk Assessment</div>
+                                    <div className="text-xl font-black leading-tight">
+                                        {form.riskLevel.split(' (')[0]}
+                                        <span className="block text-xs font-normal opacity-90">({form.riskLevel.split(' (')[1]}</span>
+                                    </div>
+                                </div>
+
+                                {/* แสดงประวัติเดิมหากมี */}
+                                {lastYearHistory && (
+                                    <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-left">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">ประวัติการตรวจล่าสุด</p>
+                                        <p className="text-xs font-bold text-gray-700">{lastYearHistory.footExam.riskLevel.split(' (')[0]}</p>
+                                        <p className="text-[10px] text-gray-400">เมื่อ: {new Date(lastYearHistory.createdAt?.toDate ? lastYearHistory.createdAt.toDate() : lastYearHistory.createdAt).toLocaleDateString('th-TH')}</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <div className="p-6 space-y-6">
-                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2"><Icon name="scissors" size={16}/> ประวัติการตัดนิ้ว/ขา/เท้า (History of Amputation)</h3>
-                                <div className="flex gap-4 flex-wrap">
-                                    {[{k:'toe',l:'นิ้วเท้า'}, {k:'foot',l:'เท้า'}, {k:'leg',l:'ขา'}].map(i => (
-                                        <label key={i.k} className="flex items-center gap-2 cursor-pointer select-none">
-                                            <input type="checkbox" checked={form.amputation[i.k]} onChange={e=>setForm({...form, amputation:{...form.amputation, [i.k]:e.target.checked}})} className="chk-lg text-red-600 rounded"/> 
-                                            <span>{i.l}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="bg-pink-50 p-4 rounded-xl border border-pink-100">
-                                    <h3 className="font-bold text-pink-800 mb-3 text-sm">การรับความรู้สึก (Monofilament 10g)</h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {['L:เท้าซ้าย', 'R:เท้าขวา'].map(side => { 
-                                            const [s, l] = side.split(':'); 
-                                            return (
-                                                <div key={s} className="bg-white p-3 rounded border text-center">
-                                                    <div className="font-bold text-gray-500 mb-2">{l}</div>
-                                                    <div className="flex justify-center gap-2">
-                                                        <button onClick={()=>setForm({...form, monofilament:{...form.monofilament, [s]:'Normal'}})} className={`px-3 py-1 rounded text-xs border ${form.monofilament[s]==='Normal'?'bg-green-500 text-white border-green-600':'bg-gray-50'}`}>ปกติ</button>
-                                                        <button onClick={()=>setForm({...form, monofilament:{...form.monofilament, [s]:'Abnormal'}})} className={`px-3 py-1 rounded text-xs border ${form.monofilament[s]==='Abnormal'?'bg-red-500 text-white border-red-600':'bg-gray-50'}`}>ผิดปกติ</button>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                                    <h3 className="font-bold text-blue-800 mb-3 text-sm">ชีพจรหลังเท้า (Dorsalis Pedis)</h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {['L:เท้าซ้าย', 'R:เท้าขวา'].map(side => { 
-                                            const [s, l] = side.split(':'); 
-                                            return (
-                                                <div key={s} className="bg-white p-3 rounded border text-center">
-                                                    <div className="font-bold text-gray-500 mb-2">{l}</div>
-                                                    <div className="flex justify-center gap-1 flex-wrap">
-                                                        <button onClick={()=>setForm({...form, pulse:{...form.pulse, [s]:'Normal'}})} className={`px-2 py-1 rounded text-xs border ${['Normal','Present'].includes(form.pulse[s])?'bg-green-500 text-white border-green-600':'bg-gray-50'}`}>ปกติ</button>
-                                                        <button onClick={()=>setForm({...form, pulse:{...form.pulse, [s]:'Weak'}})} className={`px-2 py-1 rounded text-xs border ${form.pulse[s]==='Weak'?'bg-yellow-500 text-white border-yellow-600':'bg-gray-50'}`}>เบา</button>
-                                                        <button onClick={()=>setForm({...form, pulse:{...form.pulse, [s]:'Absent'}})} className={`px-2 py-1 rounded text-xs border ${form.pulse[s]==='Absent'?'bg-red-500 text-white border-red-600':'bg-gray-50'}`}>คลำไม่ได้</button>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 space-y-4">
-                                <h3 className="font-bold text-yellow-800 mb-1 text-sm flex items-center gap-2"><Icon name="search" size={16}/> ผิวหนังและเล็บ (Skin & Nails)</h3>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-600 block mb-2">ลักษณะสีผิว (Color)</label>
-                                    <div className="flex gap-3 flex-wrap">
-                                        {['Normal:ปกติ', 'Red:แดง', 'Pale:ซีด', 'Dark:คล้ำ'].map(c => { 
-                                            const [val, label] = c.split(':'); 
-                                            return (<label key={val} className="flex items-center gap-1 cursor-pointer bg-white px-3 py-1 rounded border"><input type="radio" checked={form.skin.color === val} onChange={()=>setForm({...form, skin:{...form.skin, color:val}})} className="text-yellow-600"/> <span className="text-sm">{label}</span></label>); 
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="flex gap-6 flex-wrap border-t border-yellow-200 pt-3">
+
+                        {/* ฝั่งขวา: แบบฟอร์มตรวจเท้า */}
+                        <div className="lg:col-span-9 space-y-4">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4"><Icon name="clipboard-list" className="text-pink-500" size={20}/> ประวัติและลักษณะเท้า</h3>
+                                <div className="space-y-6">
                                     <div>
-                                        <label className="text-xs font-bold text-gray-600 block mb-2">อุณหภูมิ (Temp)</label>
+                                        <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase">ประวัติการตัดนิ้ว/เท้า (Amputation)</p>
                                         <div className="flex gap-3">
-                                            {['Normal:อุ่น', 'Hot:ร้อน', 'Cold:เย็น'].map(t => { 
-                                                const [val, label] = t.split(':'); 
-                                                return (<label key={val} className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={form.skin.temp === val} onChange={()=>setForm({...form, skin:{...form.skin, temp:val}})} className="text-yellow-600"/> <span className="text-sm">{label}</span></label>); 
+                                            {['toe:นิ้วเท้า', 'foot:เท้า', 'leg:ขา'].map(item => {
+                                                const [k, l] = item.split(':');
+                                                return (
+                                                    <label key={k} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border-2 transition-all ${form.amputation[k] ? 'border-red-500 bg-red-50' : 'bg-gray-50'}`}>
+                                                        <input type="checkbox" checked={form.amputation[k]} onChange={e => setForm({...form, amputation: {...form.amputation, [k]: e.target.checked}})} className="w-4 h-4 accent-red-500"/>
+                                                        <span className="text-sm font-bold">{l}</span>
+                                                    </label>
+                                                )
                                             })}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.skin.pain} onChange={e=>setForm({...form, skin:{...form.skin, pain:e.target.checked}})} className="chk-lg text-red-500 rounded"/> <span className="text-sm font-bold text-red-700">มีอาการปวด</span></label>
-                                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.skin.fungal} onChange={e=>setForm({...form, skin:{...form.skin, fungal:e.target.checked}})} className="chk-lg text-yellow-600 rounded"/> <span className="text-sm">มีเชื้อรา (เล็บ/ผิว)</span></label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer ${form.ulcer ? 'border-red-500 bg-red-50' : 'bg-gray-50'}`}>
+                                            <input type="checkbox" checked={form.ulcer} onChange={e => setForm({...form, ulcer: e.target.checked})} className="w-5 h-5 accent-red-600"/>
+                                            <span className="font-bold text-red-600 text-sm">มีแผลขณะนี้ (Active Ulcer)</span>
+                                        </label>
+                                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer ${form.historyUlcer ? 'border-gray-500 bg-gray-100' : 'bg-gray-50'}`}>
+                                            <input type="checkbox" checked={form.historyUlcer} onChange={e => setForm({...form, historyUlcer: e.target.checked})} className="w-5 h-5 accent-gray-600"/>
+                                            <span className="font-bold text-gray-700 text-sm">ประวัติเคยมีแผล (History)</span>
+                                        </label>
+                                    </div>
+
+                                    {/* Deformity พร้อมตัวเลือกย่อย */}
+                                    <div className={`p-4 rounded-xl border-2 ${form.deformity ? 'border-pink-500 bg-pink-50' : 'bg-gray-50'}`}>
+                                        <label className="flex items-center gap-3 cursor-pointer mb-2">
+                                            <input type="checkbox" checked={form.deformity} onChange={e => setForm({...form, deformity: e.target.checked, deformityType: e.target.checked ? form.deformityType : { claw: false, bunions: false, charcot: false }})} className="w-5 h-5 accent-pink-600"/>
+                                            <span className="font-bold text-gray-800">รูปเท้าผิดปกติ (Deformity)</span>
+                                        </label>
+                                        {form.deformity && (
+                                            <div className="ml-8 grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-3 rounded-lg border border-pink-100 animate-fade-in mb-3">
+                                                {[{k:'claw',l:'Claw Toe'}, {k:'bunions',l:'Bunions'}, {k:'charcot',l:"Charcot's Foot"}].map(i => (
+                                                    <label key={i.k} className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.deformityType[i.k]} onChange={e => setForm({...form, deformityType: {...form.deformityType, [i.k]: e.target.checked}})} className="accent-pink-500"/> <span className="text-xs font-bold text-gray-600">{i.l}</span></label>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <label className="flex items-center gap-2 ml-8 cursor-pointer"><input type="checkbox" checked={form.callus} onChange={e => setForm({...form, callus: e.target.checked})} className="w-4 h-4 accent-orange-500"/> <span className="text-sm font-medium text-gray-600">พบหนังหนาด้าน (Callus)</span></label>
                                     </div>
                                 </div>
                             </div>
-                            <div className="space-y-4 border-t pt-4">
-                                <div>
-                                    <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer bg-gray-50">
-                                        <input type="checkbox" checked={form.deformity} onChange={e=>setForm({...form, deformity:e.target.checked})} className="chk-lg text-pink-600 rounded"/>
-                                        <span className="font-bold">รูปเท้าผิดปกติ (Deformity)</span>
-                                    </label>
-                                    {form.deformity && (
-                                        <div className="ml-8 grid grid-cols-1 sm:grid-cols-3 gap-2 animate-fade-in mt-2 bg-gray-100 p-3 rounded-lg">
-                                            {[{k:'claw',l:'Claw Toe'}, {k:'bunions',l:'Bunions'}, {k:'charcot',l:"Charcot's Foot"}].map(d => (
-                                                <label key={d.k} className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded border">
-                                                    <input type="checkbox" checked={form.deformityType[d.k]} onChange={e=>setForm({...form, deformityType:{...form.deformityType, [d.k]:e.target.checked}})} className="text-pink-600"/> 
-                                                    <span className="text-sm">{d.l}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    )}
+
+                            {/* การทดสอบความรู้สึกและชีพจร */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                                    <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4 text-sm"><Icon name="activity" className="text-blue-500" size={18}/> การรับความรู้สึก (10g Mono)</h3>
+                                    {['ขวา:R', 'ซ้าย:L'].map(s => {
+                                        const [l, k] = s.split(':');
+                                        return (
+                                            <div key={k} className="flex items-center justify-between bg-gray-50 p-2 rounded-xl mb-2">
+                                                <span className="text-sm font-bold text-gray-600 ml-2">{l}</span>
+                                                <div className="flex bg-white p-1 rounded-lg border">
+                                                    <button onClick={() => setForm({...form, monofilament: {...form.monofilament, [k]: 'Normal'}})} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${form.monofilament[k] === 'Normal' ? 'bg-emerald-500 text-white' : 'text-gray-300'}`}>ปกติ</button>
+                                                    <button onClick={() => setForm({...form, monofilament: {...form.monofilament, [k]: 'Abnormal'}})} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${form.monofilament[k] === 'Abnormal' ? 'bg-red-500 text-white' : 'text-gray-300'}`}>ผิดปกติ</button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                                <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-orange-50 cursor-pointer bg-orange-50 border-orange-200"><input type="checkbox" checked={form.callus} onChange={e=>setForm({...form, callus:e.target.checked})} className="chk-lg text-orange-600 rounded"/><span className="font-bold text-orange-800">หนังด้านแข็ง (Callus)</span></label>
-                                <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={form.historyUlcer} onChange={e=>setForm({...form, historyUlcer:e.target.checked})} className="chk-lg text-pink-600 rounded"/><span>ประวัติเคยมีแผล (History of Ulcer)</span></label>
-                                <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer border-red-200 bg-red-50"><input type="checkbox" checked={form.ulcer} onChange={e=>setForm({...form, ulcer:e.target.checked})} className="chk-lg text-red-600 rounded"/><span className="text-red-700 font-bold">ขณะนี้มีแผล (Active Ulcer)</span></label>
-                            </div>
-                            <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                                <h3 className="font-bold text-green-800 mb-2 text-sm">รองเท้าที่ใช้ในปัจจุบัน (Current Footwear)</h3>
-                                <div className="flex gap-4 flex-wrap">
-                                    {[{v:'Sandal', l:'รองเท้าแตะ/คีบ'}, {v:'Shoe', l:'รองเท้าหุ้มส้น/สวม'}, {v:'DiabetesShoe', l:'รองเท้าเบาหวาน'}].map(fw => (
-                                        <label key={fw.v} className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border shadow-sm">
-                                            <input type="radio" checked={form.footwear === fw.v} onChange={()=>setForm({...form, footwear:fw.v})} className="text-green-600 scale-125"/> 
-                                            <span className="text-sm">{fw.l}</span>
-                                        </label>
-                                    ))}
+                                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                                    <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4 text-sm"><Icon name="heart" className="text-red-500" size={18}/> ชีพจรหลังเท้า (Dorsalis Pedis)</h3>
+                                    {['ขวา:R', 'ซ้าย:L'].map(s => {
+                                        const [l, k] = s.split(':');
+                                        return (
+                                            <div key={k} className="flex items-center justify-between bg-gray-50 p-2 rounded-xl mb-2">
+                                                <span className="text-sm font-bold text-gray-600 ml-2">{l}</span>
+                                                <div className="flex gap-1">
+                                                    {[{v:'Normal',l:'ดี',c:'bg-emerald-500'},{v:'Weak',l:'เบา',c:'bg-orange-400'},{v:'Absent',l:'ไม่มี',c:'bg-red-500'}].map(p => (
+                                                        <button key={p.v} onClick={() => setForm({...form, pulse: {...form.pulse, [k]: p.v}})} className={`w-8 h-8 rounded-full text-[10px] font-bold border-2 ${form.pulse[k] === p.v ? `${p.c} text-white border-transparent shadow-md` : 'bg-white text-gray-300'}`}>{p.l}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                            </div>
-                            
-                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                <h3 className="font-bold text-gray-800 mb-2 text-sm">การลงความเห็นอื่นๆ (Other Comments)</h3>
-                                <textarea value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} className="w-full p-3 border rounded-lg text-sm h-24 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="ระบุรายละเอียดเพิ่มเติม..."></textarea>
                             </div>
 
-                            <div className={`p-4 text-white rounded-xl text-center ${form.riskLevel.includes('Active') ? 'bg-red-800' : form.riskLevel.includes('Very') ? 'bg-red-600' : form.riskLevel.includes('High') ? 'bg-orange-500' : form.riskLevel.includes('Moderate') ? 'bg-yellow-500' : 'bg-green-500'}`}>
-                                <div className="text-xs text-white/80 mb-1">ผลการประเมิน (คำนวณอัตโนมัติ)</div>
-                                <div className="text-2xl font-bold">{form.riskLevel}</div>
+                            {/* ผิวหนังและเล็บ */}
+                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                                <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4"><Icon name="thermometer" className="text-orange-500" size={20}/> ผิวหนังและเล็บ (Skin & Nails)</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-gray-50 p-2 rounded-xl"><p className="text-[10px] font-bold text-gray-400 text-center mb-1">สีผิว (COLOR)</p><div className="flex bg-white p-1 rounded-lg border">{['ปกติ', 'แดง', 'ซีด', 'คล้ำ'].map(c => (<button key={c} onClick={() => setForm({...form, skin: {...form.skin, color: c}})} className={`flex-1 py-1.5 text-xs font-bold rounded-md ${form.skin.color === c ? 'bg-blue-600 text-white' : 'text-gray-300'}`}>{c}</button>))}</div></div>
+                                    <div className="bg-gray-50 p-2 rounded-xl"><p className="text-[10px] font-bold text-gray-400 text-center mb-1">อุณหภูมิ (TEMP)</p><div className="flex bg-white p-1 rounded-lg border">{['อุ่นปกติ', 'ร้อน', 'เย็น'].map(t => (<button key={t} onClick={() => setForm({...form, skin: {...form.skin, temp: t}})} className={`flex-1 py-1.5 text-xs font-bold rounded-md ${form.skin.temp === t ? 'bg-orange-500 text-white' : 'text-gray-300'}`}>{t}</button>))}</div></div>
+                                </div>
+                                <div className="flex gap-3"><label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl border-2 transition-all ${form.skin.pain ? 'border-red-500 bg-red-50' : 'bg-gray-50'}`}><input type="checkbox" checked={form.skin.pain} onChange={e => setForm({...form, skin: {...form.skin, pain: e.target.checked}})} className="accent-red-500"/> <span className="text-sm font-bold">อาการปวด (Pain)</span></label><label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl border-2 transition-all ${form.skin.fungal ? 'border-emerald-500 bg-emerald-50' : 'bg-gray-50'}`}><input type="checkbox" checked={form.skin.fungal} onChange={e => setForm({...form, skin: {...form.skin, fungal: e.target.checked}})} className="accent-emerald-500"/> <span className="text-sm font-bold">มีเชื้อรา (Fungal)</span></label></div>
                             </div>
 
-                            <button onClick={save} disabled={saving} className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg">{saving ? 'กำลังบันทึก...' : 'บันทึกผลการประเมิน'}</button>
+                            {/* รองเท้าและคำแนะนำ */}
+                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                                <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4"><Icon name="shopping-bag" className="text-emerald-500" size={20}/> รองเท้าที่ใช้ปัจจุบัน</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">{['รองเท้าแตะ/คีบ:sandals', 'รองเท้าหุ้มส้น/ผ้าใบ:footprints', 'รองเท้าเบาหวาน:heart'].map(i => {const [l, ic] = i.split(':'); return (<button key={l} onClick={() => setForm({...form, footwear: l})} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${form.footwear === l ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'bg-gray-50'}`}><Icon name={ic} size={18} className={form.footwear === l ? 'text-emerald-500' : 'text-gray-300'}/><span className={`text-sm font-bold ${form.footwear === l ? 'text-emerald-700' : 'text-gray-500'}`}>{l}</span></button>)})}</div>
+                                <textarea value={form.remark} onChange={e => setForm({...form, remark: e.target.value})} className="w-full bg-gray-50 border-gray-100 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-pink-500" rows="3" placeholder="ระบุแผล, ตำแหน่ง, หรือข้อเสนอแนะเพิ่มเติม..."></textarea>
+                            </div>
+
+                            {/* ปุ่มบันทึก */}
+                            <button onClick={save} disabled={saving} className="w-full bg-pink-600 hover:bg-pink-700 text-white py-5 rounded-2xl font-bold text-lg shadow-lg shadow-pink-200 flex items-center justify-center gap-2 transition-all active:scale-95"><Icon name="save" size={22}/> {saving ? 'กำลังบันทึกข้อมูล...' : 'บันทึกผลการประเมิน'}</button>
                         </div>
                     </div>
                 </div>
             );
         };
-
+        
        const App = () => {
             const [user, setUser] = useState(null);
             const [role, setRole] = useState(null);
