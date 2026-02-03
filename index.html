@@ -814,11 +814,16 @@ const exportData = () => {
             };
 
             // [ADDED] Trigger global search when ID is complete (เพื่อดึงประวัติเก่า/Imported)
+            // [AUTO-FILL] ดึงข้อมูลจากฐานข้อมูลใหญ่มาเติมให้อัตโนมัติ
             useEffect(() => {
-                if (form.idCard && form.idCard.length === 13 && onSearch) {
-                    onSearch(form.idCard);
-                }
-            }, [form.idCard, onSearch]);
+                if (!isEditing && form.idCard.length === 13 && existingPatients) {
+                    const match = existingPatients.find(p => p.part1?.idCard === form.idCard && !p.isDeleted);
+                    if (match) {
+                        setFoundOld(true);
+                        setForm(f => ({ ...f, ...match.part1, idCard: form.idCard, priorExam: 'Yes', priorExamCount: parseInt(match.part1?.priorExamCount || 0) + 1 }));
+                    }
+                } else if (form.idCard.length < 13) setFoundOld(false);
+            }, [form.idCard, existingPatients, isEditing]);
 
             // [NEW] ฟังก์ชันพิมพ์ใบคัดกรอง
             const handlePrint = () => {
@@ -1940,28 +1945,30 @@ const exportData = () => {
                 document.body.removeChild(link);
             };
 
-            // ฟังก์ชันช่วยสำหรับการรวมข้อมูล: เติมเฉพาะค่าที่ว่าง (Fill Missing)
-            const mergeFillMissing = (target, source) => {
-                const result = { ...target };
-                for (const key in source) {
-                    const sVal = source[key];
-                    const tVal = result[key];
-                    
-                    // ถ้าข้อมูลใหม่มีค่า (ไม่ว่าง)
-                    if (sVal !== undefined && sVal !== null && sVal !== '') {
-                        // ถ้าข้อมูลเดิมว่าง (undefined, null, empty string) -> ให้เติมค่าใหม่
-                        if (tVal === undefined || tVal === null || tVal === '') {
-                            result[key] = sVal;
-                        } 
-                        // ถ้าเป็น Object ทั้งคู่ (เช่น part1, history) ให้มุดเข้าไปเช็คข้างใน (Recursive)
-                        else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
-                            result[key] = mergeFillMissing(tVal, sVal);
-                        }
-                        // กรณีอื่น (ข้อมูลเดิมมีค่าอยู่แล้ว) -> ไม่ทำอะไร (รักษาค่าเดิมไว้)
-                    }
-                }
-                return result;
-            };
+           // ฟังก์ชันรวมร่างข้อมูล (ใช้ตอนนำเข้า CSV เพื่อป้องกันข้อมูลเก่าหาย)
+const mergeFillMissing = (target, source) => {
+    const result = { ...target };
+    for (const key in source) {
+        const sVal = source[key];
+        const tVal = result[key];
+        
+        // [NEW] ถ้าเป็นประวัติ HbA1c ให้รวมปีใหม่เข้ากับปีเก่า (ห้ามเขียนทับ)
+        if (key === 'hba1c_history') {
+            result[key] = { ...(target[key] || {}), ...(source[key] || {}) };
+            continue;
+        }
+
+        if (sVal !== undefined && sVal !== null && sVal !== '') {
+            if (tVal === undefined || tVal === null || tVal === '') {
+                result[key] = sVal;
+            } 
+            else if (typeof tVal === 'object' && typeof sVal === 'object' && !Array.isArray(tVal)) {
+                result[key] = mergeFillMissing(tVal, sVal);
+            }
+        }
+    }
+    return result;
+};
 
             const parseCSV = (text) => {
                 const lines = text.trim().split('\n'); if (lines.length < 2) throw new Error('ไฟล์ต้องมีอย่างน้อย 2 แถว');
@@ -2040,29 +2047,40 @@ const exportData = () => {
                         const normLastDrR = normalizeDR(patient.lastDrStageR);
                         const normLastDrL = normalizeDR(patient.lastDrStageL);
 
-                        // Create import object
-                        const importData = { 
-                            part1: {
-                                idCard: patient.idCard,
-                                name: patient.name,
-                                gender: patient.gender,
-                                dob: patient.dob || '',
-                                age: patient.age,
-                                dxDate: patient.dxDate || '',
-                                dmYears: patient.dmYears,
-                                hba1c: patient.hba1c, 
-                                bp: patient.bp,
-                                weight: patient.weight,
-                                height: patient.height,
-                                vaRight: patient.vaRight,
-                                vaLeft: patient.vaLeft,
-                                priorExam: patient.priorExam,
-                                priorExamCount: patient.priorExamCount
-                            },
-                            referringAgencyCode: patient.agencyCode || 'IMPORT',
-                            status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
-                            isDeleted: false, 
-                            createdAt: examDate,
+                        // [จุดที่ 1] เพิ่มการคำนวณปี พ.ศ. จาก examDate (บรรทัดก่อนหน้า importData)
+const yearBE = examDate.getFullYear() + 543; 
+
+// [จุดที่ 2] ปรับปรุง Object โครงสร้างข้อมูล
+const importData = { 
+    part1: {
+        idCard: patient.idCard,
+        name: patient.name,
+        gender: patient.gender,
+        dob: patient.dob || '',
+        age: patient.age,
+        dxDate: patient.dxDate || '',
+        dmYears: patient.dmYears,
+        hba1c: patient.hba1c, // เก็บค่าล่าสุดไว้แสดงผลหน้า Dashboard
+
+        // --- เพิ่มส่วนนี้เพื่อให้ระบบจำประวัติ HbA1c รายปี ---
+        hba1c_history: {
+            [yearBE]: patient.hba1c 
+        },
+        // ---------------------------------------------
+
+        bp: patient.bp,
+        weight: patient.weight,
+        height: patient.height,
+        vaRight: patient.vaRight,
+        vaLeft: patient.vaLeft,
+        priorExam: patient.priorExam,
+        priorExamCount: patient.priorExamCount
+    },
+    referringAgencyCode: patient.agencyCode || 'IMPORT',
+    status: (normDrR || normDrL) ? 'Completed' : 'Imported', 
+    isDeleted: false, 
+    createdAt: examDate,
+    // ... ส่วน history: { ... } ข้างล่างใช้โค้ดเดิมของคุณได้เลยครับ
                             // เพิ่มส่วน History สำหรับเก็บข้อมูลจาก CSV (lastExamDate, etc.)
                             history: {
                                 date: patient.lastExamDate || '',
