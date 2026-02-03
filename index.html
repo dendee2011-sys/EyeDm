@@ -1214,44 +1214,68 @@ const exportData = () => {
             }, [recordDate, form.dob, form.dxDate]);
 
             // Logic กลับมาเติมข้อมูลอัตโนมัติทันทีเมื่อครบ 13 หลัก (ไม่ต้องถาม) + ป้องกัน Loop
-            useEffect(() => {
-                if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
-                    // Prevent loop: if we just auto-filled this ID, don't do it again
-                    if (form.idCard === lastAutoFilledId.current) return;
+            // แก้ไขตรรกะการนับรอบตรวจอัตโนมัติในหน้า PCU
+useEffect(() => {
+    if (!isEditing && form.idCard && form.idCard.length === 13 && existingPatients) {
+        if (form.idCard === lastAutoFilledId.current) return;
 
-                    const historyMatches = existingPatients.filter(p => p.part1?.idCard === form.idCard);
-                    
-                    if(historyMatches.length > 0) { 
-                        setFoundOld(true); 
-                        historyMatches.sort((a, b) => b.createdAt - a.createdAt);
-                        const latestRecord = historyMatches[0];
+        // ค้นหาประวัติการตรวจทั้งหมดของผู้ป่วยรายนี้ (ไม่รวมรายการที่ถูกลบ)
+        const historyMatches = existingPatients
+            .filter(p => p.part1?.idCard === form.idCard && !p.isDeleted)
+            .sort((a, b) => {
+                const dateA = a.createdAt?.getTime() || 0;
+                const dateB = b.createdAt?.getTime() || 0;
+                return dateB - dateA; // เรียงจากใหม่ไปเก่า
+            });
+        
+        if (historyMatches.length > 0) { 
+            // กรณีมีประวัติเดิมในระบบ
+            setFoundOld(true); 
+            const latestRecord = historyMatches[0];
+            
+            // ดึงจำนวนครั้งล่าสุดมา และบวกเพิ่ม 1 สำหรับรอบตรวจปัจจุบัน
+            const lastCount = parseInt(latestRecord.part1?.priorExamCount || 0);
+            const nextCount = lastCount + 1;
 
-                        let loadedPart1 = { ...latestRecord.part1 };
-                        
-                        if (!loadedPart1.gender && loadedPart1.name) {
-                            loadedPart1.gender = getGenderFromName(loadedPart1.name);
-                        }
+            let loadedPart1 = { ...latestRecord.part1 };
+            
+            if (!loadedPart1.gender && loadedPart1.name) {
+                loadedPart1.gender = getGenderFromName(loadedPart1.name);
+            }
 
-                        setForm(f => ({...f, ...loadedPart1, idCard: form.idCard})); 
-                        lastAutoFilledId.current = form.idCard; // Mark as filled
-                        
-                        if (latestRecord.footExam) {
-                            setFootStatus(latestRecord.footExam.riskLevel);
-                            setExistingFootExam(latestRecord.footExam); // [ADDED] เก็บข้อมูลเท้าเก่าไว้ใช้ตอนพิมพ์
-                        } else {
-                            setExistingFootExam(null);
-                        }
-                    } else { 
-                        setFoundOld(false); 
-                        setFootStatus(null);
-                        setExistingFootExam(null);
-                    }
-                } else if (form.idCard.length < 13) {
-                      lastAutoFilledId.current = '';
-                      setFoundOld(false);
-                      setExistingFootExam(null);
-                }
-            }, [form.idCard, existingPatients, isEditing]);
+            // ตั้งค่าฟอร์มอัตโนมัติ: ติ๊กถูกที่ "เคยตรวจ" และตั้งค่าจำนวนครั้งใหม่
+            setForm(f => ({
+                ...f, 
+                ...loadedPart1, 
+                idCard: form.idCard,
+                priorExam: 'Yes',
+                priorExamCount: nextCount 
+            })); 
+            
+            lastAutoFilledId.current = form.idCard;
+            
+            if (latestRecord.footExam) {
+                setFootStatus(latestRecord.footExam.riskLevel);
+                setExistingFootExam(latestRecord.footExam);
+            }
+        } else { 
+            // กรณีไม่พบประวัติเดิม (มาครั้งแรก)
+            setFoundOld(false); 
+            setFootStatus(null);
+            setExistingFootExam(null);
+            
+            // ตั้งค่าเริ่มต้นสำหรับผู้ป่วยใหม่เป็น "ครั้งที่ 1"
+            setForm(f => ({
+                ...f,
+                priorExam: 'Yes',
+                priorExamCount: 1
+            }));
+        }
+    } else if (form.idCard.length < 13) {
+        lastAutoFilledId.current = '';
+        setFoundOld(false);
+    }
+}, [form.idCard, existingPatients, isEditing]);
 
             const save = async () => {
                 if(!form.idCard || form.idCard.length !== 13 || !form.name) { setModal({visible:true, message: "กรุณากรอกข้อมูลให้ครบ"}); return; }
