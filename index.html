@@ -2264,14 +2264,18 @@ const importData = {
             // [FIX] รวมรายชื่อหน่วยงาน Static และ Dynamic เพื่อให้แสดงชื่อครบถ้วน
             const allAgenciesMap = useMemo(() => ({ ...STATIC_PCU_DATA, ...agenciesMap }), [agenciesMap]);
 
-            // 1. Filter Patients based on Date Range
+          // 1. Filter Patients based on Date Range และตัดข้อมูลนำเข้าออก
             const filteredPatients = useMemo(() => {
                 return patients.filter(p => {
+                    // 1. กรองรายการที่ถูกลบออก
                     if (p.isDeleted) return false;
-                    // ไม่นับ Imported (ข้อมูลดิบที่ยังไม่ได้ทำอะไร) ในรายงานสถิติผลงาน
+
+                    // 2. [จุดสำคัญ] กรองข้อมูลที่สถานะเป็น 'Imported' ออกทั้งหมด
+                    // จะไม่นำข้อมูลที่นำเข้าจาก CSV มาคำนวณสถิติในหน้านี้
                     if (p.status === 'Imported') return false; 
 
-                    if (!startDate && !endDate) return true; // ไม่เลือกวันที่ = เอาทั้งหมด
+                    // 3. กรองตามช่วงวันที่ที่เลือก
+                    if (!startDate && !endDate) return true; 
 
                     const pDate = p.createdAt ? new Date(p.createdAt) : new Date();
                     const offset = pDate.getTimezoneOffset() * 60000;
