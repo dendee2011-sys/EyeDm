@@ -1919,22 +1919,34 @@ const exportData = () => {
             // [ADDED] Fast Mode State
             const [fastMode, setFastMode] = useState(false);
             
-            // Helper: Parse Thai Date (DD/MM/YYYY, with possible BE year)
+            // [V3 UPDATED] รองรับ ปี-เดือน-วัน, วัน/เดือน/ปี และตรวจจับ พ.ศ./ค.ศ. อัตโนมัติ
             const parseThaiDate = (dateStr) => {
                 if (!dateStr) return null;
-                let d = new Date(dateStr);
-                if (!isNaN(d.getTime())) return d;
-                
-                const parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    let year = parseInt(parts[2]);
-                    if (year > 2400) year -= 543; // Convert BE to AD
-                    const month = parseInt(parts[1]) - 1;
-                    const day = parseInt(parts[0]);
-                    d = new Date(year, month, day);
-                    if (!isNaN(d.getTime())) return d;
+                let year, month, day, d;
+
+                // 1. ตรวจสอบรูปแบบ ปี-เดือน-วัน (YYYY-MM-DD หรือ YYYY/MM/DD)
+                if (dateStr.includes('-') || (dateStr.includes('/') && dateStr.split('/')[0].length === 4)) {
+                    const sep = dateStr.includes('-') ? '-' : '/';
+                    const parts = dateStr.split(sep);
+                    year = parseInt(parts[0]);
+                    month = parseInt(parts[1]) - 1;
+                    day = parseInt(parts[2]);
+                } 
+                // 2. ตรวจสอบรูปแบบ วัน/เดือน/ปี (DD/MM/YYYY)
+                else if (dateStr.includes('/')) {
+                    const parts = dateStr.split('/');
+                    year = parseInt(parts[2]);
+                    month = parseInt(parts[1]) - 1;
+                    day = parseInt(parts[0]);
                 }
-                return null;
+
+                // 3. ตรรกะตรวจจับปี พ.ศ. หรือ ค.ศ. อัตโนมัติ
+                if (year > 2400) {
+                    year -= 543; // ถ้าเป็น พ.ศ. ให้แปลงเป็น ค.ศ.
+                }
+
+                d = new Date(year, month, day);
+                return !isNaN(d.getTime()) ? d : null;
             };
 
             // [ADDED] ฟังก์ชันแปลงค่าผลตรวจจาก CSV ให้ตรงกับ Dropdown ของระบบ (Normalization)
