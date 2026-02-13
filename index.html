@@ -1247,19 +1247,29 @@ const currentItems = useMemo(() => {
                     }
                 }
 
-                if (form.dxDate) {
-                    const dxDate = new Date(form.dxDate);
-                    if (!isNaN(dxDate)) {
-                        let y = refDate.getFullYear() - dxDate.getFullYear();
-                        const m = refDate.getMonth() - dxDate.getMonth();
-                        if (m < 0 || (m === 0 && refDate.getDate() < dxDate.getDate())) y--;
-                        const calculatedDmYears = Math.max(0, y);
-                        if (Number(calculatedDmYears) !== Number(form.dmYears)) {
-                            newDmYears = calculatedDmYears;
-                            hasUpdates = true;
-                        }
-                    }
-                }
+                // ส่วนที่ต้องแก้ไขใน PCUForm ภายใน useEffect
+if (form.dxDate) {
+    const dxDate = new Date(form.dxDate);
+    if (!isNaN(dxDate)) {
+        // คำนวณความต่างเป็นจำนวนเดือนทั้งหมด
+        const totalMonths = (refDate.getFullYear() - dxDate.getFullYear()) * 12 + (refDate.getMonth() - dxDate.getMonth());
+        
+        let displayValue;
+        if (totalMonths >= 12) {
+            // ถ้า 12 เดือนขึ้นไป ให้แสดงเป็น "ปี"
+            displayValue = Math.floor(totalMonths / 12);
+        } else {
+            // ถ้าไม่ถึงปี ให้แสดงเป็น "0.เดือน" เช่น ป่วยมา 5 เดือน จะแสดง 0.5
+            // หรือคุณอาจจะใส่หน่วยกำกับไว้ในช่อง input ก็ได้
+            displayValue = "0." + Math.max(0, totalMonths);
+        }
+        
+        if (displayValue !== form.dmYears) {
+            newDmYears = displayValue;
+            hasUpdates = true;
+        }
+    }
+}
 
                 if (hasUpdates) {
                     setForm(prev => ({ ...prev, age: newAge, dmYears: newDmYears }));
@@ -2160,16 +2170,21 @@ const mergeFillMissing = (target, source) => {
                             }
                         }
 
-                        // Calculate DM Years
-                        if (patient.dxDate) {
-                            const dxDate = parseThaiDate(patient.dxDate);
-                            if (dxDate) {
-                                let years = examDate.getFullYear() - dxDate.getFullYear();
-                                const m = examDate.getMonth() - dxDate.getMonth();
-                                if (m < 0 || (m === 0 && examDate.getDate() < dxDate.getDate())) years--;
-                                patient.dmYears = Math.max(0, years).toString();
-                            }
-                        }
+                       // [จุดที่ 1] แก้ไขใน HospitalImport -> parseCSV
+if (patient.dxDate) {
+    const dxDate = parseThaiDate(patient.dxDate);
+    if (dxDate) {
+        // คำนวณเดือนทั้งหมด
+        const diffMonths = (examDate.getFullYear() - dxDate.getFullYear()) * 12 + (examDate.getMonth() - dxDate.getMonth());
+        
+        if (diffMonths >= 12) {
+            patient.dmYears = Math.floor(diffMonths / 12).toString();
+        } else {
+            // ป่วยไม่ถึงปี ให้เป็น 0.เดือน
+            patient.dmYears = "0." + Math.max(0, diffMonths);
+        }
+    }
+}
 
                         // Auto Gender: เรียกใช้ฟังก์ชันกลาง เพื่อรองรับชื่อติดกันและคำนำหน้าหลากหลาย
                         patient.gender = getGenderFromName(patient.name);
