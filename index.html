@@ -631,6 +631,21 @@ const exportData = () => {
                 return displayList;
 
             }, [patients, term, role, agencyCode, agencyFilter, selectedDate]);
+            const [currentPage, setCurrentPage] = useState(1);
+const itemsPerPage = 20;
+
+// เมื่อมีการค้นหา หรือเปลี่ยนวันที่ ให้เด้งกลับไปหน้า 1 เสมอ
+useEffect(() => {
+    setCurrentPage(1);
+}, [term, selectedDate, agencyFilter]);
+
+const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+// ข้อมูลที่จะนำไปแสดงในตาราง (เฉพาะ 20 คนของหน้านั้น)
+const currentItems = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+}, [filtered, currentPage]);
 
             const getStatusBadge = (status) => {
                 switch(status) {
@@ -702,7 +717,7 @@ const exportData = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {filtered.map((p, index) => {
+                                {currentItems.map((p, index) => {
                                     const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
                                     return (
                                     <tr key={p.id} className="hover:bg-gray-50">
@@ -765,9 +780,40 @@ const exportData = () => {
                                     </tr>
                                 );})}
                                 {filtered.length===0 && <tr><td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลในวันที่เลือก (ค้นหาด้วยเลขบัตร 13 หลักเพื่อดูประวัติเก่า)</td></tr>}
+                                
                             </tbody>
                         </table>
                     </div>
+                    {/* --- ✅ วางตรงนี้ครับ (อยู่นอก div ตาราง แต่อยู่ใน div หลัก) --- */}
+                    {totalPages > 1 && (
+                        <div className="flex flex-col items-center gap-3 py-6 border-t mt-4 bg-white rounded-xl shadow-sm border">
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    disabled={currentPage === 1}
+                                    onClick={() => { setCurrentPage(prev => prev - 1); window.scrollTo(0, 0); }}
+                                    className="flex items-center justify-center w-10 h-10 rounded-full border bg-white shadow-sm disabled:opacity-30 hover:bg-blue-50 text-blue-600 transition-all"
+                                >
+                                    <Icon name="chevron-left" size={18} />
+                                </button>
+                                
+                                <div className="bg-blue-600 px-4 py-2 rounded-lg text-white text-sm font-bold shadow-md">
+                                    หน้า {currentPage} / {totalPages}
+                                </div>
+
+                                <button 
+                                    disabled={currentPage === totalPages}
+                                    onClick={() => { setCurrentPage(prev => prev + 1); window.scrollTo(0, 0); }}
+                                    className="flex items-center justify-center w-10 h-10 rounded-full border bg-white shadow-sm disabled:opacity-30 hover:bg-blue-50 text-blue-600 transition-all"
+                                >
+                                    <Icon name="chevron-right" size={18} />
+                                </button>
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-widest text-center">
+                                แสดง {currentItems.length} จาก {filtered.length} รายชื่อ
+                            </div>
+                        </div>
+                    )}
+                    {/* --- จบการวาง --- */}
                 </div>
             );
         };
@@ -2701,6 +2747,21 @@ const importData = {
                     return a.displayQueue - b.displayQueue; 
                 });
             }, [patients, term, agencyFilter, selectedDate, allAgenciesMap]);
+            // --- ✅ วางโค้ดแบ่งหน้า "ต่อท้าย" ก้อนด้านบนตรงนี้ครับ ---
+        const [currentPage, setCurrentPage] = useState(1);
+        const itemsPerPage = 20;
+
+        useEffect(() => {
+            setCurrentPage(1);
+        }, [term, agencyFilter, selectedDate]);
+
+        const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+        const currentItems = useMemo(() => {
+            const start = (currentPage - 1) * itemsPerPage;
+            return filtered.slice(start, start + itemsPerPage);
+        }, [filtered, currentPage]);
+        // --- จบก้อนแบ่งหน้า ---
 
             const getFootStatus = (p) => {
                 if (!p.footExam) return <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">ยังไม่ตรวจ</span>;
@@ -2753,7 +2814,7 @@ const importData = {
         </tr>
     </thead>
     <tbody className="divide-y">
-        {filtered.map(p => {
+        {currentItems.map((p, index) => {
             const gender = p.part1?.gender || getGenderFromName(p.part1?.name);
             return (
                 <tr key={p.id} className="hover:bg-gray-50">
@@ -2792,6 +2853,35 @@ const importData = {
     </tbody>
 </table>
                         </div>
+                    {/* --- ✅ วางปุ่มเปลี่ยนหน้า (สีชมพู) ต่อท้ายตารางตรวจเท้าตรงนี้ --- */}
+                {totalPages > 1 && (
+                    <div className="flex flex-col items-center gap-3 py-6 border-t mt-4 bg-white rounded-xl shadow-sm border">
+                        <div className="flex items-center gap-2">
+                            <button 
+                                disabled={currentPage === 1}
+                                onClick={() => { setCurrentPage(prev => prev - 1); window.scrollTo(0, 0); }}
+                                className="flex items-center justify-center w-10 h-10 rounded-full border bg-white shadow-sm disabled:opacity-30 hover:bg-pink-50 text-pink-600 transition-all"
+                            >
+                                <Icon name="chevron-left" size={18} />
+                            </button>
+                            
+                            <div className="bg-pink-600 px-4 py-2 rounded-lg text-white text-sm font-bold shadow-md">
+                                หน้า {currentPage} / {totalPages}
+                            </div>
+
+                            <button 
+                                disabled={currentPage === totalPages}
+                                onClick={() => { setCurrentPage(prev => prev + 1); window.scrollTo(0, 0); }}
+                                className="flex items-center justify-center w-10 h-10 rounded-full border bg-white shadow-sm disabled:opacity-30 hover:bg-pink-50 text-pink-600 transition-all"
+                            >
+                                <Icon name="chevron-right" size={18} />
+                            </button>
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-medium uppercase tracking-widest text-center">
+                            Total {filtered.length} patients (Foot Exam)
+                        </div>
+                    </div>
+                )}
                     </div>
                 </div>
             );
