@@ -64,6 +64,18 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
+        // ✅ 1. วางฟังก์ชันกลางสำหรับจัดการหน่วย DM ไว้ตรงนี้
+        const formatDM = (dmYears, full = false) => {
+            if (dmYears === undefined || dmYears === null || dmYears === '' || dmYears === "-") return '-';
+            const dmStr = dmYears.toString();
+            const monthUnit = full ? ' เดือน' : ' ด.';
+            if (dmStr.startsWith('0.')) {
+                return `${dmStr.split('.')[1]}${monthUnit}`;
+            }
+            if (dmStr === "0") return full ? "ไม่ถึง 1 เดือน" : "0 ด.";
+            return `${dmStr} ปี`;
+        };
+
         // --- FIREBASE CONFIGURATION (Updated) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDSrwl70tNecZ9o6PftgkzEJTPa3jG-95k",
@@ -280,21 +292,20 @@
             }, [term]);
 
             // [NEW] ฟังก์ชันพิมพ์ใบคัดกรองสำหรับ Dashboard (ปรับขนาดช่อง VA)
+            // ✅ [แก้ไขจุดสุดท้าย] ฟังก์ชันพิมพ์แบบสมบูรณ์ที่รองรับหน่วยเดือน
             const handlePrint = (p) => {
                 const w = window.open('', '_blank');
                 if (!w) { alert("Pop-up ถูกบล็อก กรุณาอนุญาต Pop-up สำหรับเว็บไซต์นี้"); return; }
                 const form = p.part1 || {};
-                const p2 = p.part2 || {}; // ดึงข้อมูลผลตรวจตา
-                const f = p.footExam || {}; // ดึงข้อมูลตรวจเท้า
+                const p2 = p.part2 || {}; 
+                const f = p.footExam || {};
                 
                 // Helper สำหรับเว้นช่องว่างถ้าไม่มีข้อมูล
                 const val = (v, suffix='') => v ? v + suffix : '................................';
                 const boxVal = (v) => v || '';
                 const chk = (condition) => condition ? '[ / ]' : '[&nbsp;&nbsp;&nbsp;]';
                 
-                // [MODIFIED] แปลงรหัสหน่วยงานเป็นชื่อ
-                const agencyLabel = allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '................................'
-                // [IMPORTANT] วันที่ต้องใช้ p.createdAt (ของ Dashboard) ไม่ใช่ recordDate (ของ Form)
+               const agencyLabel = allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode || '................................';
                 const dateLabel = formatDateTh(p.createdAt) || '................................';
 
                 const content = `
@@ -345,10 +356,10 @@
                             <table style="text-align: center; margin-bottom: -1px;">
                                 <tr>
                                     
-                                    </td>
                                     <td width="25%">
-                                        <span class="label">ระยะเวลาเป็น DM (ปี)</span>
-                                        <span class="value">${boxVal(form.dmYears)}</span>
+                                    <span class="label">ระยะเวลาเป็น DM</span>
+                                    <span class="value">${formatDM(form.dmYears, true)}</span>
+                                </td>
                                     </td>
                                     <td width="25%">
                                         <span class="label">HbA1c (%)</span>
@@ -950,11 +961,10 @@ const currentItems = useMemo(() => {
                             <table style="text-align: center; margin-bottom: -1px;">
                                 <tr>
                                     
-                                    </td>
                                     <td width="30%">
-                                        <span class="label">ระยะเวลาเป็น DM (ปี)</span>
-                                        <span class="value">${boxVal(form.dmYears)}</span>
-                                    </td>
+                                    <span class="label">ระยะเวลาเป็น DM</span>
+                                    <span class="value">${formatDM(form.dmYears, true)}</span>
+                                </td>
                                     <td width="30%">
                                         <span class="label">HbA1c (%)</span>
                                         <span class="value">${boxVal(form.hba1c)}</span>
@@ -1248,6 +1258,7 @@ const currentItems = useMemo(() => {
                 }
 
                 // ส่วนที่ต้องแก้ไขใน PCUForm ภายใน useEffect
+// [จุดที่ 2] แก้ไขใน PCUForm (หา useEffect ที่คำนวณอายุ)
 if (form.dxDate) {
     const dxDate = new Date(form.dxDate);
     if (!isNaN(dxDate)) {
@@ -1255,18 +1266,18 @@ if (form.dxDate) {
         const totalMonths = (refDate.getFullYear() - dxDate.getFullYear()) * 12 + (refDate.getMonth() - dxDate.getMonth());
         
         let displayValue;
-        if (totalMonths >= 12) {
-            // ถ้า 12 เดือนขึ้นไป ให้แสดงเป็น "ปี"
-            displayValue = Math.floor(totalMonths / 12);
+        if (totalMonths <= 0) {
+            displayValue = "0"; 
+        } else if (totalMonths < 12) {
+            // ถ้าไม่ถึงปี ให้แสดงเป็น 0.เดือน (เช่น 0.5)
+            displayValue = "0." + totalMonths;
         } else {
-            // ถ้าไม่ถึงปี ให้แสดงเป็น "0.เดือน" เช่น ป่วยมา 5 เดือน จะแสดง 0.5
-            // หรือคุณอาจจะใส่หน่วยกำกับไว้ในช่อง input ก็ได้
-            displayValue = "0." + Math.max(0, totalMonths);
+            // ถ้า 12 เดือนขึ้นไป ให้แสดงเป็นจำนวนปีปกติ
+            displayValue = Math.floor(totalMonths / 12).toString();
         }
         
         if (displayValue !== form.dmYears) {
-            newDmYears = displayValue;
-            hasUpdates = true;
+            setForm(prev => ({ ...prev, dmYears: displayValue }));
         }
     }
 }
@@ -1715,7 +1726,10 @@ if (form.dxDate) {
                                     <div className="col-span-2 flex justify-between border-b border-blue-100 pb-1"><span>วันเกิด:</span> <span className="font-bold text-gray-900">{formatDateTh(patient.part1.dob) || '-'}</span></div>
                                     <div className="flex justify-between"><span>อายุ:</span> <span className="font-bold text-gray-900">{patient.part1.age || '-'} ปี</span></div>
                                     <div className="flex justify-between"><span>วินิจฉัยเมื่อ:</span> <span className="font-bold text-gray-900">{patient.part1.dxDate ? (new Date(patient.part1.dxDate).getFullYear() + 543) : '-'}</span></div>
-                                    <div className="flex justify-between"><span>เป็น DM:</span> <span className="font-bold text-gray-900">{patient.part1.dmYears || '-'} ปี</span></div>
+                                   <div className="flex justify-between text-blue-600">
+                                <span>เป็น DM:</span> 
+                                    <span className="font-bold">{formatDM(patient.part1?.dmYears, true)}</span>
+                                    </div>
                                     <div className="flex justify-between"><span>น้ำหนัก:</span> <span className="font-bold text-gray-900">{patient.part1.weight || '-'} กก.</span></div>
                                     <div className="flex justify-between"><span>ส่วนสูง:</span> <span className="font-bold text-gray-900">{patient.part1.height || '-'} ซม.</span></div>
                                     <div className="flex justify-between"><span>HbA1C:</span> <span className="font-bold text-gray-900">{patient.part1.hba1c || '-'}</span></div>
@@ -2171,17 +2185,20 @@ const mergeFillMissing = (target, source) => {
                         }
 
                        // [จุดที่ 1] แก้ไขใน HospitalImport -> parseCSV
+// [แก้ไขใน HospitalImport -> parseCSV]
 if (patient.dxDate) {
     const dxDate = parseThaiDate(patient.dxDate);
     if (dxDate) {
-        // คำนวณเดือนทั้งหมด
         const diffMonths = (examDate.getFullYear() - dxDate.getFullYear()) * 12 + (examDate.getMonth() - dxDate.getMonth());
         
-        if (diffMonths >= 12) {
-            patient.dmYears = Math.floor(diffMonths / 12).toString();
-        } else {
+        if (diffMonths <= 0) {
+            patient.dmYears = "0";
+        } else if (diffMonths < 12) {
             // ป่วยไม่ถึงปี ให้เป็น 0.เดือน
-            patient.dmYears = "0." + Math.max(0, diffMonths);
+            patient.dmYears = "0." + diffMonths;
+        } else {
+            // 1 ปีขึ้นไป ให้เป็นจำนวนปี
+            patient.dmYears = Math.floor(diffMonths / 12).toString();
         }
     }
 }
@@ -2848,9 +2865,9 @@ const importData = {
                         </div>
                     </td>
 
-                    <td className="p-3 text-gray-600 align-top hidden sm:table-cell">
-                        {p.part1?.age} ปี / DM {p.part1?.dmYears} ปี
-                    </td>
+            <td className="p-3 text-gray-600 align-top hidden sm:table-cell">
+    {p.part1?.age ? `${p.part1.age} ปี` : '-'} / DM {formatDM(p.part1?.dmYears)}
+</td>
 
                     <td className="p-3 text-center">
                         {p.status === 'Completed' 
@@ -3006,8 +3023,17 @@ const importData = {
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">{patient.part1?.name}</h3>
                                 
                                 <div className="space-y-3 text-sm text-left border-b border-dashed pb-4">
-                                    <div className="flex justify-between"><span>อายุ:</span> <span className="font-bold">{patient.part1?.age} ปี</span></div>
-                                    <div className="flex justify-between"><span>เป็นเบาหวาน:</span> <span className="font-bold">{patient.part1?.dmYears} ปี</span></div>
+                                    <div className="flex justify-between">
+    <span>อายุ:</span> 
+    <span className="font-bold">{patient.part1?.age || '-'} ปี</span>
+</div>
+
+<div className="flex justify-between text-pink-600">
+    <span>เป็นเบาหวาน:</span> 
+    <span className="font-bold">
+        {formatDM(patient.part1?.dmYears, true)}
+    </span>
+</div>
                                     <div className="flex justify-between"><span>HbA1c:</span> <span className="font-bold text-blue-600">{patient.part1?.hba1c} %</span></div>
                                 </div>
 
