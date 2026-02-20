@@ -75,6 +75,14 @@
             if (dmStr === "0") return full ? "ไม่ถึง 1 เดือน" : "0 ด.";
             return `${dmStr} ปี`;
         };
+        // ✅ 1. เพิ่มฟังก์ชันช่วยแปลงรูปแบบวันที่ตรงนี้ครับ
+    const toIsoDate = (dateObj) => {
+        if (!dateObj || isNaN(dateObj.getTime())) return '';
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`; // ผลลัพธ์จะเป็น 1970-10-05 เสมอ
+    };
 
         // --- FIREBASE CONFIGURATION (Updated) ---
         const firebaseConfig = {
@@ -2221,9 +2229,9 @@ const importData = {
         idCard: patient.idCard,
         name: patient.name,
         gender: patient.gender,
-        dob: patient.dob || '',
+        dob: toIsoDate(parseThaiDate(patient.dob)),
         age: patient.age,
-        dxDate: patient.dxDate || '',
+        dxDate: toIsoDate(parseThaiDate(patient.dxDate)),
         dmYears: patient.dmYears,
         hba1c: patient.hba1c, // เก็บค่าล่าสุดไว้แสดงผลหน้า Dashboard
 
