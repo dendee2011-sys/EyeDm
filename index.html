@@ -626,26 +626,22 @@ const exportData = () => {
                     displayQueue: i + 1 
                 }));
 
-                // 5. การแสดงผล (Filtering for Display)
+              // 5. การแสดงผล (Filtering for Display)
+                // เราไม่กรอง (filter) ใครออกแล้ว เพื่อให้ห้องตรวจตาเห็นคนที่ตรวจเสร็จแล้วด้วย
                 let displayList = listWithQueue;
 
-                // [MODIFIED] สำหรับ Hospital: ซ่อนคนที่ตรวจเสร็จแล้ว (Completed) เพื่อให้โหลดไวและไม่รก
-                // แต่ถ้ามีการค้นหา (term) ให้แสดงออกมาด้วยเผื่อต้องแก้ไข
-                if (role === 'HOSPITAL' && term.length === 0) {
-                    displayList = listWithQueue.filter(p => p.status !== 'Completed');
-                }
-
                 // 6. การเรียงลำดับสำหรับการแสดงผล (Sorting for Display)
-                // PCU: เอาคนตรวจเสร็จไว้ล่างสุด
-                // Hospital: เรียงตามคิวเหมือนเดิม (คนที่เสร็จแล้วถูกซ่อนไปแล้ว)
-                if (role !== 'HOSPITAL') {
-                     displayList.sort((a, b) => {
-                        const aDone = a.status === 'Completed';
-                        const bDone = b.status === 'Completed';
-                        if (aDone !== bDone) return aDone ? 1 : -1;
-                        return a.displayQueue - b.displayQueue; 
-                     });
-                }
+                // ใช้การเรียงแบบเดียวกันทั้งระบบ: คนรอตรวจ (Waiting) อยู่บน, คนตรวจแล้ว (Completed) อยู่ล่าง
+                displayList.sort((a, b) => {
+                    const aDone = a.status === 'Completed';
+                    const bDone = b.status === 'Completed';
+                    
+                    // ถ้าสถานะต่างกัน: ให้ Completed (true) มีค่ามากกว่าเพื่อไปอยู่ด้านหลัง
+                    if (aDone !== bDone) return aDone ? 1 : -1;
+                    
+                    // ถ้าสถานะเหมือนกัน: ให้เรียงตามลำดับคิว (เวลาลงทะเบียน)
+                    return a.displayQueue - b.displayQueue; 
+                });
 
                 return displayList;
 
