@@ -1948,58 +1948,55 @@ const AdminHome = ({ onNavigate, setModal, agenciesMap }) => {
                         try {
                             let query = getCollection('patients_referrals');
                             if (selectedPcu !== 'All') query = query.where('referringAgencyCode', '==', selectedPcu);
-                            
                             const snapshot = await query.get();
                             if (snapshot.empty) { alert("ไม่พบข้อมูล"); setModal({ visible: false }); return; }
-                            
-                            const BATCH_SIZE = 400;
-                            const docs = snapshot.docs;
-                            for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-                                const batch = db.batch();
-                                const chunk = docs.slice(i, i + BATCH_SIZE);
-                                chunk.forEach(doc => batch.delete(doc.ref));
-                                await batch.commit();
-                            }
+                            const batch = db.batch();
+                            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                            await batch.commit();
                             setModal({ visible: false });
-                            alert(`ล้างข้อมูลของ ${pcuName} สำเร็จ`);
+                            alert(`ล้างข้อมูลสำเร็จ`);
                         } catch (e) { alert(e.message); }
                     }
                 });
             };
 
             return (
-                <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
+                <div className="max-w-3xl mx-auto pb-20 animate-fade-in text-gray-800">
                     <button onClick={()=>onNavigate('dashboard')} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-gray-800"><Icon name="arrow-left" size={16}/> กลับ Dashboard</button>
                     <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100">
                         <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-800 border-b pb-4"><Icon name="settings" className="text-blue-600"/> Admin Tools</h2>
                         <div className="space-y-4">
-                            {/* เมนูจัดการรายคน */}
+                            {/* 1. จัดการรายคน */}
                             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
-                                <div><h3 className="font-bold text-slate-900">จัดการข้อมูลรายบุคคล</h3><p className="text-xs text-slate-500">ค้นหา แก้ไข หรือลบประวัติย้อนหลังของคนไข้รายคน</p></div>
+                                <div><h3 className="font-bold">จัดการข้อมูลรายบุคคล</h3><p className="text-xs text-slate-500">ค้นหา แก้ไข หรือลบประวัติย้อนหลังรายคน</p></div>
                                 <button onClick={()=>onNavigate('manage_records')} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-bold shadow-sm">จัดการ</button>
                             </div>
-
+                            {/* 2. จัดการ PCU */}
                             <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100">
                                 <div><h3 className="font-bold text-blue-900">จัดการรายชื่อ PCU</h3><p className="text-xs text-blue-700">เพิ่มหน่วยงานใหม่ลงในระบบ</p></div>
                                 <button onClick={()=>onNavigate('manage_agencies')} className="bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-lg font-bold">จัดการ</button>
                             </div>
-
+                            {/* 3. นำเข้าข้อมูล */}
                             <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-xl border border-yellow-100">
                                 <div><h3 className="font-bold text-yellow-900">นำเข้าข้อมูล CSV</h3><p className="text-xs text-yellow-700">อัปโหลดไฟล์ผู้ป่วยชุดใหญ่</p></div>
                                 <button onClick={()=>onNavigate('import_csv')} className="bg-white border border-yellow-200 text-yellow-700 px-4 py-2 rounded-lg font-bold">นำเข้า</button>
                             </div>
-
-                            {/* ส่วนล้างข้อมูลแยกตามหน่วยงาน */}
+                            {/* 4. รายงาน (ที่เคยหายไป) */}
+                            <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border border-green-100">
+                                <div><h3 className="font-bold text-green-900">รายงานและสถิติ เลือกได้</h3><p className="text-xs text-green-700">สรุปผลการตรวจและส่งออกรายงาน</p></div>
+                                <button onClick={()=>onNavigate('reports')} className="bg-white border border-green-200 text-green-700 px-4 py-2 rounded-lg font-bold">ดูรายงาน</button>
+                            </div>
+                            
+                            {/* ระบบล้างข้อมูล */}
                             <div className="p-5 bg-red-50 rounded-2xl border border-red-100 mt-6">
                                 <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2"><Icon name="trash-2" size={18}/> ล้างฐานข้อมูลรายหน่วยงาน</h3>
                                 <div className="flex flex-col sm:flex-row gap-2">
-                                    <select value={selectedPcu} onChange={(e)=>setSelectedPcu(e.target.value)} className="flex-1 p-2.5 border rounded-xl bg-white text-sm font-bold shadow-sm outline-none">
+                                    <select value={selectedPcu} onChange={(e)=>setSelectedPcu(e.target.value)} className="flex-1 p-2 border rounded-lg bg-white text-sm">
                                         <option value="All">ลบทั้งหมด (ทุกหน่วยงาน)</option>
                                         {Object.keys(allAgenciesMap).sort().map(code => <option key={code} value={code}>{code} - {allAgenciesMap[code]}</option>)}
                                     </select>
-                                    <button onClick={handleClearDatabase} className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 shadow-md">ลบข้อมูล</button>
+                                    <button onClick={handleClearDatabase} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold">ลบข้อมูล</button>
                                 </div>
-                                <p className="text-[10px] text-red-400 mt-2">*ระวัง: การลบข้อมูลจะไม่สามารถกู้คืนได้</p>
                             </div>
                         </div>
                     </div>
@@ -3150,58 +3147,29 @@ const importData = {
 
             const handleSearch = async (e) => {
                 e.preventDefault();
-                // ล้างช่องว่างและแปลงเป็นตัวเล็ก
-                const cleanTerm = searchTerm.trim().toLowerCase();
-                
-                if (cleanTerm.length < 2) { 
-                    alert("กรุณากรอกอย่างน้อย 2 ตัวอักษร"); 
-                    return; 
-                }
+                const term = searchTerm.trim().toLowerCase();
+                if (term.length < 2) return alert("กรุณากรอกอย่างน้อย 2 ตัวอักษร");
                 
                 setLoading(true);
                 try {
-                    // 1. ดึงข้อมูลทั้งหมด (ไม่ใช้ .where เพื่อให้เจอข้อมูลเก่าที่ไม่มีฟิลด์ isDeleted ด้วย)
+                    // ✅ ดึงทั้งหมดมากรองเองในเครื่อง เพื่อให้เจอข้อมูลเก่าที่ไม่มีฟิลด์ isDeleted
                     const snap = await getCollection('patients_referrals').get();
-                    
-                    if (snap.empty) {
-                        alert("ไม่พบข้อมูลใดๆ ในฐานข้อมูล");
-                        setLoading(false);
-                        return;
-                    }
-
-                    const allData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    
-                    // 2. กรองข้อมูลในเครื่อง (Fuzzy Search)
-                    const filtered = allData.filter(p => {
-                        // ถ้าเครื่องหมายลบถูกตั้งเป็น true จริงๆ ถึงจะซ่อน
-                        if (p.isDeleted === true) return false;
-
-                        // ล้างเลขบัตรใน DB ให้เหลือแค่ตัวเลข (ลบ ' ออกอัตโนมัติ)
-                        const dbIdCard = (p.part1?.idCard || '').toString().replace(/[^0-9]/g, '');
-                        const dbName = (p.part1?.name || '').toString().toLowerCase();
-                        
-                        // ตรวจสอบว่าคำที่ค้นหา มีอยู่ในชื่อ หรือ เลขบัตร หรือไม่
-                        return dbIdCard.includes(cleanTerm) || dbName.includes(cleanTerm);
-                    }).sort((a, b) => {
-                        // เรียงลำดับจากวันที่ล่าสุด
-                        const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-                        const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-                        return tB - tA;
-                    });
-
+                    const filtered = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .filter(p => {
+                            if (p.isDeleted === true) return false;
+                            const dbId = (p.part1?.idCard || '').toString().replace(/[^0-9]/g, '');
+                            const dbName = (p.part1?.name || '').toLowerCase();
+                            return dbId.includes(term) || dbName.includes(term);
+                        });
                     setResults(filtered);
-                    if (filtered.length === 0) alert("ไม่พบรายชื่อที่ตรงกับคำค้นหาในระบบ");
-                } catch (e) { 
-                    alert("เกิดข้อผิดพลาด: " + e.message); 
-                }
+                    if(filtered.length === 0) alert("ไม่พบข้อมูล");
+                } catch (e) { alert(e.message); }
                 setLoading(false);
             };
 
             const handleDelete = (p) => {
                 setModal({
-                    visible: true, 
-                    title: "ยืนยันการลบ", 
-                    message: `ลบข้อมูลของ ${p.part1?.name}?`,
+                    visible: true, title: "ยืนยันการลบ", message: `ลบข้อมูล ${p.part1?.name}?`,
                     onConfirm: async () => {
                         try {
                             await getCollection('patients_referrals').doc(p.id).update({ isDeleted: true });
@@ -3214,66 +3182,31 @@ const importData = {
 
             return (
                 <div className="max-w-5xl mx-auto pb-20 animate-fade-in">
-                    <button onClick={onBack} className="mb-4 text-gray-500 flex gap-1 items-center hover:text-slate-800">
-                        <Icon name="arrow-left" size={16}/> กลับหน้า Admin
-                    </button>
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 mb-6">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                            <Icon name="search" className="text-blue-600"/> ค้นหาและจัดการข้อมูลรายบุคคล
-                        </h2>
+                    <button onClick={onBack} className="mb-4 text-gray-500 flex gap-1 items-center"><Icon name="arrow-left" size={16}/> กลับ</button>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border mb-6">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon name="search" className="text-blue-600"/> จัดการรายบุคคล</h2>
                         <form onSubmit={handleSearch} className="flex gap-2">
-                            <input 
-                                type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} 
-                                placeholder="ระบุเลขบัตรประชาชน หรือ ชื่อ-สกุล..." 
-                                className="flex-1 p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" 
-                            />
-                            <button disabled={loading} className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md">
-                                {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
-                            </button>
+                            <input type="text" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="เลขบัตร หรือ ชื่อ-สกุล..." className="flex-1 p-3 border rounded-xl font-bold" />
+                            <button className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold shadow-md">{loading ? '...' : 'ค้นหา'}</button>
                         </form>
                     </div>
-
-                    <div className="bg-white rounded-2xl shadow-lg overflow-hidden border">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 border-b text-slate-500">
-                                <tr>
-                                    <th className="p-4">วันที่ส่งตรวจ</th>
-                                    <th className="p-4">ชื่อ-สกุล / ID</th>
-                                    <th className="p-4">หน่วยงาน</th>
-                                    <th className="p-4 text-center">ผลตรวจ</th>
-                                    <th className="p-4 text-right">จัดการ</th>
-                                </tr>
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden border">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b">
+                                <tr><th className="p-4">ชื่อ-สกุล / ID</th><th className="p-4">หน่วยงาน</th><th className="p-4 text-right">Action</th></tr>
                             </thead>
                             <tbody className="divide-y">
                                 {results.map(p => (
                                     <tr key={p.id} className="hover:bg-blue-50/30">
-                                        <td className="p-4 text-gray-500">
-                                            {p.createdAt?.toDate ? p.createdAt.toDate().toLocaleDateString('th-TH') : new Date(p.createdAt).toLocaleDateString('th-TH')}
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="font-bold text-slate-700">{p.part1?.name}</div>
-                                            <div className="text-[10px] font-mono text-gray-400">{p.part1?.idCard}</div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className="bg-gray-100 px-2 py-1 rounded text-[10px] font-bold">
-                                                {allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            {p.status === 'Completed' ? <Icon name="check-circle" size={18} className="text-green-500 mx-auto"/> : <Icon name="clock" size={18} className="text-gray-300 mx-auto"/>}
-                                        </td>
+                                        <td className="p-4"><b>{p.part1?.name}</b><div className="text-[10px] text-gray-400 font-mono">{p.part1?.idCard}</div></td>
+                                        <td className="p-4 text-xs">{allAgenciesMap[p.referringAgencyCode] || p.referringAgencyCode}</td>
                                         <td className="p-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <button onClick={() => onEditBasic(p)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><Icon name="pencil" size={18}/></button>
-                                                <button onClick={() => onEditExam(p)} className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-lg"><Icon name="eye" size={18}/></button>
-                                                <button onClick={() => handleDelete(p)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Icon name="trash-2" size={18}/></button>
-                                            </div>
+                                            <button onClick={()=>onEditBasic(p)} className="p-2 text-blue-600"><Icon name="pencil" size={18}/></button>
+                                            <button onClick={()=>onEditExam(p)} className="p-2 text-emerald-600"><Icon name="eye" size={18}/></button>
+                                            <button onClick={()=>handleDelete(p)} className="p-2 text-red-600"><Icon name="trash-2" size={18}/></button>
                                         </td>
                                     </tr>
                                 ))}
-                                {results.length === 0 && !loading && (
-                                    <tr><td colSpan="5" className="p-12 text-center text-gray-400">ระบุคำค้นหาเพื่อเริ่มจัดการข้อมูล</td></tr>
-                                )}
                             </tbody>
                         </table>
                     </div>
