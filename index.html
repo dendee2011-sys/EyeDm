@@ -2004,7 +2004,7 @@ const AdminHome = ({ onNavigate, setModal, agenciesMap }) => {
             );
         };
         // วางโค้ดก้อนนี้ไว้ด้านบน หรือ ด้านล่างของ const EyeRoomDashboard ก็ได้ครับ
-const DMClinicDashboard = ({ patients, agenciesMap, onLogout }) => {
+const DMClinicDashboard = ({ patients, agenciesMap, onLogout, agencyCode }) => {
     // 🗓️ State สำหรับเลือกช่วงวันที่ (ตามระบบ Reports เดิม)
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -2631,7 +2631,7 @@ const importData = {
             );
         };
 
-   const ReportsPage = ({ onBack, patients, agenciesMap }) => {
+   const ReportsPage = ({ onBack, patients, agenciesMap, agencyCode }) => {
         const [startDate, setStartDate] = useState('');
         const [endDate, setEndDate] = useState('');
         const [options, setOptions] = useState({ general: true, eye: true, foot: true });
@@ -2845,27 +2845,37 @@ const importData = {
         };
 
         return (
-            <div className="max-w-5xl mx-auto pb-20 animate-fade-in text-gray-800">
-                <button onClick={onBack} className="mb-4 flex items-center gap-1 text-gray-500 hover:text-gray-800"><Icon name="arrow-left" size={16}/> ย้อนกลับ</button>
-                
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-4 rounded-xl shadow-sm border">
+            <div className="max-w-6xl mx-auto pb-20 animate-fade-in p-4 text-gray-800">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Icon name="bar-chart-2" className="text-green-600"/> สถิติและรายงาน</h2>
-                        <p className="text-sm text-gray-500">สรุปผลการคัดกรองจอประสาทตาและเท้า (อิงวันที่ตรวจจริง)</p>
+                        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                            <Icon name="pie-chart" className="text-green-600"/> รายงานและสถิติ
+                        </h2>
                     </div>
+                    
                     <div className="flex flex-col gap-2 w-full md:w-auto">
                         <div className="flex gap-2 items-center">
                             <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="border rounded p-1 text-sm bg-white"/>
                             <span className="text-gray-400">-</span>
                             <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="border rounded p-1 text-sm bg-white"/>
                         </div>
-                        <div className="flex gap-3 text-sm">
-                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.general} onChange={e=>setOptions({...options, general:e.target.checked})} className="accent-green-600"/> ข้อมูลทั่วไป</label>
-                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.eye} onChange={e=>setOptions({...options, eye:e.target.checked})} className="accent-blue-600"/> ตรวจตา</label>
-                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.foot} onChange={e=>setOptions({...options, foot:e.target.checked})} className="accent-pink-600"/> ตรวจเท้า</label>
-                        </div>
-                        <button onClick={exportCSV} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex items-center justify-center gap-2 hover:bg-green-700 text-sm font-bold mt-1"><Icon name="download" size={16}/> Export CSV</button>
+                        
+                        {/* ซ่อนปุ่มเฉพาะ 30000 */}
+                        {agencyCode !== '30000' && (
+                            <div className="flex flex-col items-end gap-2">
+                                <div className="flex gap-3 text-sm">
+                                    <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.general} onChange={e=>setOptions({...options, general:e.target.checked})} className="accent-green-600"/> ข้อมูลทั่วไป</label>
+                                    <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.eye} onChange={e=>setOptions({...options, eye:e.target.checked})} className="accent-blue-600"/> ตรวจตา</label>
+                                    <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={options.foot} onChange={e=>setOptions({...options, foot:e.target.checked})} className="accent-pink-600"/> ตรวจเท้า</label>
+                                </div>
+                                <button onClick={exportCSV} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow flex items-center justify-center gap-2 hover:bg-green-700 text-sm font-bold mt-1"><Icon name="download" size={16}/> Export CSV</button>
+                            </div>
+                        )}
                     </div>
+                    
+                    <button onClick={() => onBack('admin_home')} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl font-bold hover:bg-gray-200 transition-colors">
+                        กลับ
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -3705,6 +3715,7 @@ if (view === 'reports' || view === 'dm_clinic_dashboard') {
                             patients={patients} 
                             agenciesMap={agenciesMap} 
                             onBack={() => auth.signOut()} 
+                            agencyCode={agencyCode} // 👈 เติมบรรทัดนี้ครับ
                         />
                     )}
 
@@ -3768,24 +3779,19 @@ if (view === 'reports' || view === 'dm_clinic_dashboard') {
                     
                     {view === 'hospital' && activePatient && <HospitalForm patient={activePatient} patients={patients} role={role} onBack={()=>{setSelectedPatient(null);setView('dashboard');}} setModal={setModal} />}
                     
-                   {/* --- Admin Sections --- */}
+                  {/* --- Admin Sections --- */}
                     {role === 'HOSPITAL' && view === 'admin_home' && (
                         <AdminHome onNavigate={setView} setModal={setModal} agenciesMap={agenciesMap} />
                     )}
 
-                    {role === 'HOSPITAL' && view === 'manage_records' && (
-                        <ManageRecords 
-                            onBack={() => setView('admin_home')}
-                            onEditBasic={(p) => { setSelectedPatient(p); setView('pcu_form'); }}
-                            onEditExam={(p) => { setSelectedPatient(p); setView('hospital'); }}
-                            setModal={setModal}
-                            agenciesMap={agenciesMap}
-                        />
-                    )}
+                    {/* ... */}
 
                     {role === 'HOSPITAL' && view === 'manage_agencies' && <ManageAgencies onBack={setView} agenciesMap={agenciesMap} />}
                     {role === 'HOSPITAL' && view === 'import_csv' && <HospitalImport onBack={setView} setModal={setModal} />}
-                    {role === 'HOSPITAL' && view === 'reports' && <ReportsPage onBack={() => setView('admin_home')} patients={patients} agenciesMap={agenciesMap} />}
+                    
+                    {/* 👇 เติม agencyCode={agencyCode} ต่อท้ายตรงบรรทัดนี้ด้วยครับ */}
+                    {role === 'HOSPITAL' && view === 'reports' && <ReportsPage onBack={() => setView('admin_home')} patients={patients} agenciesMap={agenciesMap} agencyCode={agencyCode} />}
+                    
                     <MessageModal modal={modal} setModal={setModal} />
                 </div>
             );
