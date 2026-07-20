@@ -2644,26 +2644,29 @@ const importData = {
 
         // 1. กรองข้อมูล (อิงวันที่ 10700 ตรวจจริง และเปิดรับข้อมูล Imported)
         const filteredPatients = useMemo(() => {
-            if (!patients) return [];
-            return patients.filter(p => {
-                if (p.isDeleted) return false; 
-                // ❌ ลบบรรทัด if (p.status === 'Imported') return false; ทิ้ง เพื่อให้แสดงข้อมูลที่นำเข้าจาก CSV
+        if (!patients) return [];
+        return patients.filter(p => {
+            if (p.isDeleted || p.status === 'Imported') return false; 
 
-                if (startDate || endDate) {
-                    // 🗓️ ใช้วันที่ตรวจจริง (examinedAt) ถ้ามี ถ้าไม่มีให้ใช้วันที่สร้าง (createdAt)
-                    const pDate = (p.status === 'Completed' && p.examinedAt) 
-                        ? new Date(p.examinedAt) 
-                        : (p.createdAt ? new Date(p.createdAt) : new Date());
+            // 🛑 [เพิ่มใหม่] กรองทิ้งหน่วยงานที่ไม่มีในระบบ (ไม่ให้เข้ามาคำนวณสถิติเลย)
+            const code = p.referringAgencyCode;
+            if (!code || !allAgenciesMap[code]) return false;
 
-                    const offset = pDate.getTimezoneOffset() * 60000;
-                    const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+            if (startDate || endDate) {
+                // 🗓️ ถ้าระบบตรวจเสร็จแล้ว ให้ใช้วันที่ตรวจจริง
+                const pDate = (p.status === 'Completed' && p.examinedAt) 
+                    ? new Date(p.examinedAt) 
+                    : (p.createdAt ? new Date(p.createdAt) : new Date());
 
-                    if (startDate && pDateStr < startDate) return false;
-                    if (endDate && pDateStr > endDate) return false;
-                }
-                return true;
-            });
-        }, [patients, startDate, endDate]);
+                const offset = pDate.getTimezoneOffset() * 60000;
+                const pDateStr = new Date(pDate.getTime() - offset).toISOString().split('T')[0];
+
+                if (startDate && pDateStr < startDate) return false;
+                if (endDate && pDateStr > endDate) return false;
+            }
+            return true;
+        });
+    }, [patients, startDate, endDate, allAgenciesMap]);
 
         // 2. คำนวณสถิติ
         const stats = useMemo(() => {
